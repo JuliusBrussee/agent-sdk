@@ -1,0 +1,63 @@
+{
+  "schema_version": "provider-catalog.manifest.v1",
+  "catalog_semantic_sha256": "65a4d8176815411ff16e931560c9b1095eebb7928262b05828b3a9c34d945cad",
+  "price_provenance_sha256": "cc3ccdd32c9850a2ce7551582d52cad6199c9d3c25421b5ee893a82e12eaf35a",
+  "source_sha256": "7e5835fda729133fba6533186b6cfc9bd58103310ae2f41e504253a0945e7f9a",
+  "entry_count": 63,
+  "snapshots": [
+    {
+      "path": "public/shared/provider-catalog/catalog/2026-06-02.yaml",
+      "source_sha256": "2bbed767738daeb4d17c73352bb00ff7759edab4bcdfc3961efc626666ca61b4",
+      "semantic_sha256": "561d298cab8484fd2a958585899dc87e8ab8d49f0fb62df45eacc6dafd8ef3e2",
+      "entry_count": 6
+    },
+    {
+      "path": "public/shared/provider-catalog/catalog/2026-06-14.yaml",
+      "source_sha256": "7317d5437f1b6888c73eff5dd41873b32d086934bdd303e63f19ae4b64a51926",
+      "semantic_sha256": "d891bb83aa8b934b5fad958e9e190b01e5fd610134445af4de4ed8e6d5083b10",
+      "entry_count": 13
+    },
+    {
+      "path": "public/shared/provider-catalog/catalog/2026-06-18.yaml",
+      "source_sha256": "82f055d67ffe8f1e9a71703cd282fac5ae5da64bed9a4b67428f06f14ae55b57",
+      "semantic_sha256": "838e94dd2ec891b0ad0a1fa5cb353e4354ce05afd75bc2b94263365356cf31fb",
+      "entry_count": 17
+    },
+    {
+      "path": "public/shared/provider-catalog/catalog/2026-07-10.yaml",
+      "source_sha256": "61401763e1667c3aa2c1a58a6b93af378d29c9d5800a9bc2705b97f8b107a9e0",
+      "semantic_sha256": "496735a6fe1d7c56baea44b339806833da3600cb1b4f2a9bbdeb3b3e4a421b80",
+      "entry_count": 17
+    },
+    {
+      "path": "public/shared/provider-catalog/catalog/2026-07-23.yaml",
+      "source_sha256": "708fab73a10a1e0020f88b5dcb00f51e30a2016276dd3d0fc2fef80f57f1e654",
+      "semantic_sha256": "05f5efdb3c295b515cf1736bc96c36bcea210f2b29ab6d56e883a36c807e45f3",
+      "entry_count": 41
+    },
+    {
+      "path": "public/shared/provider-catalog/catalog/2026-08-05.yaml",
+      "source_sha256": "4918db62d66e1dccd8e35b4f6ab16df484342454bed9a70186f0822e072c79ac",
+      "semantic_sha256": "9a0c063e95ef9b66fdfdebad357975cc648ba40d7178709a8818218913e7694d",
+      "entry_count": 42
+    },
+    {
+      "path": "public/shared/provider-catalog/catalog/2026-08-07.yaml",
+      "source_sha256": "7c88df3c54d7fe75b3817f346790d4a9893cf795d65ecb16260ca8c8acff6f33",
+      "semantic_sha256": "48fe3547fe8982e4c9e86dc070b55826564a0ee242794fb859f1c959bf0daf84",
+      "entry_count": 43
+    },
+    {
+      "path": "public/shared/provider-catalog/catalog/2026-08-10.yaml",
+      "source_sha256": "2f7be1807bdffc39acb9bda0b6e601863b1826f43b4e8d4d75d7bc687da8b44d",
+      "semantic_sha256": "989e7a052745500d8d603d35fae94c6c8b108b7b525047e2405ad8ba784c8a95",
+      "entry_count": 50
+    },
+    {
+      "path": "public/shared/provider-catalog/catalog/2026-08-13.yaml",
+      "source_sha256": "4e47b34db180542c9805de97016fc6fbb9979e48011df2ca1b723b2225ddce8d",
+      "semantic_sha256": "45fefec52c292fc1bff4d5c934f347fcdfe5156fdbe1d8ca433e0e40414f9f9b",
+      "entry_count": 63
+    }
+  ]
+}

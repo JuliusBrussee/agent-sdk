@@ -1,0 +1,22 @@
+{
+  "name": "caveman-agent-sdk-repository",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Standalone source repository for @caveman-ai/agent and its project initializer.",
+  "license": "MIT",
+  "packageManager": "npm@11.16.0",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "scripts": {
+    "build": "npm run build:agent && npm run build:create-agent",
+    "build:agent": "npm --prefix packages/agent run build",
+    "build:create-agent": "npm --prefix packages/create-caveman-agent run build",
+    "check:catalog": "node scripts/generate-agent-catalog.mjs --check",
+    "test": "npm run check:catalog && npm run test:agent && npm run test:create-agent && npm run test:example",
+    "test:agent": "npm --prefix packages/agent test",
+    "test:create-agent": "npm --prefix packages/create-caveman-agent test",
+    "test:example": "npm --prefix examples/coding-agent test",
+    "pack:check": "node scripts/pack-check.mjs"
+  }
+}

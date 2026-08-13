@@ -1,0 +1,14 @@
+{
+  "name": "@caveman-ai/example-coding-agent",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "node --check agent.mjs",
+    "lint": "node --check agent.mjs",
+    "test": "node --test tests/*.test.mjs"
+  },
+  "dependencies": {
+    "@caveman-ai/agent": "file:../../packages/agent"
+  }
+}

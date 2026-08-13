@@ -1,0 +1,5254 @@
+{
+  "schema_version": "provider-catalog.generated.v1",
+  "catalog_semantic_sha256": "65a4d8176815411ff16e931560c9b1095eebb7928262b05828b3a9c34d945cad",
+  "price_provenance_sha256": "cc3ccdd32c9850a2ce7551582d52cad6199c9d3c25421b5ee893a82e12eaf35a",
+  "source_sha256": "7e5835fda729133fba6533186b6cfc9bd58103310ae2f41e504253a0945e7f9a",
+  "entries": [
+    {
+      "provider": "openai",
+      "model": "gpt-5.6",
+      "region": "global",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 5,
+        "output_per_million": 30,
+        "cache_read_input_per_million": 0.5,
+        "cache_write_input_per_million": 6.25,
+        "cache_write_1h_input_per_million": null,
+        "reasoning_output_per_million": 30,
+        "batch_discount_fraction": null,
+        "cache_storage_per_million_tokens_hour": null,
+        "long_context_threshold_tokens": 272000,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": 2,
+        "long_context_output_multiplier": 1.5,
+        "version": "2026-08-13"
+      },
+      "pricing_semantics": {},
+      "capabilities": {
+        "adaptive_thinking": "unknown",
+        "batch": "supported",
+        "bedrock_mantle": "unknown",
+        "chat_completions": "supported",
+        "context_editing": "unknown",
+        "converse": "unknown",
+        "converse_stream": "unknown",
+        "count_tokens": "supported",
+        "embeddings": "unknown",
+        "explicit_cache": "unknown",
+        "flex": "unknown",
+        "generate_content": "unknown",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "unknown",
+        "invoke_model": "unknown",
+        "message_batches": "unknown",
+        "messages_api": "unknown",
+        "manual_thinking": "unknown",
+        "prompt_cache": "unknown",
+        "prompt_cache_breakpoint": "supported",
+        "prompt_cache_key": "supported",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "unknown",
+        "responses_api": "supported",
+        "stream_generate_content": "unknown",
+        "streaming": "supported",
+        "tools": "supported",
+        "vision": "supported",
+        "json_mode": "supported",
+        "context_window_tokens": 1050000
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "supported",
+        "id": "openai.responses.input_tokens",
+        "projection_version": "openai-responses-input-tokens-v1",
+        "accuracy": "provider_measured",
+        "quota": "unknown"
+      },
+      "cache_profile": {
+        "state": "supported",
+        "id": "cave-cache-openai-explicit-v1",
+        "mode": "explicit",
+        "attribution": "causal",
+        "min_prefix_tokens": 1024,
+        "max_breakpoints": 4,
+        "ttl_seconds": 1800,
+        "rolling": true,
+        "routing_key": true,
+        "max_rpm_per_key": 15,
+        "endpoints": [
+          "v1/chat/completions",
+          "v1/responses"
+        ]
+      },
+      "content_digest": "69617a45d54fb87f784028f3954193d5f4a7e484dbd680b42ecd29c0091a808c",
+      "sources": [
+        "https://developers.openai.com/api/docs/guides/token-counting",
+        "https://developers.openai.com/api/docs/guides/prompt-caching",
+        "https://developers.openai.com/api/docs/models/gpt-5.6-sol"
+      ],
+      "verified_at": "2026-08-13T00:00:00Z",
+      "capabilities_verified_at": "2026-08-13T00:00:00Z"
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-5.6-sol",
+      "region": "global",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 5,
+        "output_per_million": 30,
+        "cache_read_input_per_million": 0.5,
+        "cache_write_input_per_million": 6.25,
+        "cache_write_1h_input_per_million": null,
+        "reasoning_output_per_million": 30,
+        "batch_discount_fraction": null,
+        "cache_storage_per_million_tokens_hour": null,
+        "long_context_threshold_tokens": 272000,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": 2,
+        "long_context_output_multiplier": 1.5,
+        "version": "2026-08-13"
+      },
+      "pricing_semantics": {},
+      "capabilities": {
+        "adaptive_thinking": "unknown",
+        "batch": "supported",
+        "bedrock_mantle": "unknown",
+        "chat_completions": "supported",
+        "context_editing": "unknown",
+        "converse": "unknown",
+        "converse_stream": "unknown",
+        "count_tokens": "supported",
+        "embeddings": "unknown",
+        "explicit_cache": "unknown",
+        "flex": "unknown",
+        "generate_content": "unknown",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "unknown",
+        "invoke_model": "unknown",
+        "message_batches": "unknown",
+        "messages_api": "unknown",
+        "manual_thinking": "unknown",
+        "prompt_cache": "unknown",
+        "prompt_cache_breakpoint": "supported",
+        "prompt_cache_key": "supported",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "unknown",
+        "responses_api": "supported",
+        "stream_generate_content": "unknown",
+        "streaming": "supported",
+        "tools": "supported",
+        "vision": "supported",
+        "json_mode": "supported",
+        "context_window_tokens": 1050000
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "supported",
+        "id": "openai.responses.input_tokens",
+        "projection_version": "openai-responses-input-tokens-v1",
+        "accuracy": "provider_measured",
+        "quota": "unknown"
+      },
+      "cache_profile": {
+        "state": "supported",
+        "id": "cave-cache-openai-explicit-v1",
+        "mode": "explicit",
+        "attribution": "causal",
+        "min_prefix_tokens": 1024,
+        "max_breakpoints": 4,
+        "ttl_seconds": 1800,
+        "rolling": true,
+        "routing_key": true,
+        "max_rpm_per_key": 15,
+        "endpoints": [
+          "v1/chat/completions",
+          "v1/responses"
+        ]
+      },
+      "content_digest": "e00dcdd4332147a2426cd1e7dab5051f7cf88e08158e3fe410400bb1697a145e",
+      "sources": [
+        "https://developers.openai.com/api/docs/guides/token-counting",
+        "https://developers.openai.com/api/docs/guides/prompt-caching",
+        "https://developers.openai.com/api/docs/models/gpt-5.6-sol"
+      ],
+      "verified_at": "2026-08-13T00:00:00Z",
+      "capabilities_verified_at": "2026-08-13T00:00:00Z"
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-5.5",
+      "region": "global",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 5,
+        "output_per_million": 30,
+        "cache_read_input_per_million": 0.5,
+        "cache_write_input_per_million": null,
+        "cache_write_1h_input_per_million": null,
+        "reasoning_output_per_million": 30,
+        "batch_discount_fraction": 0.5,
+        "cache_storage_per_million_tokens_hour": null,
+        "long_context_threshold_tokens": 272000,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": 2,
+        "long_context_output_multiplier": 1.5,
+        "version": "2026-08-13"
+      },
+      "pricing_semantics": {
+        "regional_processing_multiplier": 1.1
+      },
+      "capabilities": {
+        "adaptive_thinking": "unknown",
+        "batch": "supported",
+        "bedrock_mantle": "unknown",
+        "chat_completions": "supported",
+        "context_editing": "unknown",
+        "converse": "unknown",
+        "converse_stream": "unknown",
+        "count_tokens": "supported",
+        "embeddings": "unknown",
+        "explicit_cache": "unknown",
+        "flex": "supported",
+        "generate_content": "unknown",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "unknown",
+        "invoke_model": "unknown",
+        "message_batches": "unknown",
+        "messages_api": "unknown",
+        "manual_thinking": "unknown",
+        "prompt_cache": "unknown",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "supported",
+        "prompt_cache_retention": "supported",
+        "raw_predict": "unknown",
+        "responses_api": "supported",
+        "stream_generate_content": "unknown",
+        "streaming": "supported",
+        "tools": "supported",
+        "vision": "supported",
+        "json_mode": "supported",
+        "context_window_tokens": 1050000,
+        "effort_levels": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ]
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "supported",
+        "id": "openai.responses.input_tokens",
+        "projection_version": "openai-responses-input-tokens-v1",
+        "accuracy": "provider_measured",
+        "quota": "unknown"
+      },
+      "cache_profile": {
+        "state": "supported",
+        "id": "cave-cache-openai-affinity-v1",
+        "mode": "affinity",
+        "attribution": "affinity",
+        "min_prefix_tokens": 2048,
+        "max_breakpoints": 1,
+        "ttl_seconds": 300,
+        "rolling": true,
+        "routing_key": true,
+        "max_rpm_per_key": 15,
+        "endpoints": [
+          "v1/chat/completions",
+          "v1/responses"
+        ]
+      },
+      "content_digest": "dc0faee3a8ac33ded0c25824ea9f37f8bb7c92fda777c936942e537b65fb9f57",
+      "sources": [
+        "https://developers.openai.com/api/docs/guides/token-counting",
+        "https://openai.com/api/pricing/",
+        "https://developers.openai.com/api/docs/guides/prompt-caching",
+        "https://developers.openai.com/api/docs/models/gpt-5.5"
+      ],
+      "verified_at": "2026-08-13T00:00:00Z",
+      "capabilities_verified_at": "2026-08-13T00:00:00Z"
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-5.4-mini",
+      "region": "global",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 0.75,
+        "output_per_million": 4.5,
+        "cache_read_input_per_million": 0.075,
+        "cache_write_input_per_million": null,
+        "cache_write_1h_input_per_million": null,
+        "reasoning_output_per_million": 4.5,
+        "batch_discount_fraction": 0.5,
+        "cache_storage_per_million_tokens_hour": null,
+        "long_context_threshold_tokens": null,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": null,
+        "long_context_output_multiplier": null,
+        "version": "2026-08-13"
+      },
+      "pricing_semantics": {
+        "regional_processing_multiplier": 1.1
+      },
+      "capabilities": {
+        "adaptive_thinking": "unknown",
+        "batch": "supported",
+        "bedrock_mantle": "unknown",
+        "chat_completions": "supported",
+        "context_editing": "unknown",
+        "converse": "unknown",
+        "converse_stream": "unknown",
+        "count_tokens": "supported",
+        "embeddings": "unknown",
+        "explicit_cache": "unknown",
+        "flex": "unknown",
+        "generate_content": "unknown",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "unknown",
+        "invoke_model": "unknown",
+        "message_batches": "unknown",
+        "messages_api": "unknown",
+        "manual_thinking": "unknown",
+        "prompt_cache": "unknown",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "supported",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "unknown",
+        "responses_api": "supported",
+        "stream_generate_content": "unknown",
+        "streaming": "supported",
+        "tools": "supported",
+        "vision": "supported",
+        "json_mode": "supported",
+        "context_window_tokens": 400000,
+        "effort_levels": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ]
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "supported",
+        "id": "openai.responses.input_tokens",
+        "projection_version": "openai-responses-input-tokens-v1",
+        "accuracy": "provider_measured",
+        "quota": "unknown"
+      },
+      "cache_profile": {
+        "state": "supported",
+        "id": "cave-cache-openai-affinity-v1",
+        "mode": "affinity",
+        "attribution": "affinity",
+        "min_prefix_tokens": 2048,
+        "max_breakpoints": 1,
+        "ttl_seconds": 300,
+        "rolling": true,
+        "routing_key": true,
+        "max_rpm_per_key": 15,
+        "endpoints": [
+          "v1/chat/completions",
+          "v1/responses"
+        ]
+      },
+      "content_digest": "c08fa0304919d44116a9b91977f8837954864adc179934345ae750a11844e398",
+      "sources": [
+        "https://developers.openai.com/api/docs/guides/token-counting",
+        "https://developers.openai.com/api/docs/guides/prompt-caching",
+        "https://developers.openai.com/api/docs/models/gpt-5.4-mini"
+      ],
+      "verified_at": "2026-08-13T00:00:00Z",
+      "capabilities_verified_at": "2026-08-13T00:00:00Z"
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-5.5-2026-04-23",
+      "region": "global",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 5,
+        "output_per_million": 30,
+        "cache_read_input_per_million": 0.5,
+        "cache_write_input_per_million": null,
+        "cache_write_1h_input_per_million": null,
+        "reasoning_output_per_million": 30,
+        "batch_discount_fraction": 0.5,
+        "cache_storage_per_million_tokens_hour": null,
+        "long_context_threshold_tokens": 272000,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": 2,
+        "long_context_output_multiplier": 1.5,
+        "version": "2026-08-13"
+      },
+      "pricing_semantics": {
+        "regional_processing_multiplier": 1.1
+      },
+      "capabilities": {
+        "adaptive_thinking": "unknown",
+        "batch": "supported",
+        "bedrock_mantle": "unknown",
+        "chat_completions": "supported",
+        "context_editing": "unknown",
+        "converse": "unknown",
+        "converse_stream": "unknown",
+        "count_tokens": "supported",
+        "embeddings": "unknown",
+        "explicit_cache": "unknown",
+        "flex": "supported",
+        "generate_content": "unknown",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "unknown",
+        "invoke_model": "unknown",
+        "message_batches": "unknown",
+        "messages_api": "unknown",
+        "manual_thinking": "unknown",
+        "prompt_cache": "unknown",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "supported",
+        "prompt_cache_retention": "supported",
+        "raw_predict": "unknown",
+        "responses_api": "supported",
+        "stream_generate_content": "unknown",
+        "streaming": "supported",
+        "tools": "supported",
+        "vision": "supported",
+        "json_mode": "supported",
+        "context_window_tokens": 1050000
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "supported",
+        "id": "openai.responses.input_tokens",
+        "projection_version": "openai-responses-input-tokens-v1",
+        "accuracy": "provider_measured",
+        "quota": "unknown"
+      },
+      "cache_profile": {
+        "state": "supported",
+        "id": "cave-cache-openai-affinity-v1",
+        "mode": "affinity",
+        "attribution": "affinity",
+        "min_prefix_tokens": 2048,
+        "max_breakpoints": 1,
+        "ttl_seconds": 300,
+        "rolling": true,
+        "routing_key": true,
+        "max_rpm_per_key": 15,
+        "endpoints": [
+          "v1/chat/completions",
+          "v1/responses"
+        ]
+      },
+      "content_digest": "526b32c6e372c1207ebfe062e7aecdfcfa52de5a85dade963ca1c1a4464f6adb",
+      "sources": [
+        "https://developers.openai.com/api/docs/guides/token-counting",
+        "https://openai.com/api/pricing/",
+        "https://developers.openai.com/api/docs/guides/prompt-caching",
+        "https://developers.openai.com/api/docs/models/gpt-5.5"
+      ],
+      "verified_at": "2026-08-13T00:00:00Z",
+      "capabilities_verified_at": "2026-08-13T00:00:00Z"
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-5.4-mini-2026-03-17",
+      "region": "global",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 0.75,
+        "output_per_million": 4.5,
+        "cache_read_input_per_million": 0.075,
+        "cache_write_input_per_million": null,
+        "cache_write_1h_input_per_million": null,
+        "reasoning_output_per_million": 4.5,
+        "batch_discount_fraction": 0.5,
+        "cache_storage_per_million_tokens_hour": null,
+        "long_context_threshold_tokens": null,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": null,
+        "long_context_output_multiplier": null,
+        "version": "2026-08-13"
+      },
+      "pricing_semantics": {
+        "regional_processing_multiplier": 1.1
+      },
+      "capabilities": {
+        "adaptive_thinking": "unknown",
+        "batch": "supported",
+        "bedrock_mantle": "unknown",
+        "chat_completions": "supported",
+        "context_editing": "unknown",
+        "converse": "unknown",
+        "converse_stream": "unknown",
+        "count_tokens": "supported",
+        "embeddings": "unknown",
+        "explicit_cache": "unknown",
+        "flex": "unknown",
+        "generate_content": "unknown",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "unknown",
+        "invoke_model": "unknown",
+        "message_batches": "unknown",
+        "messages_api": "unknown",
+        "manual_thinking": "unknown",
+        "prompt_cache": "unknown",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "supported",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "unknown",
+        "responses_api": "supported",
+        "stream_generate_content": "unknown",
+        "streaming": "supported",
+        "tools": "supported",
+        "vision": "supported",
+        "json_mode": "supported",
+        "context_window_tokens": 400000
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "supported",
+        "id": "openai.responses.input_tokens",
+        "projection_version": "openai-responses-input-tokens-v1",
+        "accuracy": "provider_measured",
+        "quota": "unknown"
+      },
+      "cache_profile": {
+        "state": "supported",
+        "id": "cave-cache-openai-affinity-v1",
+        "mode": "affinity",
+        "attribution": "affinity",
+        "min_prefix_tokens": 2048,
+        "max_breakpoints": 1,
+        "ttl_seconds": 300,
+        "rolling": true,
+        "routing_key": true,
+        "max_rpm_per_key": 15,
+        "endpoints": [
+          "v1/chat/completions",
+          "v1/responses"
+        ]
+      },
+      "content_digest": "68b67fca8de12806106dd8fed8fb49055f246a92773dcf4fe16031e87e6b3033",
+      "sources": [
+        "https://developers.openai.com/api/docs/guides/token-counting",
+        "https://developers.openai.com/api/docs/guides/prompt-caching",
+        "https://developers.openai.com/api/docs/models/gpt-5.4-mini"
+      ],
+      "verified_at": "2026-08-13T00:00:00Z",
+      "capabilities_verified_at": "2026-08-13T00:00:00Z"
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-5.4-nano",
+      "region": "global",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 0.2,
+        "output_per_million": 1.25,
+        "cache_read_input_per_million": 0.02,
+        "cache_write_input_per_million": null,
+        "cache_write_1h_input_per_million": null,
+        "reasoning_output_per_million": 1.25,
+        "batch_discount_fraction": 0.5,
+        "cache_storage_per_million_tokens_hour": null,
+        "long_context_threshold_tokens": null,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": null,
+        "long_context_output_multiplier": null,
+        "version": "2026-08-13"
+      },
+      "pricing_semantics": {
+        "regional_processing_multiplier": 1.1
+      },
+      "capabilities": {
+        "adaptive_thinking": "unknown",
+        "batch": "supported",
+        "bedrock_mantle": "unknown",
+        "chat_completions": "supported",
+        "context_editing": "unknown",
+        "converse": "unknown",
+        "converse_stream": "unknown",
+        "count_tokens": "supported",
+        "embeddings": "unknown",
+        "explicit_cache": "unknown",
+        "flex": "unknown",
+        "generate_content": "unknown",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "unknown",
+        "invoke_model": "unknown",
+        "message_batches": "unknown",
+        "messages_api": "unknown",
+        "manual_thinking": "unknown",
+        "prompt_cache": "unknown",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "unknown",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "unknown",
+        "responses_api": "supported",
+        "stream_generate_content": "unknown",
+        "streaming": "supported",
+        "tools": "supported",
+        "vision": "supported",
+        "json_mode": "supported",
+        "context_window_tokens": 400000,
+        "effort_levels": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ]
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "supported",
+        "id": "openai.responses.input_tokens",
+        "projection_version": "openai-responses-input-tokens-v1",
+        "accuracy": "provider_measured",
+        "quota": "unknown"
+      },
+      "cache_profile": {
+        "state": "unknown"
+      },
+      "content_digest": "cbddf5bb27f9f6031487aa0751af1a5b9015e28fa728a8b8d5e11d26055ab75c",
+      "sources": [
+        "https://developers.openai.com/api/docs/guides/token-counting",
+        "https://developers.openai.com/api/docs/models/gpt-5.4-nano"
+      ],
+      "verified_at": "2026-08-13T00:00:00Z",
+      "capabilities_verified_at": "2026-08-13T00:00:00Z"
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-5.4-nano-2026-03-17",
+      "region": "global",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 0.2,
+        "output_per_million": 1.25,
+        "cache_read_input_per_million": 0.02,
+        "cache_write_input_per_million": null,
+        "cache_write_1h_input_per_million": null,
+        "reasoning_output_per_million": 1.25,
+        "batch_discount_fraction": 0.5,
+        "cache_storage_per_million_tokens_hour": null,
+        "long_context_threshold_tokens": null,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": null,
+        "long_context_output_multiplier": null,
+        "version": "2026-08-13"
+      },
+      "pricing_semantics": {
+        "regional_processing_multiplier": 1.1
+      },
+      "capabilities": {
+        "adaptive_thinking": "unknown",
+        "batch": "supported",
+        "bedrock_mantle": "unknown",
+        "chat_completions": "supported",
+        "context_editing": "unknown",
+        "converse": "unknown",
+        "converse_stream": "unknown",
+        "count_tokens": "supported",
+        "embeddings": "unknown",
+        "explicit_cache": "unknown",
+        "flex": "unknown",
+        "generate_content": "unknown",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "unknown",
+        "invoke_model": "unknown",
+        "message_batches": "unknown",
+        "messages_api": "unknown",
+        "manual_thinking": "unknown",
+        "prompt_cache": "unknown",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "unknown",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "unknown",
+        "responses_api": "supported",
+        "stream_generate_content": "unknown",
+        "streaming": "supported",
+        "tools": "supported",
+        "vision": "supported",
+        "json_mode": "supported",
+        "context_window_tokens": 400000
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "supported",
+        "id": "openai.responses.input_tokens",
+        "projection_version": "openai-responses-input-tokens-v1",
+        "accuracy": "provider_measured",
+        "quota": "unknown"
+      },
+      "cache_profile": {
+        "state": "unknown"
+      },
+      "content_digest": "604545808360d9d63a1ee3be3eb1f0ae349859703e0b8e52ad1418a6d1bf1d9b",
+      "sources": [
+        "https://developers.openai.com/api/docs/guides/token-counting",
+        "https://developers.openai.com/api/docs/models/gpt-5.4-nano"
+      ],
+      "verified_at": "2026-08-13T00:00:00Z",
+      "capabilities_verified_at": "2026-08-13T00:00:00Z"
+    },
+    {
+      "provider": "openai",
+      "model": "text-embedding-3-large",
+      "region": "global",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 0.13,
+        "output_per_million": 0,
+        "cache_read_input_per_million": null,
+        "cache_write_input_per_million": null,
+        "cache_write_1h_input_per_million": null,
+        "reasoning_output_per_million": null,
+        "batch_discount_fraction": 0.5,
+        "cache_storage_per_million_tokens_hour": null,
+        "long_context_threshold_tokens": null,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": null,
+        "long_context_output_multiplier": null,
+        "version": "2026-07-10"
+      },
+      "pricing_semantics": {},
+      "capabilities": {
+        "adaptive_thinking": "unknown",
+        "batch": "unknown",
+        "bedrock_mantle": "unknown",
+        "chat_completions": "unknown",
+        "context_editing": "unknown",
+        "converse": "unknown",
+        "converse_stream": "unknown",
+        "count_tokens": "unknown",
+        "embeddings": "supported",
+        "explicit_cache": "unknown",
+        "flex": "unknown",
+        "generate_content": "unknown",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "unknown",
+        "invoke_model": "unknown",
+        "message_batches": "unknown",
+        "messages_api": "unknown",
+        "manual_thinking": "unknown",
+        "prompt_cache": "unknown",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "unknown",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "unknown",
+        "responses_api": "unknown",
+        "stream_generate_content": "unknown",
+        "streaming": "unknown",
+        "tools": "unsupported",
+        "vision": "unsupported",
+        "json_mode": "unsupported",
+        "context_window_tokens": 8192
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "unknown"
+      },
+      "cache_profile": {
+        "state": "unknown"
+      },
+      "content_digest": "1db950f3198c8c57a66a8b6593dffeb4ea44d057a739be5d90768b3ad2dc7ea1",
+      "sources": [
+        "https://openai.com/api/pricing/",
+        "https://developers.openai.com/api/docs/models/text-embedding-3-large"
+      ],
+      "verified_at": "2026-07-10T00:00:00Z",
+      "capabilities_verified_at": "2026-07-30T00:00:00Z"
+    },
+    {
+      "provider": "openai",
+      "model": "text-embedding-3-small",
+      "region": "global",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 0.02,
+        "output_per_million": 0,
+        "cache_read_input_per_million": null,
+        "cache_write_input_per_million": null,
+        "cache_write_1h_input_per_million": null,
+        "reasoning_output_per_million": null,
+        "batch_discount_fraction": 0.5,
+        "cache_storage_per_million_tokens_hour": null,
+        "long_context_threshold_tokens": null,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": null,
+        "long_context_output_multiplier": null,
+        "version": "2026-07-10"
+      },
+      "pricing_semantics": {},
+      "capabilities": {
+        "adaptive_thinking": "unknown",
+        "batch": "unknown",
+        "bedrock_mantle": "unknown",
+        "chat_completions": "unknown",
+        "context_editing": "unknown",
+        "converse": "unknown",
+        "converse_stream": "unknown",
+        "count_tokens": "unknown",
+        "embeddings": "supported",
+        "explicit_cache": "unknown",
+        "flex": "unknown",
+        "generate_content": "unknown",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "unknown",
+        "invoke_model": "unknown",
+        "message_batches": "unknown",
+        "messages_api": "unknown",
+        "manual_thinking": "unknown",
+        "prompt_cache": "unknown",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "unknown",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "unknown",
+        "responses_api": "unknown",
+        "stream_generate_content": "unknown",
+        "streaming": "unknown",
+        "tools": "unsupported",
+        "vision": "unsupported",
+        "json_mode": "unsupported",
+        "context_window_tokens": 8192
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "unknown"
+      },
+      "cache_profile": {
+        "state": "unknown"
+      },
+      "content_digest": "b4d88ededc2eaae279140199302feb9b6205fc7b2f23bc81875c136c0655e41c",
+      "sources": [
+        "https://openai.com/api/pricing/",
+        "https://developers.openai.com/api/docs/models/text-embedding-3-small"
+      ],
+      "verified_at": "2026-07-10T00:00:00Z",
+      "capabilities_verified_at": "2026-07-30T00:00:00Z"
+    },
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "region": "global",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 2,
+        "output_per_million": 10,
+        "cache_read_input_per_million": 0.2,
+        "cache_write_input_per_million": 2.5,
+        "cache_write_1h_input_per_million": 4,
+        "reasoning_output_per_million": 10,
+        "batch_discount_fraction": 0.5,
+        "cache_storage_per_million_tokens_hour": null,
+        "long_context_threshold_tokens": null,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": null,
+        "long_context_output_multiplier": null,
+        "version": "2026-08-13"
+      },
+      "pricing_semantics": {
+        "inference_geo_us_multiplier": 1.1
+      },
+      "capabilities": {
+        "adaptive_thinking": "supported",
+        "batch": "unknown",
+        "bedrock_mantle": "unknown",
+        "chat_completions": "unknown",
+        "context_editing": "supported",
+        "converse": "unknown",
+        "converse_stream": "unknown",
+        "count_tokens": "supported",
+        "embeddings": "unknown",
+        "explicit_cache": "unknown",
+        "flex": "unknown",
+        "generate_content": "unknown",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "unknown",
+        "invoke_model": "unknown",
+        "message_batches": "supported",
+        "messages_api": "supported",
+        "manual_thinking": "unsupported",
+        "prompt_cache": "supported",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "unknown",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "unknown",
+        "responses_api": "unknown",
+        "stream_generate_content": "unknown",
+        "streaming": "supported",
+        "tools": "supported",
+        "vision": "supported",
+        "json_mode": "supported",
+        "context_window_tokens": 1000000,
+        "effort_levels": [
+          "low",
+          "medium",
+          "high",
+          "max",
+          "xhigh"
+        ]
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "supported",
+        "id": "anthropic.messages.count_tokens",
+        "projection_version": "anthropic-messages-count-v1",
+        "accuracy": "provider_measured",
+        "quota": "independent"
+      },
+      "cache_profile": {
+        "state": "supported",
+        "id": "cave-cache-anthropic-v1",
+        "mode": "explicit",
+        "attribution": "causal",
+        "min_prefix_tokens": 1024,
+        "max_breakpoints": 4,
+        "ttl_seconds": 300,
+        "rolling": true,
+        "endpoints": [
+          "v1/messages"
+        ]
+      },
+      "content_digest": "9e045a0719aebefeab041fd7b8e2f0111fbbc86cf57b229153850e3b4dd6e05e",
+      "sources": [
+        "https://platform.claude.com/docs/en/build-with-claude/token-counting",
+        "https://platform.claude.com/docs/en/build-with-claude/prompt-caching",
+        "https://platform.claude.com/docs/en/about-claude/pricing",
+        "https://platform.claude.com/docs/en/about-claude/models/overview",
+        "https://platform.claude.com/docs/en/build-with-claude/effort",
+        "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+      ],
+      "verified_at": "2026-08-13T00:00:00Z",
+      "capabilities_verified_at": "2026-08-13T00:00:00Z"
+    },
+    {
+      "provider": "anthropic",
+      "model": "claude-opus-4-8",
+      "region": "global",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 5,
+        "output_per_million": 25,
+        "cache_read_input_per_million": 0.5,
+        "cache_write_input_per_million": 6.25,
+        "cache_write_1h_input_per_million": 10,
+        "reasoning_output_per_million": 25,
+        "batch_discount_fraction": 0.5,
+        "cache_storage_per_million_tokens_hour": null,
+        "long_context_threshold_tokens": null,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": null,
+        "long_context_output_multiplier": null,
+        "version": "2026-08-13"
+      },
+      "pricing_semantics": {
+        "inference_geo_us_multiplier": 1.1
+      },
+      "capabilities": {
+        "adaptive_thinking": "supported",
+        "batch": "unknown",
+        "bedrock_mantle": "unknown",
+        "chat_completions": "unknown",
+        "context_editing": "supported",
+        "converse": "unknown",
+        "converse_stream": "unknown",
+        "count_tokens": "supported",
+        "embeddings": "unknown",
+        "explicit_cache": "unknown",
+        "flex": "unknown",
+        "generate_content": "unknown",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "unknown",
+        "invoke_model": "unknown",
+        "message_batches": "supported",
+        "messages_api": "supported",
+        "manual_thinking": "unsupported",
+        "prompt_cache": "supported",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "unknown",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "unknown",
+        "responses_api": "unknown",
+        "stream_generate_content": "unknown",
+        "streaming": "supported",
+        "tools": "supported",
+        "vision": "supported",
+        "json_mode": "supported",
+        "context_window_tokens": 1000000,
+        "effort_levels": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ]
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "supported",
+        "id": "anthropic.messages.count_tokens",
+        "projection_version": "anthropic-messages-count-v1",
+        "accuracy": "provider_measured",
+        "quota": "independent"
+      },
+      "cache_profile": {
+        "state": "supported",
+        "id": "cave-cache-anthropic-v1",
+        "mode": "explicit",
+        "attribution": "causal",
+        "min_prefix_tokens": 1024,
+        "max_breakpoints": 4,
+        "ttl_seconds": 300,
+        "rolling": true,
+        "endpoints": [
+          "v1/messages"
+        ]
+      },
+      "content_digest": "824c3951501509a2d203b1f1c6bd651681677cd060dfd6962ba242376bd326d5",
+      "sources": [
+        "https://platform.claude.com/docs/en/build-with-claude/token-counting",
+        "https://platform.claude.com/docs/en/build-with-claude/prompt-caching",
+        "https://platform.claude.com/docs/en/about-claude/pricing",
+        "https://platform.claude.com/docs/en/about-claude/models/overview",
+        "https://platform.claude.com/docs/en/build-with-claude/effort",
+        "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+      ],
+      "verified_at": "2026-08-13T00:00:00Z",
+      "capabilities_verified_at": "2026-08-13T00:00:00Z"
+    },
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-4-6",
+      "region": "global",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 3,
+        "output_per_million": 15,
+        "cache_read_input_per_million": 0.3,
+        "cache_write_input_per_million": 3.75,
+        "cache_write_1h_input_per_million": 6,
+        "reasoning_output_per_million": 15,
+        "batch_discount_fraction": 0.5,
+        "cache_storage_per_million_tokens_hour": null,
+        "long_context_threshold_tokens": null,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": null,
+        "long_context_output_multiplier": null,
+        "version": "2026-08-13"
+      },
+      "pricing_semantics": {
+        "inference_geo_us_multiplier": 1.1
+      },
+      "capabilities": {
+        "adaptive_thinking": "supported",
+        "batch": "unknown",
+        "bedrock_mantle": "unknown",
+        "chat_completions": "unknown",
+        "context_editing": "supported",
+        "converse": "unknown",
+        "converse_stream": "unknown",
+        "count_tokens": "supported",
+        "embeddings": "unknown",
+        "explicit_cache": "unknown",
+        "flex": "unknown",
+        "generate_content": "unknown",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "unknown",
+        "invoke_model": "unknown",
+        "message_batches": "supported",
+        "messages_api": "supported",
+        "manual_thinking": "supported",
+        "prompt_cache": "supported",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "unknown",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "unknown",
+        "responses_api": "unknown",
+        "stream_generate_content": "unknown",
+        "streaming": "supported",
+        "tools": "supported",
+        "vision": "supported",
+        "json_mode": "supported",
+        "context_window_tokens": 1000000,
+        "effort_levels": [
+          "low",
+          "medium",
+          "high",
+          "max"
+        ]
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "supported",
+        "id": "anthropic.messages.count_tokens",
+        "projection_version": "anthropic-messages-count-v1",
+        "accuracy": "provider_measured",
+        "quota": "independent"
+      },
+      "cache_profile": {
+        "state": "supported",
+        "id": "cave-cache-anthropic-v1",
+        "mode": "explicit",
+        "attribution": "causal",
+        "min_prefix_tokens": 1024,
+        "max_breakpoints": 4,
+        "ttl_seconds": 300,
+        "rolling": true,
+        "endpoints": [
+          "v1/messages"
+        ]
+      },
+      "content_digest": "2f8034b1ea08f6f4205a54b0f78599bbdb07805e02c889e2cfcebe65485cc354",
+      "sources": [
+        "https://platform.claude.com/docs/en/build-with-claude/token-counting",
+        "https://platform.claude.com/docs/en/build-with-claude/prompt-caching",
+        "https://platform.claude.com/docs/en/about-claude/pricing",
+        "https://platform.claude.com/docs/en/about-claude/models/overview",
+        "https://platform.claude.com/docs/en/build-with-claude/context-windows",
+        "https://platform.claude.com/docs/en/build-with-claude/effort",
+        "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+      ],
+      "verified_at": "2026-08-13T00:00:00Z",
+      "capabilities_verified_at": "2026-08-13T00:00:00Z"
+    },
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-4-5",
+      "region": "global",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 3,
+        "output_per_million": 15,
+        "cache_read_input_per_million": 0.3,
+        "cache_write_input_per_million": 3.75,
+        "cache_write_1h_input_per_million": 6,
+        "reasoning_output_per_million": 15,
+        "batch_discount_fraction": 0.5,
+        "cache_storage_per_million_tokens_hour": null,
+        "long_context_threshold_tokens": null,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": null,
+        "long_context_output_multiplier": null,
+        "version": "2026-08-13"
+      },
+      "pricing_semantics": {},
+      "capabilities": {
+        "adaptive_thinking": "unsupported",
+        "batch": "unknown",
+        "bedrock_mantle": "unknown",
+        "chat_completions": "unknown",
+        "context_editing": "unknown",
+        "converse": "unknown",
+        "converse_stream": "unknown",
+        "count_tokens": "supported",
+        "embeddings": "unknown",
+        "explicit_cache": "unknown",
+        "flex": "unknown",
+        "generate_content": "unknown",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "unknown",
+        "invoke_model": "unknown",
+        "message_batches": "supported",
+        "messages_api": "supported",
+        "manual_thinking": "supported",
+        "prompt_cache": "supported",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "unknown",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "unknown",
+        "responses_api": "unknown",
+        "stream_generate_content": "unknown",
+        "streaming": "supported",
+        "tools": "supported",
+        "vision": "supported",
+        "json_mode": "supported",
+        "context_window_tokens": 200000
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "supported",
+        "id": "anthropic.messages.count_tokens",
+        "projection_version": "anthropic-messages-count-v1",
+        "accuracy": "provider_measured",
+        "quota": "independent"
+      },
+      "cache_profile": {
+        "state": "supported",
+        "id": "cave-cache-anthropic-v1",
+        "mode": "explicit",
+        "attribution": "causal",
+        "min_prefix_tokens": 1024,
+        "max_breakpoints": 4,
+        "ttl_seconds": 300,
+        "rolling": true,
+        "endpoints": [
+          "v1/messages"
+        ]
+      },
+      "content_digest": "341670b06faf671f7c9881aba4e136e91ebce0caaad33f188b3cc69b333e1a7d",
+      "sources": [
+        "https://platform.claude.com/docs/en/build-with-claude/token-counting",
+        "https://platform.claude.com/docs/en/build-with-claude/prompt-caching",
+        "https://platform.claude.com/docs/en/about-claude/pricing",
+        "https://platform.claude.com/docs/en/about-claude/models/overview",
+        "https://platform.claude.com/docs/en/build-with-claude/context-windows",
+        "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+      ],
+      "verified_at": "2026-08-13T00:00:00Z",
+      "capabilities_verified_at": "2026-08-13T00:00:00Z"
+    },
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-4-5-20250929",
+      "region": "global",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 3,
+        "output_per_million": 15,
+        "cache_read_input_per_million": 0.3,
+        "cache_write_input_per_million": 3.75,
+        "cache_write_1h_input_per_million": 6,
+        "reasoning_output_per_million": 15,
+        "batch_discount_fraction": 0.5,
+        "cache_storage_per_million_tokens_hour": null,
+        "long_context_threshold_tokens": null,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": null,
+        "long_context_output_multiplier": null,
+        "version": "2026-08-13"
+      },
+      "pricing_semantics": {},
+      "capabilities": {
+        "adaptive_thinking": "unsupported",
+        "batch": "unknown",
+        "bedrock_mantle": "unknown",
+        "chat_completions": "unknown",
+        "context_editing": "unknown",
+        "converse": "unknown",
+        "converse_stream": "unknown",
+        "count_tokens": "supported",
+        "embeddings": "unknown",
+        "explicit_cache": "unknown",
+        "flex": "unknown",
+        "generate_content": "unknown",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "unknown",
+        "invoke_model": "unknown",
+        "message_batches": "supported",
+        "messages_api": "supported",
+        "manual_thinking": "supported",
+        "prompt_cache": "supported",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "unknown",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "unknown",
+        "responses_api": "unknown",
+        "stream_generate_content": "unknown",
+        "streaming": "supported",
+        "tools": "supported",
+        "vision": "supported",
+        "json_mode": "supported",
+        "context_window_tokens": 200000
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "supported",
+        "id": "anthropic.messages.count_tokens",
+        "projection_version": "anthropic-messages-count-v1",
+        "accuracy": "provider_measured",
+        "quota": "independent"
+      },
+      "cache_profile": {
+        "state": "supported",
+        "id": "cave-cache-anthropic-v1",
+        "mode": "explicit",
+        "attribution": "causal",
+        "min_prefix_tokens": 1024,
+        "max_breakpoints": 4,
+        "ttl_seconds": 300,
+        "rolling": true,
+        "endpoints": [
+          "v1/messages"
+        ]
+      },
+      "content_digest": "13426fac91ffbd4e55c00e874af6445919eebedf1e6b2df8f44ccd0ca96b73a6",
+      "sources": [
+        "https://platform.claude.com/docs/en/build-with-claude/token-counting",
+        "https://platform.claude.com/docs/en/build-with-claude/prompt-caching",
+        "https://platform.claude.com/docs/en/about-claude/pricing",
+        "https://platform.claude.com/docs/en/about-claude/models/model-ids-and-versions",
+        "https://platform.claude.com/docs/en/about-claude/model-deprecations",
+        "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+      ],
+      "verified_at": "2026-08-13T00:00:00Z",
+      "capabilities_verified_at": "2026-08-13T00:00:00Z"
+    },
+    {
+      "provider": "anthropic",
+      "model": "claude-opus-5",
+      "region": "global",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 5,
+        "output_per_million": 25,
+        "cache_read_input_per_million": 0.5,
+        "cache_write_input_per_million": 6.25,
+        "cache_write_1h_input_per_million": 10,
+        "reasoning_output_per_million": 25,
+        "batch_discount_fraction": 0.5,
+        "cache_storage_per_million_tokens_hour": null,
+        "long_context_threshold_tokens": null,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": null,
+        "long_context_output_multiplier": null,
+        "version": "2026-08-13"
+      },
+      "pricing_semantics": {
+        "inference_geo_us_multiplier": 1.1
+      },
+      "capabilities": {
+        "adaptive_thinking": "supported",
+        "batch": "unknown",
+        "bedrock_mantle": "unknown",
+        "chat_completions": "unknown",
+        "context_editing": "unknown",
+        "converse": "unknown",
+        "converse_stream": "unknown",
+        "count_tokens": "supported",
+        "embeddings": "unknown",
+        "explicit_cache": "unknown",
+        "flex": "unknown",
+        "generate_content": "unknown",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "unknown",
+        "invoke_model": "unknown",
+        "message_batches": "supported",
+        "messages_api": "supported",
+        "manual_thinking": "unsupported",
+        "prompt_cache": "supported",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "unknown",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "unknown",
+        "responses_api": "unknown",
+        "stream_generate_content": "unknown",
+        "streaming": "supported",
+        "tools": "supported",
+        "vision": "supported",
+        "json_mode": "supported",
+        "context_window_tokens": 1000000,
+        "effort_levels": [
+          "low",
+          "medium",
+          "high",
+          "max",
+          "xhigh"
+        ]
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "supported",
+        "id": "anthropic.messages.count_tokens",
+        "projection_version": "anthropic-messages-count-v1",
+        "accuracy": "provider_measured",
+        "quota": "independent"
+      },
+      "cache_profile": {
+        "state": "supported",
+        "id": "cave-cache-anthropic-v1",
+        "mode": "explicit",
+        "attribution": "causal",
+        "min_prefix_tokens": 1024,
+        "max_breakpoints": 4,
+        "ttl_seconds": 300,
+        "rolling": true,
+        "endpoints": [
+          "v1/messages"
+        ]
+      },
+      "content_digest": "3dd8eb46c8ed95d72ea69547c5b30b71eea0ab91fbdc9a8e77f020a4c3f9ad67",
+      "sources": [
+        "https://platform.claude.com/docs/en/build-with-claude/token-counting",
+        "https://platform.claude.com/docs/en/build-with-claude/prompt-caching",
+        "https://platform.claude.com/docs/en/about-claude/pricing",
+        "https://platform.claude.com/docs/en/about-claude/models/overview",
+        "https://platform.claude.com/docs/en/build-with-claude/effort",
+        "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+      ],
+      "verified_at": "2026-08-13T00:00:00Z",
+      "capabilities_verified_at": "2026-08-13T00:00:00Z"
+    },
+    {
+      "provider": "anthropic",
+      "model": "claude-opus-4-1",
+      "region": "global",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 15,
+        "output_per_million": 75,
+        "cache_read_input_per_million": 1.5,
+        "cache_write_input_per_million": 18.75,
+        "cache_write_1h_input_per_million": 30,
+        "reasoning_output_per_million": 75,
+        "batch_discount_fraction": 0.5,
+        "cache_storage_per_million_tokens_hour": null,
+        "long_context_threshold_tokens": null,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": null,
+        "long_context_output_multiplier": null,
+        "version": "2026-08-13"
+      },
+      "pricing_semantics": {},
+      "capabilities": {
+        "adaptive_thinking": "unsupported",
+        "batch": "unknown",
+        "bedrock_mantle": "unknown",
+        "chat_completions": "unknown",
+        "context_editing": "unknown",
+        "converse": "unknown",
+        "converse_stream": "unknown",
+        "count_tokens": "unknown",
+        "embeddings": "unknown",
+        "explicit_cache": "unknown",
+        "flex": "unknown",
+        "generate_content": "unknown",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "unknown",
+        "invoke_model": "unknown",
+        "message_batches": "supported",
+        "messages_api": "supported",
+        "manual_thinking": "supported",
+        "prompt_cache": "supported",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "unknown",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "unknown",
+        "responses_api": "unknown",
+        "stream_generate_content": "unknown",
+        "streaming": "supported",
+        "tools": "supported",
+        "vision": "supported",
+        "json_mode": "supported",
+        "context_window_tokens": 200000
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "unknown"
+      },
+      "cache_profile": {
+        "state": "supported",
+        "id": "cave-cache-anthropic-v1",
+        "mode": "explicit",
+        "attribution": "causal",
+        "min_prefix_tokens": 1024,
+        "max_breakpoints": 4,
+        "ttl_seconds": 300,
+        "rolling": true,
+        "endpoints": [
+          "v1/messages"
+        ]
+      },
+      "content_digest": "082db2ed08385914016d2b13e099eb4c0f2c0d0426065f0bf29ba338bb7fca35",
+      "sources": [
+        "https://platform.claude.com/docs/en/build-with-claude/prompt-caching",
+        "https://platform.claude.com/docs/en/about-claude/pricing",
+        "https://platform.claude.com/docs/en/about-claude/models/overview",
+        "https://platform.claude.com/docs/en/build-with-claude/context-windows",
+        "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+      ],
+      "verified_at": "2026-08-13T00:00:00Z",
+      "capabilities_verified_at": "2026-08-13T00:00:00Z"
+    },
+    {
+      "provider": "anthropic",
+      "model": "claude-haiku-4-5",
+      "region": "global",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 1,
+        "output_per_million": 5,
+        "cache_read_input_per_million": 0.1,
+        "cache_write_input_per_million": 1.25,
+        "cache_write_1h_input_per_million": 2,
+        "reasoning_output_per_million": 5,
+        "batch_discount_fraction": 0.5,
+        "cache_storage_per_million_tokens_hour": null,
+        "long_context_threshold_tokens": null,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": null,
+        "long_context_output_multiplier": null,
+        "version": "2026-08-13"
+      },
+      "pricing_semantics": {},
+      "capabilities": {
+        "adaptive_thinking": "unsupported",
+        "batch": "unknown",
+        "bedrock_mantle": "unknown",
+        "chat_completions": "unknown",
+        "context_editing": "unknown",
+        "converse": "unknown",
+        "converse_stream": "unknown",
+        "count_tokens": "unknown",
+        "embeddings": "unknown",
+        "explicit_cache": "unknown",
+        "flex": "unknown",
+        "generate_content": "unknown",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "unknown",
+        "invoke_model": "unknown",
+        "message_batches": "supported",
+        "messages_api": "supported",
+        "manual_thinking": "supported",
+        "prompt_cache": "supported",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "unknown",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "unknown",
+        "responses_api": "unknown",
+        "stream_generate_content": "unknown",
+        "streaming": "supported",
+        "tools": "supported",
+        "vision": "supported",
+        "json_mode": "supported",
+        "context_window_tokens": 200000
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "unknown"
+      },
+      "cache_profile": {
+        "state": "supported",
+        "id": "cave-cache-anthropic-v1",
+        "mode": "explicit",
+        "attribution": "causal",
+        "min_prefix_tokens": 4096,
+        "max_breakpoints": 4,
+        "ttl_seconds": 300,
+        "rolling": true,
+        "endpoints": [
+          "v1/messages"
+        ]
+      },
+      "content_digest": "40ca76e29a698d50054c66945f24423bb9cac640eceff12ad1b31e7d65382302",
+      "sources": [
+        "https://platform.claude.com/docs/en/build-with-claude/prompt-caching",
+        "https://platform.claude.com/docs/en/about-claude/pricing",
+        "https://platform.claude.com/docs/en/about-claude/models/overview",
+        "https://platform.claude.com/docs/en/build-with-claude/context-windows",
+        "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+      ],
+      "verified_at": "2026-08-13T00:00:00Z",
+      "capabilities_verified_at": "2026-08-13T00:00:00Z"
+    },
+    {
+      "provider": "anthropic",
+      "model": "claude-haiku-4-5-20251001",
+      "region": "global",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 1,
+        "output_per_million": 5,
+        "cache_read_input_per_million": 0.1,
+        "cache_write_input_per_million": 1.25,
+        "cache_write_1h_input_per_million": 2,
+        "reasoning_output_per_million": 5,
+        "batch_discount_fraction": 0.5,
+        "cache_storage_per_million_tokens_hour": null,
+        "long_context_threshold_tokens": null,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": null,
+        "long_context_output_multiplier": null,
+        "version": "2026-08-13"
+      },
+      "pricing_semantics": {},
+      "capabilities": {
+        "adaptive_thinking": "unsupported",
+        "batch": "unknown",
+        "bedrock_mantle": "unknown",
+        "chat_completions": "unknown",
+        "context_editing": "unknown",
+        "converse": "unknown",
+        "converse_stream": "unknown",
+        "count_tokens": "supported",
+        "embeddings": "unknown",
+        "explicit_cache": "unknown",
+        "flex": "unknown",
+        "generate_content": "unknown",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "unknown",
+        "invoke_model": "unknown",
+        "message_batches": "supported",
+        "messages_api": "supported",
+        "manual_thinking": "supported",
+        "prompt_cache": "supported",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "unknown",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "unknown",
+        "responses_api": "unknown",
+        "stream_generate_content": "unknown",
+        "streaming": "supported",
+        "tools": "supported",
+        "vision": "supported",
+        "json_mode": "supported",
+        "context_window_tokens": 200000
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "supported",
+        "id": "anthropic.messages.count_tokens",
+        "projection_version": "anthropic-messages-count-v1",
+        "accuracy": "provider_measured",
+        "quota": "independent"
+      },
+      "cache_profile": {
+        "state": "supported",
+        "id": "cave-cache-anthropic-v1",
+        "mode": "explicit",
+        "attribution": "causal",
+        "min_prefix_tokens": 4096,
+        "max_breakpoints": 4,
+        "ttl_seconds": 300,
+        "rolling": true,
+        "endpoints": [
+          "v1/messages"
+        ]
+      },
+      "content_digest": "56360266ac3ca62b5bdd307c0396cf751ce32c5601654c03ff978a6df9d05394",
+      "sources": [
+        "https://platform.claude.com/docs/en/build-with-claude/token-counting",
+        "https://platform.claude.com/docs/en/build-with-claude/prompt-caching",
+        "https://platform.claude.com/docs/en/about-claude/pricing",
+        "https://platform.claude.com/docs/en/about-claude/models/model-ids-and-versions",
+        "https://platform.claude.com/docs/en/about-claude/model-deprecations",
+        "https://platform.claude.com/docs/en/build-with-claude/extended-thinking"
+      ],
+      "verified_at": "2026-08-13T00:00:00Z",
+      "capabilities_verified_at": "2026-08-13T00:00:00Z"
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-2.5-pro",
+      "region": "global",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 1.25,
+        "output_per_million": 10,
+        "cache_read_input_per_million": 0.125,
+        "cache_write_input_per_million": null,
+        "cache_write_1h_input_per_million": null,
+        "reasoning_output_per_million": 10,
+        "batch_discount_fraction": 0.5,
+        "cache_storage_per_million_tokens_hour": 4.5,
+        "long_context_threshold_tokens": 200000,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": 2,
+        "long_context_output_multiplier": 1.5,
+        "version": "2026-07-10"
+      },
+      "pricing_semantics": {},
+      "capabilities": {
+        "adaptive_thinking": "unknown",
+        "batch": "supported",
+        "bedrock_mantle": "unknown",
+        "chat_completions": "unknown",
+        "context_editing": "unknown",
+        "converse": "unknown",
+        "converse_stream": "unknown",
+        "count_tokens": "supported",
+        "embeddings": "unknown",
+        "explicit_cache": "supported",
+        "flex": "unknown",
+        "generate_content": "supported",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "unknown",
+        "invoke_model": "unknown",
+        "message_batches": "unknown",
+        "messages_api": "unknown",
+        "manual_thinking": "unknown",
+        "prompt_cache": "unknown",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "unknown",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "unknown",
+        "responses_api": "unknown",
+        "stream_generate_content": "supported",
+        "streaming": "supported",
+        "tools": "supported",
+        "vision": "supported",
+        "json_mode": "supported",
+        "context_window_tokens": 1048576
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "supported",
+        "id": "gemini.models.count_tokens",
+        "projection_version": "gemini-count-tokens-v1",
+        "accuracy": "provider_measured",
+        "quota": "shared"
+      },
+      "cache_profile": {
+        "state": "supported",
+        "id": "cave-cache-gemini-implicit-v1",
+        "mode": "implicit",
+        "attribution": "organic",
+        "min_prefix_tokens": 2048,
+        "max_breakpoints": 1,
+        "rolling": true,
+        "endpoints": [
+          "generateContent"
+        ]
+      },
+      "content_digest": "5d0bc461b5a0fd4a94f05a13692e72cd8bbc20894d16644749b5281652dc3b82",
+      "sources": [
+        "https://ai.google.dev/api/tokens",
+        "https://ai.google.dev/gemini-api/docs/caching",
+        "https://ai.google.dev/gemini-api/docs/pricing",
+        "https://ai.google.dev/gemini-api/docs/models/gemini-2.5-pro"
+      ],
+      "verified_at": "2026-07-10T00:00:00Z",
+      "capabilities_verified_at": "2026-08-13T00:00:00Z"
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-2.5-flash",
+      "region": "global",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 0.3,
+        "output_per_million": 2.5,
+        "cache_read_input_per_million": 0.03,
+        "cache_write_input_per_million": null,
+        "cache_write_1h_input_per_million": null,
+        "reasoning_output_per_million": 2.5,
+        "batch_discount_fraction": 0.5,
+        "cache_storage_per_million_tokens_hour": 1,
+        "long_context_threshold_tokens": null,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": null,
+        "long_context_output_multiplier": null,
+        "version": "2026-07-10"
+      },
+      "pricing_semantics": {},
+      "capabilities": {
+        "adaptive_thinking": "unknown",
+        "batch": "supported",
+        "bedrock_mantle": "unknown",
+        "chat_completions": "unknown",
+        "context_editing": "unknown",
+        "converse": "unknown",
+        "converse_stream": "unknown",
+        "count_tokens": "supported",
+        "embeddings": "unknown",
+        "explicit_cache": "supported",
+        "flex": "unknown",
+        "generate_content": "supported",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "unknown",
+        "invoke_model": "unknown",
+        "message_batches": "unknown",
+        "messages_api": "unknown",
+        "manual_thinking": "unknown",
+        "prompt_cache": "unknown",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "unknown",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "unknown",
+        "responses_api": "unknown",
+        "stream_generate_content": "supported",
+        "streaming": "supported",
+        "tools": "supported",
+        "vision": "supported",
+        "json_mode": "supported",
+        "context_window_tokens": 1048576
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "supported",
+        "id": "gemini.models.count_tokens",
+        "projection_version": "gemini-count-tokens-v1",
+        "accuracy": "provider_measured",
+        "quota": "shared"
+      },
+      "cache_profile": {
+        "state": "supported",
+        "id": "cave-cache-gemini-implicit-v1",
+        "mode": "implicit",
+        "attribution": "organic",
+        "min_prefix_tokens": 2048,
+        "max_breakpoints": 1,
+        "rolling": true,
+        "endpoints": [
+          "generateContent"
+        ]
+      },
+      "content_digest": "8620bb02c0ba237a414a62c9c4c8d80d42ff3b699edb65547935411648dea5d6",
+      "sources": [
+        "https://ai.google.dev/api/tokens",
+        "https://ai.google.dev/gemini-api/docs/caching",
+        "https://ai.google.dev/gemini-api/docs/pricing",
+        "https://ai.google.dev/gemini-api/docs/models/gemini-2.5-flash"
+      ],
+      "verified_at": "2026-07-10T00:00:00Z",
+      "capabilities_verified_at": "2026-08-13T00:00:00Z"
+    },
+    {
+      "provider": "bedrock",
+      "model": "anthropic.claude-3-5-sonnet-20241022-v2:0",
+      "region": "us-east-1",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 6,
+        "output_per_million": 30,
+        "cache_read_input_per_million": 0.6,
+        "cache_write_input_per_million": 7.5,
+        "cache_write_1h_input_per_million": null,
+        "reasoning_output_per_million": null,
+        "batch_discount_fraction": 0.5,
+        "cache_storage_per_million_tokens_hour": null,
+        "long_context_threshold_tokens": null,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": null,
+        "long_context_output_multiplier": null,
+        "version": "2026-07-10"
+      },
+      "pricing_semantics": {},
+      "capabilities": {
+        "adaptive_thinking": "unknown",
+        "batch": "unknown",
+        "bedrock_mantle": "unknown",
+        "chat_completions": "unknown",
+        "context_editing": "unknown",
+        "converse": "supported",
+        "converse_stream": "supported",
+        "count_tokens": "unknown",
+        "embeddings": "unknown",
+        "explicit_cache": "unknown",
+        "flex": "unknown",
+        "generate_content": "unknown",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "unknown",
+        "invoke_model": "supported",
+        "message_batches": "unknown",
+        "messages_api": "unknown",
+        "manual_thinking": "unknown",
+        "prompt_cache": "supported",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "unknown",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "unknown",
+        "responses_api": "unknown",
+        "stream_generate_content": "unknown",
+        "streaming": "supported",
+        "tools": "supported",
+        "vision": "supported",
+        "json_mode": "supported",
+        "context_window_tokens": 200000
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "unknown"
+      },
+      "cache_profile": {
+        "state": "supported",
+        "id": "cave-cache-bedrock-v1",
+        "mode": "explicit",
+        "attribution": "causal",
+        "min_prefix_tokens": 1024,
+        "max_breakpoints": 4,
+        "ttl_seconds": 300,
+        "rolling": true,
+        "endpoints": [
+          "converse",
+          "converse-stream",
+          "invoke",
+          "invoke-with-response-stream"
+        ]
+      },
+      "content_digest": "3019a937923d1a3852a8c89108c9b8d4391e683600c0248edaeff6000487d3c7",
+      "sources": [
+        "https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html",
+        "https://aws.amazon.com/bedrock/pricing/",
+        "https://platform.claude.com/docs/en/build-with-claude/claude-on-amazon-bedrock-legacy"
+      ],
+      "verified_at": "2026-07-10T00:00:00Z",
+      "capabilities_verified_at": "2026-08-13T00:00:00Z"
+    },
+    {
+      "provider": "bedrock",
+      "model": "anthropic.claude-3-5-haiku-20241022-v1:0",
+      "region": "us-east-1",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 0.8,
+        "output_per_million": 4,
+        "cache_read_input_per_million": 0.08,
+        "cache_write_input_per_million": 1,
+        "cache_write_1h_input_per_million": null,
+        "reasoning_output_per_million": null,
+        "batch_discount_fraction": 0.5,
+        "cache_storage_per_million_tokens_hour": null,
+        "long_context_threshold_tokens": null,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": null,
+        "long_context_output_multiplier": null,
+        "version": "2026-06-14"
+      },
+      "pricing_semantics": {},
+      "capabilities": {
+        "adaptive_thinking": "unknown",
+        "batch": "unknown",
+        "bedrock_mantle": "unknown",
+        "chat_completions": "unknown",
+        "context_editing": "unknown",
+        "converse": "supported",
+        "converse_stream": "supported",
+        "count_tokens": "unknown",
+        "embeddings": "unknown",
+        "explicit_cache": "unknown",
+        "flex": "unknown",
+        "generate_content": "unknown",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "unknown",
+        "invoke_model": "supported",
+        "message_batches": "unknown",
+        "messages_api": "unknown",
+        "manual_thinking": "unknown",
+        "prompt_cache": "supported",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "unknown",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "unknown",
+        "responses_api": "unknown",
+        "stream_generate_content": "unknown",
+        "streaming": "supported",
+        "tools": "supported",
+        "vision": "supported",
+        "json_mode": "supported",
+        "context_window_tokens": 200000
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "unknown"
+      },
+      "cache_profile": {
+        "state": "supported",
+        "id": "cave-cache-bedrock-v1",
+        "mode": "explicit",
+        "attribution": "causal",
+        "min_prefix_tokens": 2048,
+        "max_breakpoints": 4,
+        "ttl_seconds": 300,
+        "rolling": true,
+        "endpoints": [
+          "converse",
+          "converse-stream",
+          "invoke",
+          "invoke-with-response-stream"
+        ]
+      },
+      "content_digest": "c05cb6945c6949581d95aae1bab45df10f7ee9e6e22992f12d11817e5ed7c1ca",
+      "sources": [
+        "https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html",
+        "https://aws.amazon.com/bedrock/pricing/",
+        "https://platform.claude.com/docs/en/build-with-claude/claude-on-amazon-bedrock-legacy"
+      ],
+      "verified_at": "2026-06-14T00:00:00Z",
+      "capabilities_verified_at": "2026-08-13T00:00:00Z"
+    },
+    {
+      "provider": "bedrock",
+      "model": "global.anthropic.claude-opus-4-8",
+      "region": "us-east-1",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 5,
+        "output_per_million": 25,
+        "cache_read_input_per_million": 0.5,
+        "cache_write_input_per_million": 6.25,
+        "cache_write_1h_input_per_million": 10,
+        "reasoning_output_per_million": null,
+        "batch_discount_fraction": null,
+        "cache_storage_per_million_tokens_hour": null,
+        "long_context_threshold_tokens": null,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": null,
+        "long_context_output_multiplier": null,
+        "version": "2026-07-23"
+      },
+      "pricing_semantics": {},
+      "capabilities": {
+        "adaptive_thinking": "unknown",
+        "batch": "unknown",
+        "bedrock_mantle": "unknown",
+        "chat_completions": "unknown",
+        "context_editing": "unknown",
+        "converse": "supported",
+        "converse_stream": "supported",
+        "count_tokens": "unknown",
+        "embeddings": "unknown",
+        "explicit_cache": "unknown",
+        "flex": "unknown",
+        "generate_content": "unknown",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "supported",
+        "invoke_model": "supported",
+        "message_batches": "unknown",
+        "messages_api": "unknown",
+        "manual_thinking": "unknown",
+        "prompt_cache": "supported",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "unknown",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "unknown",
+        "responses_api": "unknown",
+        "stream_generate_content": "unknown",
+        "streaming": "supported",
+        "tools": "supported",
+        "vision": "supported",
+        "json_mode": "supported",
+        "context_window_tokens": 1000000
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "unknown"
+      },
+      "cache_profile": {
+        "state": "supported",
+        "id": "cave-cache-bedrock-v1",
+        "mode": "explicit",
+        "attribution": "causal",
+        "min_prefix_tokens": 1024,
+        "max_breakpoints": 4,
+        "ttl_seconds": 300,
+        "rolling": true,
+        "endpoints": [
+          "converse",
+          "converse-stream",
+          "invoke",
+          "invoke-with-response-stream"
+        ]
+      },
+      "content_digest": "7c439b00f3c6642109dd0019a00d21cd6188b924ad874ee1b208b02eb953789f",
+      "sources": [
+        "https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html",
+        "https://aws.amazon.com/bedrock/pricing/",
+        "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-4-8.html",
+        "https://platform.claude.com/docs/en/about-claude/models/overview"
+      ],
+      "verified_at": "2026-07-23T00:00:00Z",
+      "capabilities_verified_at": "2026-08-13T00:00:00Z"
+    },
+    {
+      "provider": "bedrock",
+      "model": "global.anthropic.claude-sonnet-4-6",
+      "region": "us-east-1",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 3,
+        "output_per_million": 15,
+        "cache_read_input_per_million": 0.3,
+        "cache_write_input_per_million": 3.75,
+        "cache_write_1h_input_per_million": 6,
+        "reasoning_output_per_million": null,
+        "batch_discount_fraction": null,
+        "cache_storage_per_million_tokens_hour": null,
+        "long_context_threshold_tokens": null,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": null,
+        "long_context_output_multiplier": null,
+        "version": "2026-07-23"
+      },
+      "pricing_semantics": {},
+      "capabilities": {
+        "adaptive_thinking": "unknown",
+        "batch": "unknown",
+        "bedrock_mantle": "unknown",
+        "chat_completions": "unknown",
+        "context_editing": "unknown",
+        "converse": "supported",
+        "converse_stream": "supported",
+        "count_tokens": "unknown",
+        "embeddings": "unknown",
+        "explicit_cache": "unknown",
+        "flex": "unknown",
+        "generate_content": "unknown",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "supported",
+        "invoke_model": "supported",
+        "message_batches": "unknown",
+        "messages_api": "unknown",
+        "manual_thinking": "unknown",
+        "prompt_cache": "supported",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "unknown",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "unknown",
+        "responses_api": "unknown",
+        "stream_generate_content": "unknown",
+        "streaming": "supported",
+        "tools": "supported",
+        "vision": "supported",
+        "json_mode": "supported",
+        "context_window_tokens": 1000000
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "unknown"
+      },
+      "cache_profile": {
+        "state": "supported",
+        "id": "cave-cache-bedrock-v1",
+        "mode": "explicit",
+        "attribution": "causal",
+        "min_prefix_tokens": 1024,
+        "max_breakpoints": 4,
+        "ttl_seconds": 300,
+        "rolling": true,
+        "endpoints": [
+          "converse",
+          "converse-stream",
+          "invoke",
+          "invoke-with-response-stream"
+        ]
+      },
+      "content_digest": "90ff90f751c3092fef139ef0b710f4e8785c12d8a0da2badc02a2b0773e57171",
+      "sources": [
+        "https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html",
+        "https://aws.amazon.com/bedrock/pricing/",
+        "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-sonnet-4-6.html",
+        "https://platform.claude.com/docs/en/about-claude/models/overview"
+      ],
+      "verified_at": "2026-07-23T00:00:00Z",
+      "capabilities_verified_at": "2026-08-13T00:00:00Z"
+    },
+    {
+      "provider": "bedrock",
+      "model": "global.anthropic.claude-haiku-4-5-20251001-v1:0",
+      "region": "us-east-1",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 1,
+        "output_per_million": 5,
+        "cache_read_input_per_million": 0.1,
+        "cache_write_input_per_million": 1.25,
+        "cache_write_1h_input_per_million": 2,
+        "reasoning_output_per_million": null,
+        "batch_discount_fraction": null,
+        "cache_storage_per_million_tokens_hour": null,
+        "long_context_threshold_tokens": null,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": null,
+        "long_context_output_multiplier": null,
+        "version": "2026-07-23"
+      },
+      "pricing_semantics": {},
+      "capabilities": {
+        "adaptive_thinking": "unknown",
+        "batch": "unknown",
+        "bedrock_mantle": "unknown",
+        "chat_completions": "unknown",
+        "context_editing": "unknown",
+        "converse": "supported",
+        "converse_stream": "supported",
+        "count_tokens": "unknown",
+        "embeddings": "unknown",
+        "explicit_cache": "unknown",
+        "flex": "unknown",
+        "generate_content": "unknown",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "supported",
+        "invoke_model": "supported",
+        "message_batches": "unknown",
+        "messages_api": "unknown",
+        "manual_thinking": "unknown",
+        "prompt_cache": "supported",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "unknown",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "unknown",
+        "responses_api": "unknown",
+        "stream_generate_content": "unknown",
+        "streaming": "supported",
+        "tools": "supported",
+        "vision": "supported",
+        "json_mode": "supported",
+        "context_window_tokens": 200000
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "unknown"
+      },
+      "cache_profile": {
+        "state": "supported",
+        "id": "cave-cache-bedrock-v1",
+        "mode": "explicit",
+        "attribution": "causal",
+        "min_prefix_tokens": 4096,
+        "max_breakpoints": 4,
+        "ttl_seconds": 300,
+        "rolling": true,
+        "endpoints": [
+          "converse",
+          "converse-stream",
+          "invoke",
+          "invoke-with-response-stream"
+        ]
+      },
+      "content_digest": "f194f3242c873d3176a855d5391bd98b5b936399aba386f6bb06c610b44fb165",
+      "sources": [
+        "https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html",
+        "https://aws.amazon.com/bedrock/pricing/",
+        "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-haiku-4-5.html",
+        "https://platform.claude.com/docs/en/about-claude/models/overview"
+      ],
+      "verified_at": "2026-07-23T00:00:00Z",
+      "capabilities_verified_at": "2026-08-13T00:00:00Z"
+    },
+    {
+      "provider": "bedrock",
+      "model": "global.amazon.nova-2-lite-v1:0",
+      "region": "us-east-1",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 0.3,
+        "output_per_million": 2.5,
+        "cache_read_input_per_million": 0.075,
+        "cache_write_input_per_million": 0,
+        "cache_write_1h_input_per_million": null,
+        "reasoning_output_per_million": null,
+        "batch_discount_fraction": null,
+        "cache_storage_per_million_tokens_hour": null,
+        "long_context_threshold_tokens": null,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": null,
+        "long_context_output_multiplier": null,
+        "version": "2026-07-23"
+      },
+      "pricing_semantics": {},
+      "capabilities": {
+        "adaptive_thinking": "unknown",
+        "batch": "unknown",
+        "bedrock_mantle": "unknown",
+        "chat_completions": "unknown",
+        "context_editing": "unknown",
+        "converse": "supported",
+        "converse_stream": "supported",
+        "count_tokens": "unknown",
+        "embeddings": "unknown",
+        "explicit_cache": "unknown",
+        "flex": "unknown",
+        "generate_content": "unknown",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "supported",
+        "invoke_model": "supported",
+        "message_batches": "unknown",
+        "messages_api": "unknown",
+        "manual_thinking": "unknown",
+        "prompt_cache": "supported",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "unknown",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "unknown",
+        "responses_api": "unknown",
+        "stream_generate_content": "unknown",
+        "streaming": "supported",
+        "tools": "unknown",
+        "vision": "unknown",
+        "json_mode": "unknown",
+        "context_window_tokens": 1000000
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "unknown"
+      },
+      "cache_profile": {
+        "state": "unknown"
+      },
+      "content_digest": "cbbb8ad0aee7849064d7509321aad3e3fe9735d8464ae1f3d8dc87a8bb60284f",
+      "sources": [
+        "https://aws.amazon.com/bedrock/pricing/",
+        "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-nova-2-lite.html"
+      ],
+      "verified_at": "2026-07-23T00:00:00Z",
+      "capabilities_verified_at": "2026-07-30T00:00:00Z"
+    },
+    {
+      "provider": "bedrock",
+      "model": "us.meta.llama4-maverick-17b-instruct-v1:0",
+      "region": "us-east-1",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 0.24,
+        "output_per_million": 0.97,
+        "cache_read_input_per_million": null,
+        "cache_write_input_per_million": null,
+        "cache_write_1h_input_per_million": null,
+        "reasoning_output_per_million": null,
+        "batch_discount_fraction": null,
+        "cache_storage_per_million_tokens_hour": null,
+        "long_context_threshold_tokens": null,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": null,
+        "long_context_output_multiplier": null,
+        "version": "2026-07-23"
+      },
+      "pricing_semantics": {},
+      "capabilities": {
+        "adaptive_thinking": "unknown",
+        "batch": "unknown",
+        "bedrock_mantle": "unknown",
+        "chat_completions": "unknown",
+        "context_editing": "unknown",
+        "converse": "supported",
+        "converse_stream": "supported",
+        "count_tokens": "unknown",
+        "embeddings": "unknown",
+        "explicit_cache": "unknown",
+        "flex": "unknown",
+        "generate_content": "unknown",
+        "geo_inference_profile": "supported",
+        "global_inference_profile": "unknown",
+        "invoke_model": "supported",
+        "message_batches": "unknown",
+        "messages_api": "unknown",
+        "manual_thinking": "unknown",
+        "prompt_cache": "unknown",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "unknown",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "unknown",
+        "responses_api": "unknown",
+        "stream_generate_content": "unknown",
+        "streaming": "supported",
+        "tools": "unknown",
+        "vision": "unknown",
+        "json_mode": "unknown",
+        "context_window_tokens": 1000000
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "unknown"
+      },
+      "cache_profile": {
+        "state": "unknown"
+      },
+      "content_digest": "c7f45c83ec0624b0a395f3240f5c5cba7e7f9abb0704032a0fbaacaf1210415e",
+      "sources": [
+        "https://aws.amazon.com/bedrock/pricing/",
+        "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-meta-llama-4-maverick-17b-instruct.html"
+      ],
+      "verified_at": "2026-07-23T00:00:00Z",
+      "capabilities_verified_at": "2026-07-30T00:00:00Z"
+    },
+    {
+      "provider": "bedrock",
+      "model": "us.meta.llama4-scout-17b-instruct-v1:0",
+      "region": "us-east-1",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 0.17,
+        "output_per_million": 0.66,
+        "cache_read_input_per_million": null,
+        "cache_write_input_per_million": null,
+        "cache_write_1h_input_per_million": null,
+        "reasoning_output_per_million": null,
+        "batch_discount_fraction": null,
+        "cache_storage_per_million_tokens_hour": null,
+        "long_context_threshold_tokens": null,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": null,
+        "long_context_output_multiplier": null,
+        "version": "2026-07-23"
+      },
+      "pricing_semantics": {},
+      "capabilities": {
+        "adaptive_thinking": "unknown",
+        "batch": "unknown",
+        "bedrock_mantle": "unknown",
+        "chat_completions": "unknown",
+        "context_editing": "unknown",
+        "converse": "supported",
+        "converse_stream": "supported",
+        "count_tokens": "unknown",
+        "embeddings": "unknown",
+        "explicit_cache": "unknown",
+        "flex": "unknown",
+        "generate_content": "unknown",
+        "geo_inference_profile": "supported",
+        "global_inference_profile": "unknown",
+        "invoke_model": "supported",
+        "message_batches": "unknown",
+        "messages_api": "unknown",
+        "manual_thinking": "unknown",
+        "prompt_cache": "unknown",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "unknown",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "unknown",
+        "responses_api": "unknown",
+        "stream_generate_content": "unknown",
+        "streaming": "supported",
+        "tools": "unknown",
+        "vision": "unknown",
+        "json_mode": "unknown",
+        "context_window_tokens": 10000000
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "unknown"
+      },
+      "cache_profile": {
+        "state": "unknown"
+      },
+      "content_digest": "0ae86f5bf0f143b4bfd4af4e801bf070302562b65f2775e66295618ce5f5d295",
+      "sources": [
+        "https://aws.amazon.com/bedrock/pricing/",
+        "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-meta-llama-4-scout-17b-instruct.html"
+      ],
+      "verified_at": "2026-07-23T00:00:00Z",
+      "capabilities_verified_at": "2026-07-30T00:00:00Z"
+    },
+    {
+      "provider": "bedrock",
+      "model": "mistral.mistral-large-3-675b-instruct",
+      "region": "us-east-1",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 0.5,
+        "output_per_million": 1.5,
+        "cache_read_input_per_million": null,
+        "cache_write_input_per_million": null,
+        "cache_write_1h_input_per_million": null,
+        "reasoning_output_per_million": null,
+        "batch_discount_fraction": null,
+        "cache_storage_per_million_tokens_hour": null,
+        "long_context_threshold_tokens": null,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": null,
+        "long_context_output_multiplier": null,
+        "version": "2026-07-23"
+      },
+      "pricing_semantics": {},
+      "capabilities": {
+        "adaptive_thinking": "unknown",
+        "batch": "unknown",
+        "bedrock_mantle": "supported",
+        "chat_completions": "supported",
+        "context_editing": "unknown",
+        "converse": "supported",
+        "converse_stream": "supported",
+        "count_tokens": "unknown",
+        "embeddings": "unknown",
+        "explicit_cache": "unknown",
+        "flex": "unknown",
+        "generate_content": "unknown",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "unknown",
+        "invoke_model": "supported",
+        "message_batches": "unknown",
+        "messages_api": "unknown",
+        "manual_thinking": "unknown",
+        "prompt_cache": "unknown",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "unknown",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "unknown",
+        "responses_api": "unknown",
+        "stream_generate_content": "unknown",
+        "streaming": "supported",
+        "tools": "unknown",
+        "vision": "unknown",
+        "json_mode": "unknown",
+        "context_window_tokens": 256000
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "unknown"
+      },
+      "cache_profile": {
+        "state": "unknown"
+      },
+      "content_digest": "5bc42fd2a698c8a84a5bb0c9f27228c1d5fcd7a1870b7f95601a6db8a1caf8cc",
+      "sources": [
+        "https://aws.amazon.com/bedrock/pricing/",
+        "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-mistral-ai-mistral-large-3.html"
+      ],
+      "verified_at": "2026-07-23T00:00:00Z",
+      "capabilities_verified_at": "2026-07-30T00:00:00Z"
+    },
+    {
+      "provider": "bedrock",
+      "model": "mistral.mistral-large-3-675b-instruct",
+      "region": "us-east-2",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 0.5,
+        "output_per_million": 1.5,
+        "cache_read_input_per_million": null,
+        "cache_write_input_per_million": null,
+        "cache_write_1h_input_per_million": null,
+        "reasoning_output_per_million": null,
+        "batch_discount_fraction": null,
+        "cache_storage_per_million_tokens_hour": null,
+        "long_context_threshold_tokens": null,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": null,
+        "long_context_output_multiplier": null,
+        "version": "2026-07-23"
+      },
+      "pricing_semantics": {},
+      "capabilities": {
+        "adaptive_thinking": "unknown",
+        "batch": "unknown",
+        "bedrock_mantle": "supported",
+        "chat_completions": "supported",
+        "context_editing": "unknown",
+        "converse": "supported",
+        "converse_stream": "supported",
+        "count_tokens": "unknown",
+        "embeddings": "unknown",
+        "explicit_cache": "unknown",
+        "flex": "unknown",
+        "generate_content": "unknown",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "unknown",
+        "invoke_model": "supported",
+        "message_batches": "unknown",
+        "messages_api": "unknown",
+        "manual_thinking": "unknown",
+        "prompt_cache": "unknown",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "unknown",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "unknown",
+        "responses_api": "unknown",
+        "stream_generate_content": "unknown",
+        "streaming": "supported",
+        "tools": "unknown",
+        "vision": "unknown",
+        "json_mode": "unknown",
+        "context_window_tokens": 256000
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "unknown"
+      },
+      "cache_profile": {
+        "state": "unknown"
+      },
+      "content_digest": "ab14c09e7bd7ac49773ad25a96f36edbba8aa3d2ecee6e5eb1c0c580ba35a87b",
+      "sources": [
+        "https://aws.amazon.com/bedrock/pricing/",
+        "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-mistral-ai-mistral-large-3.html"
+      ],
+      "verified_at": "2026-07-23T00:00:00Z",
+      "capabilities_verified_at": "2026-07-30T00:00:00Z"
+    },
+    {
+      "provider": "bedrock",
+      "model": "mistral.mistral-large-3-675b-instruct",
+      "region": "us-west-2",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 0.5,
+        "output_per_million": 1.5,
+        "cache_read_input_per_million": null,
+        "cache_write_input_per_million": null,
+        "cache_write_1h_input_per_million": null,
+        "reasoning_output_per_million": null,
+        "batch_discount_fraction": null,
+        "cache_storage_per_million_tokens_hour": null,
+        "long_context_threshold_tokens": null,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": null,
+        "long_context_output_multiplier": null,
+        "version": "2026-07-23"
+      },
+      "pricing_semantics": {},
+      "capabilities": {
+        "adaptive_thinking": "unknown",
+        "batch": "unknown",
+        "bedrock_mantle": "supported",
+        "chat_completions": "supported",
+        "context_editing": "unknown",
+        "converse": "supported",
+        "converse_stream": "supported",
+        "count_tokens": "unknown",
+        "embeddings": "unknown",
+        "explicit_cache": "unknown",
+        "flex": "unknown",
+        "generate_content": "unknown",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "unknown",
+        "invoke_model": "supported",
+        "message_batches": "unknown",
+        "messages_api": "unknown",
+        "manual_thinking": "unknown",
+        "prompt_cache": "unknown",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "unknown",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "unknown",
+        "responses_api": "unknown",
+        "stream_generate_content": "unknown",
+        "streaming": "supported",
+        "tools": "unknown",
+        "vision": "unknown",
+        "json_mode": "unknown",
+        "context_window_tokens": 256000
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "unknown"
+      },
+      "cache_profile": {
+        "state": "unknown"
+      },
+      "content_digest": "4cc61838920fa7d8ce555d1a4fa02ab654767ee37062b8b24828fbe7f0df332c",
+      "sources": [
+        "https://aws.amazon.com/bedrock/pricing/",
+        "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-mistral-ai-mistral-large-3.html"
+      ],
+      "verified_at": "2026-07-23T00:00:00Z",
+      "capabilities_verified_at": "2026-07-30T00:00:00Z"
+    },
+    {
+      "provider": "bedrock",
+      "model": "mistral.mistral-large-3-675b-instruct",
+      "region": "ap-south-1",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 0.59,
+        "output_per_million": 1.76,
+        "cache_read_input_per_million": null,
+        "cache_write_input_per_million": null,
+        "cache_write_1h_input_per_million": null,
+        "reasoning_output_per_million": null,
+        "batch_discount_fraction": null,
+        "cache_storage_per_million_tokens_hour": null,
+        "long_context_threshold_tokens": null,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": null,
+        "long_context_output_multiplier": null,
+        "version": "2026-07-23"
+      },
+      "pricing_semantics": {},
+      "capabilities": {
+        "adaptive_thinking": "unknown",
+        "batch": "unknown",
+        "bedrock_mantle": "supported",
+        "chat_completions": "supported",
+        "context_editing": "unknown",
+        "converse": "supported",
+        "converse_stream": "supported",
+        "count_tokens": "unknown",
+        "embeddings": "unknown",
+        "explicit_cache": "unknown",
+        "flex": "unknown",
+        "generate_content": "unknown",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "unknown",
+        "invoke_model": "supported",
+        "message_batches": "unknown",
+        "messages_api": "unknown",
+        "manual_thinking": "unknown",
+        "prompt_cache": "unknown",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "unknown",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "unknown",
+        "responses_api": "unknown",
+        "stream_generate_content": "unknown",
+        "streaming": "supported",
+        "tools": "unknown",
+        "vision": "unknown",
+        "json_mode": "unknown",
+        "context_window_tokens": 256000
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "unknown"
+      },
+      "cache_profile": {
+        "state": "unknown"
+      },
+      "content_digest": "cb53219321072ec26c51d04fa75a526f2a7fa9db4a8e84459d2df2ae7a28182d",
+      "sources": [
+        "https://aws.amazon.com/bedrock/pricing/",
+        "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-mistral-ai-mistral-large-3.html"
+      ],
+      "verified_at": "2026-07-23T00:00:00Z",
+      "capabilities_verified_at": "2026-07-30T00:00:00Z"
+    },
+    {
+      "provider": "bedrock",
+      "model": "mistral.mistral-large-3-675b-instruct",
+      "region": "ap-northeast-1",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 0.61,
+        "output_per_million": 1.82,
+        "cache_read_input_per_million": null,
+        "cache_write_input_per_million": null,
+        "cache_write_1h_input_per_million": null,
+        "reasoning_output_per_million": null,
+        "batch_discount_fraction": null,
+        "cache_storage_per_million_tokens_hour": null,
+        "long_context_threshold_tokens": null,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": null,
+        "long_context_output_multiplier": null,
+        "version": "2026-07-23"
+      },
+      "pricing_semantics": {},
+      "capabilities": {
+        "adaptive_thinking": "unknown",
+        "batch": "unknown",
+        "bedrock_mantle": "supported",
+        "chat_completions": "supported",
+        "context_editing": "unknown",
+        "converse": "supported",
+        "converse_stream": "supported",
+        "count_tokens": "unknown",
+        "embeddings": "unknown",
+        "explicit_cache": "unknown",
+        "flex": "unknown",
+        "generate_content": "unknown",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "unknown",
+        "invoke_model": "supported",
+        "message_batches": "unknown",
+        "messages_api": "unknown",
+        "manual_thinking": "unknown",
+        "prompt_cache": "unknown",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "unknown",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "unknown",
+        "responses_api": "unknown",
+        "stream_generate_content": "unknown",
+        "streaming": "supported",
+        "tools": "unknown",
+        "vision": "unknown",
+        "json_mode": "unknown",
+        "context_window_tokens": 256000
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "unknown"
+      },
+      "cache_profile": {
+        "state": "unknown"
+      },
+      "content_digest": "8e02903751d4ea7987943be01481de00993d99850f0b06aa2ee0e0985d66822b",
+      "sources": [
+        "https://aws.amazon.com/bedrock/pricing/",
+        "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-mistral-ai-mistral-large-3.html"
+      ],
+      "verified_at": "2026-07-23T00:00:00Z",
+      "capabilities_verified_at": "2026-07-30T00:00:00Z"
+    },
+    {
+      "provider": "bedrock",
+      "model": "mistral.mistral-large-3-675b-instruct",
+      "region": "sa-east-1",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 0.61,
+        "output_per_million": 1.82,
+        "cache_read_input_per_million": null,
+        "cache_write_input_per_million": null,
+        "cache_write_1h_input_per_million": null,
+        "reasoning_output_per_million": null,
+        "batch_discount_fraction": null,
+        "cache_storage_per_million_tokens_hour": null,
+        "long_context_threshold_tokens": null,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": null,
+        "long_context_output_multiplier": null,
+        "version": "2026-07-23"
+      },
+      "pricing_semantics": {},
+      "capabilities": {
+        "adaptive_thinking": "unknown",
+        "batch": "unknown",
+        "bedrock_mantle": "supported",
+        "chat_completions": "supported",
+        "context_editing": "unknown",
+        "converse": "supported",
+        "converse_stream": "supported",
+        "count_tokens": "unknown",
+        "embeddings": "unknown",
+        "explicit_cache": "unknown",
+        "flex": "unknown",
+        "generate_content": "unknown",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "unknown",
+        "invoke_model": "supported",
+        "message_batches": "unknown",
+        "messages_api": "unknown",
+        "manual_thinking": "unknown",
+        "prompt_cache": "unknown",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "unknown",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "unknown",
+        "responses_api": "unknown",
+        "stream_generate_content": "unknown",
+        "streaming": "supported",
+        "tools": "unknown",
+        "vision": "unknown",
+        "json_mode": "unknown",
+        "context_window_tokens": 256000
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "unknown"
+      },
+      "cache_profile": {
+        "state": "unknown"
+      },
+      "content_digest": "fb155439bb776950a4150e8cdaef74cb4a904ea4e9005e7af58aa0d6f35add4c",
+      "sources": [
+        "https://aws.amazon.com/bedrock/pricing/",
+        "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-mistral-ai-mistral-large-3.html"
+      ],
+      "verified_at": "2026-07-23T00:00:00Z",
+      "capabilities_verified_at": "2026-07-30T00:00:00Z"
+    },
+    {
+      "provider": "bedrock",
+      "model": "mistral.mistral-large-3-675b-instruct",
+      "region": "ap-southeast-2",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 0.515,
+        "output_per_million": 1.545,
+        "cache_read_input_per_million": null,
+        "cache_write_input_per_million": null,
+        "cache_write_1h_input_per_million": null,
+        "reasoning_output_per_million": null,
+        "batch_discount_fraction": null,
+        "cache_storage_per_million_tokens_hour": null,
+        "long_context_threshold_tokens": null,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": null,
+        "long_context_output_multiplier": null,
+        "version": "2026-07-23"
+      },
+      "pricing_semantics": {},
+      "capabilities": {
+        "adaptive_thinking": "unknown",
+        "batch": "unknown",
+        "bedrock_mantle": "supported",
+        "chat_completions": "supported",
+        "context_editing": "unknown",
+        "converse": "supported",
+        "converse_stream": "supported",
+        "count_tokens": "unknown",
+        "embeddings": "unknown",
+        "explicit_cache": "unknown",
+        "flex": "unknown",
+        "generate_content": "unknown",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "unknown",
+        "invoke_model": "supported",
+        "message_batches": "unknown",
+        "messages_api": "unknown",
+        "manual_thinking": "unknown",
+        "prompt_cache": "unknown",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "unknown",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "unknown",
+        "responses_api": "unknown",
+        "stream_generate_content": "unknown",
+        "streaming": "supported",
+        "tools": "unknown",
+        "vision": "unknown",
+        "json_mode": "unknown",
+        "context_window_tokens": 256000
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "unknown"
+      },
+      "cache_profile": {
+        "state": "unknown"
+      },
+      "content_digest": "b40c83a937f0d040f4aafd7df9cd8d5394019dbf5367c23a3e9c10088766079b",
+      "sources": [
+        "https://aws.amazon.com/bedrock/pricing/",
+        "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-mistral-ai-mistral-large-3.html"
+      ],
+      "verified_at": "2026-07-23T00:00:00Z",
+      "capabilities_verified_at": "2026-07-30T00:00:00Z"
+    },
+    {
+      "provider": "bedrock",
+      "model": "mistral.ministral-3-8b-instruct",
+      "region": "us-east-1",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 0.15,
+        "output_per_million": 0.15,
+        "cache_read_input_per_million": null,
+        "cache_write_input_per_million": null,
+        "cache_write_1h_input_per_million": null,
+        "reasoning_output_per_million": null,
+        "batch_discount_fraction": null,
+        "cache_storage_per_million_tokens_hour": null,
+        "long_context_threshold_tokens": null,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": null,
+        "long_context_output_multiplier": null,
+        "version": "2026-07-23"
+      },
+      "pricing_semantics": {},
+      "capabilities": {
+        "adaptive_thinking": "unknown",
+        "batch": "unknown",
+        "bedrock_mantle": "supported",
+        "chat_completions": "supported",
+        "context_editing": "unknown",
+        "converse": "supported",
+        "converse_stream": "supported",
+        "count_tokens": "unknown",
+        "embeddings": "unknown",
+        "explicit_cache": "unknown",
+        "flex": "unknown",
+        "generate_content": "unknown",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "unknown",
+        "invoke_model": "supported",
+        "message_batches": "unknown",
+        "messages_api": "unknown",
+        "manual_thinking": "unknown",
+        "prompt_cache": "unknown",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "unknown",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "unknown",
+        "responses_api": "unsupported",
+        "stream_generate_content": "unknown",
+        "streaming": "supported",
+        "tools": "unknown",
+        "vision": "unknown",
+        "json_mode": "unknown",
+        "context_window_tokens": 128000
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "unknown"
+      },
+      "cache_profile": {
+        "state": "unknown"
+      },
+      "content_digest": "f191b3b726717d33e129cddf9c208161998ba4196cf12896f945dc40c157a336",
+      "sources": [
+        "https://aws.amazon.com/bedrock/pricing/",
+        "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-mistral-ai-ministral-3-8b.html"
+      ],
+      "verified_at": "2026-07-23T00:00:00Z",
+      "capabilities_verified_at": "2026-07-30T00:00:00Z"
+    },
+    {
+      "provider": "bedrock",
+      "model": "mistral.ministral-3-8b-instruct",
+      "region": "us-east-2",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 0.15,
+        "output_per_million": 0.15,
+        "cache_read_input_per_million": null,
+        "cache_write_input_per_million": null,
+        "cache_write_1h_input_per_million": null,
+        "reasoning_output_per_million": null,
+        "batch_discount_fraction": null,
+        "cache_storage_per_million_tokens_hour": null,
+        "long_context_threshold_tokens": null,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": null,
+        "long_context_output_multiplier": null,
+        "version": "2026-07-23"
+      },
+      "pricing_semantics": {},
+      "capabilities": {
+        "adaptive_thinking": "unknown",
+        "batch": "unknown",
+        "bedrock_mantle": "supported",
+        "chat_completions": "supported",
+        "context_editing": "unknown",
+        "converse": "supported",
+        "converse_stream": "supported",
+        "count_tokens": "unknown",
+        "embeddings": "unknown",
+        "explicit_cache": "unknown",
+        "flex": "unknown",
+        "generate_content": "unknown",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "unknown",
+        "invoke_model": "supported",
+        "message_batches": "unknown",
+        "messages_api": "unknown",
+        "manual_thinking": "unknown",
+        "prompt_cache": "unknown",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "unknown",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "unknown",
+        "responses_api": "unsupported",
+        "stream_generate_content": "unknown",
+        "streaming": "supported",
+        "tools": "unknown",
+        "vision": "unknown",
+        "json_mode": "unknown",
+        "context_window_tokens": 128000
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "unknown"
+      },
+      "cache_profile": {
+        "state": "unknown"
+      },
+      "content_digest": "3474a0505770e4c12b80b1518a9ef02448ac3b641711ffafd33d51e373a279cf",
+      "sources": [
+        "https://aws.amazon.com/bedrock/pricing/",
+        "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-mistral-ai-ministral-3-8b.html"
+      ],
+      "verified_at": "2026-07-23T00:00:00Z",
+      "capabilities_verified_at": "2026-07-30T00:00:00Z"
+    },
+    {
+      "provider": "bedrock",
+      "model": "mistral.ministral-3-8b-instruct",
+      "region": "us-west-2",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 0.15,
+        "output_per_million": 0.15,
+        "cache_read_input_per_million": null,
+        "cache_write_input_per_million": null,
+        "cache_write_1h_input_per_million": null,
+        "reasoning_output_per_million": null,
+        "batch_discount_fraction": null,
+        "cache_storage_per_million_tokens_hour": null,
+        "long_context_threshold_tokens": null,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": null,
+        "long_context_output_multiplier": null,
+        "version": "2026-07-23"
+      },
+      "pricing_semantics": {},
+      "capabilities": {
+        "adaptive_thinking": "unknown",
+        "batch": "unknown",
+        "bedrock_mantle": "supported",
+        "chat_completions": "supported",
+        "context_editing": "unknown",
+        "converse": "supported",
+        "converse_stream": "supported",
+        "count_tokens": "unknown",
+        "embeddings": "unknown",
+        "explicit_cache": "unknown",
+        "flex": "unknown",
+        "generate_content": "unknown",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "unknown",
+        "invoke_model": "supported",
+        "message_batches": "unknown",
+        "messages_api": "unknown",
+        "manual_thinking": "unknown",
+        "prompt_cache": "unknown",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "unknown",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "unknown",
+        "responses_api": "unsupported",
+        "stream_generate_content": "unknown",
+        "streaming": "supported",
+        "tools": "unknown",
+        "vision": "unknown",
+        "json_mode": "unknown",
+        "context_window_tokens": 128000
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "unknown"
+      },
+      "cache_profile": {
+        "state": "unknown"
+      },
+      "content_digest": "32b848be7c4a6c3446e1a97f07c04c3ba3da5cf0ce259a094e751fc37d5a14e9",
+      "sources": [
+        "https://aws.amazon.com/bedrock/pricing/",
+        "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-mistral-ai-ministral-3-8b.html"
+      ],
+      "verified_at": "2026-07-23T00:00:00Z",
+      "capabilities_verified_at": "2026-07-30T00:00:00Z"
+    },
+    {
+      "provider": "bedrock",
+      "model": "mistral.ministral-3-8b-instruct",
+      "region": "ap-south-1",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 0.18,
+        "output_per_million": 0.18,
+        "cache_read_input_per_million": null,
+        "cache_write_input_per_million": null,
+        "cache_write_1h_input_per_million": null,
+        "reasoning_output_per_million": null,
+        "batch_discount_fraction": null,
+        "cache_storage_per_million_tokens_hour": null,
+        "long_context_threshold_tokens": null,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": null,
+        "long_context_output_multiplier": null,
+        "version": "2026-07-23"
+      },
+      "pricing_semantics": {},
+      "capabilities": {
+        "adaptive_thinking": "unknown",
+        "batch": "unknown",
+        "bedrock_mantle": "supported",
+        "chat_completions": "supported",
+        "context_editing": "unknown",
+        "converse": "supported",
+        "converse_stream": "supported",
+        "count_tokens": "unknown",
+        "embeddings": "unknown",
+        "explicit_cache": "unknown",
+        "flex": "unknown",
+        "generate_content": "unknown",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "unknown",
+        "invoke_model": "supported",
+        "message_batches": "unknown",
+        "messages_api": "unknown",
+        "manual_thinking": "unknown",
+        "prompt_cache": "unknown",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "unknown",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "unknown",
+        "responses_api": "unsupported",
+        "stream_generate_content": "unknown",
+        "streaming": "supported",
+        "tools": "unknown",
+        "vision": "unknown",
+        "json_mode": "unknown",
+        "context_window_tokens": 128000
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "unknown"
+      },
+      "cache_profile": {
+        "state": "unknown"
+      },
+      "content_digest": "923c1ea619d76fb63556c4fb8497b6cec1283157bc2dab638302d45524bf3ef8",
+      "sources": [
+        "https://aws.amazon.com/bedrock/pricing/",
+        "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-mistral-ai-ministral-3-8b.html"
+      ],
+      "verified_at": "2026-07-23T00:00:00Z",
+      "capabilities_verified_at": "2026-07-30T00:00:00Z"
+    },
+    {
+      "provider": "bedrock",
+      "model": "mistral.ministral-3-8b-instruct",
+      "region": "ap-northeast-1",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 0.18,
+        "output_per_million": 0.18,
+        "cache_read_input_per_million": null,
+        "cache_write_input_per_million": null,
+        "cache_write_1h_input_per_million": null,
+        "reasoning_output_per_million": null,
+        "batch_discount_fraction": null,
+        "cache_storage_per_million_tokens_hour": null,
+        "long_context_threshold_tokens": null,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": null,
+        "long_context_output_multiplier": null,
+        "version": "2026-07-23"
+      },
+      "pricing_semantics": {},
+      "capabilities": {
+        "adaptive_thinking": "unknown",
+        "batch": "unknown",
+        "bedrock_mantle": "supported",
+        "chat_completions": "supported",
+        "context_editing": "unknown",
+        "converse": "supported",
+        "converse_stream": "supported",
+        "count_tokens": "unknown",
+        "embeddings": "unknown",
+        "explicit_cache": "unknown",
+        "flex": "unknown",
+        "generate_content": "unknown",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "unknown",
+        "invoke_model": "supported",
+        "message_batches": "unknown",
+        "messages_api": "unknown",
+        "manual_thinking": "unknown",
+        "prompt_cache": "unknown",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "unknown",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "unknown",
+        "responses_api": "unsupported",
+        "stream_generate_content": "unknown",
+        "streaming": "supported",
+        "tools": "unknown",
+        "vision": "unknown",
+        "json_mode": "unknown",
+        "context_window_tokens": 128000
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "unknown"
+      },
+      "cache_profile": {
+        "state": "unknown"
+      },
+      "content_digest": "7122aba9be9c31e5e08c771647a9768ace8b95c719f3409d6b4f7d0a1e3e87d9",
+      "sources": [
+        "https://aws.amazon.com/bedrock/pricing/",
+        "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-mistral-ai-ministral-3-8b.html"
+      ],
+      "verified_at": "2026-07-23T00:00:00Z",
+      "capabilities_verified_at": "2026-07-30T00:00:00Z"
+    },
+    {
+      "provider": "bedrock",
+      "model": "mistral.ministral-3-8b-instruct",
+      "region": "sa-east-1",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 0.18,
+        "output_per_million": 0.18,
+        "cache_read_input_per_million": null,
+        "cache_write_input_per_million": null,
+        "cache_write_1h_input_per_million": null,
+        "reasoning_output_per_million": null,
+        "batch_discount_fraction": null,
+        "cache_storage_per_million_tokens_hour": null,
+        "long_context_threshold_tokens": null,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": null,
+        "long_context_output_multiplier": null,
+        "version": "2026-07-23"
+      },
+      "pricing_semantics": {},
+      "capabilities": {
+        "adaptive_thinking": "unknown",
+        "batch": "unknown",
+        "bedrock_mantle": "supported",
+        "chat_completions": "supported",
+        "context_editing": "unknown",
+        "converse": "supported",
+        "converse_stream": "supported",
+        "count_tokens": "unknown",
+        "embeddings": "unknown",
+        "explicit_cache": "unknown",
+        "flex": "unknown",
+        "generate_content": "unknown",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "unknown",
+        "invoke_model": "supported",
+        "message_batches": "unknown",
+        "messages_api": "unknown",
+        "manual_thinking": "unknown",
+        "prompt_cache": "unknown",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "unknown",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "unknown",
+        "responses_api": "unsupported",
+        "stream_generate_content": "unknown",
+        "streaming": "supported",
+        "tools": "unknown",
+        "vision": "unknown",
+        "json_mode": "unknown",
+        "context_window_tokens": 128000
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "unknown"
+      },
+      "cache_profile": {
+        "state": "unknown"
+      },
+      "content_digest": "368bece4a1dc33cd09c6fe2eb49c92cf6e9e21b5b620587747611a8a65544ac6",
+      "sources": [
+        "https://aws.amazon.com/bedrock/pricing/",
+        "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-mistral-ai-ministral-3-8b.html"
+      ],
+      "verified_at": "2026-07-23T00:00:00Z",
+      "capabilities_verified_at": "2026-07-30T00:00:00Z"
+    },
+    {
+      "provider": "bedrock",
+      "model": "mistral.ministral-3-8b-instruct",
+      "region": "eu-west-1",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 0.18,
+        "output_per_million": 0.18,
+        "cache_read_input_per_million": null,
+        "cache_write_input_per_million": null,
+        "cache_write_1h_input_per_million": null,
+        "reasoning_output_per_million": null,
+        "batch_discount_fraction": null,
+        "cache_storage_per_million_tokens_hour": null,
+        "long_context_threshold_tokens": null,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": null,
+        "long_context_output_multiplier": null,
+        "version": "2026-07-23"
+      },
+      "pricing_semantics": {},
+      "capabilities": {
+        "adaptive_thinking": "unknown",
+        "batch": "unknown",
+        "bedrock_mantle": "supported",
+        "chat_completions": "supported",
+        "context_editing": "unknown",
+        "converse": "supported",
+        "converse_stream": "supported",
+        "count_tokens": "unknown",
+        "embeddings": "unknown",
+        "explicit_cache": "unknown",
+        "flex": "unknown",
+        "generate_content": "unknown",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "unknown",
+        "invoke_model": "supported",
+        "message_batches": "unknown",
+        "messages_api": "unknown",
+        "manual_thinking": "unknown",
+        "prompt_cache": "unknown",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "unknown",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "unknown",
+        "responses_api": "unsupported",
+        "stream_generate_content": "unknown",
+        "streaming": "supported",
+        "tools": "unknown",
+        "vision": "unknown",
+        "json_mode": "unknown",
+        "context_window_tokens": 128000
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "unknown"
+      },
+      "cache_profile": {
+        "state": "unknown"
+      },
+      "content_digest": "98fb2f139bee53a401df3f4f2fec68cea99e9998a1b98cd2ea2ed3cc86164ce6",
+      "sources": [
+        "https://aws.amazon.com/bedrock/pricing/",
+        "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-mistral-ai-ministral-3-8b.html"
+      ],
+      "verified_at": "2026-07-23T00:00:00Z",
+      "capabilities_verified_at": "2026-07-30T00:00:00Z"
+    },
+    {
+      "provider": "bedrock",
+      "model": "mistral.ministral-3-8b-instruct",
+      "region": "eu-south-1",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 0.18,
+        "output_per_million": 0.18,
+        "cache_read_input_per_million": null,
+        "cache_write_input_per_million": null,
+        "cache_write_1h_input_per_million": null,
+        "reasoning_output_per_million": null,
+        "batch_discount_fraction": null,
+        "cache_storage_per_million_tokens_hour": null,
+        "long_context_threshold_tokens": null,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": null,
+        "long_context_output_multiplier": null,
+        "version": "2026-07-23"
+      },
+      "pricing_semantics": {},
+      "capabilities": {
+        "adaptive_thinking": "unknown",
+        "batch": "unknown",
+        "bedrock_mantle": "supported",
+        "chat_completions": "supported",
+        "context_editing": "unknown",
+        "converse": "supported",
+        "converse_stream": "supported",
+        "count_tokens": "unknown",
+        "embeddings": "unknown",
+        "explicit_cache": "unknown",
+        "flex": "unknown",
+        "generate_content": "unknown",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "unknown",
+        "invoke_model": "supported",
+        "message_batches": "unknown",
+        "messages_api": "unknown",
+        "manual_thinking": "unknown",
+        "prompt_cache": "unknown",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "unknown",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "unknown",
+        "responses_api": "unsupported",
+        "stream_generate_content": "unknown",
+        "streaming": "supported",
+        "tools": "unknown",
+        "vision": "unknown",
+        "json_mode": "unknown",
+        "context_window_tokens": 128000
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "unknown"
+      },
+      "cache_profile": {
+        "state": "unknown"
+      },
+      "content_digest": "d648ca5ce241bb52a6a4bf877c94ee54d9b6c26bb4fc3a9e8746b0e9a55c91cb",
+      "sources": [
+        "https://aws.amazon.com/bedrock/pricing/",
+        "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-mistral-ai-ministral-3-8b.html"
+      ],
+      "verified_at": "2026-07-23T00:00:00Z",
+      "capabilities_verified_at": "2026-07-30T00:00:00Z"
+    },
+    {
+      "provider": "bedrock",
+      "model": "mistral.ministral-3-8b-instruct",
+      "region": "eu-west-2",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 0.23,
+        "output_per_million": 0.23,
+        "cache_read_input_per_million": null,
+        "cache_write_input_per_million": null,
+        "cache_write_1h_input_per_million": null,
+        "reasoning_output_per_million": null,
+        "batch_discount_fraction": null,
+        "cache_storage_per_million_tokens_hour": null,
+        "long_context_threshold_tokens": null,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": null,
+        "long_context_output_multiplier": null,
+        "version": "2026-07-23"
+      },
+      "pricing_semantics": {},
+      "capabilities": {
+        "adaptive_thinking": "unknown",
+        "batch": "unknown",
+        "bedrock_mantle": "supported",
+        "chat_completions": "supported",
+        "context_editing": "unknown",
+        "converse": "supported",
+        "converse_stream": "supported",
+        "count_tokens": "unknown",
+        "embeddings": "unknown",
+        "explicit_cache": "unknown",
+        "flex": "unknown",
+        "generate_content": "unknown",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "unknown",
+        "invoke_model": "supported",
+        "message_batches": "unknown",
+        "messages_api": "unknown",
+        "manual_thinking": "unknown",
+        "prompt_cache": "unknown",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "unknown",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "unknown",
+        "responses_api": "unsupported",
+        "stream_generate_content": "unknown",
+        "streaming": "supported",
+        "tools": "unknown",
+        "vision": "unknown",
+        "json_mode": "unknown",
+        "context_window_tokens": 128000
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "unknown"
+      },
+      "cache_profile": {
+        "state": "unknown"
+      },
+      "content_digest": "526b1a1d3aafe5aa9c7e73d7539d196a9aeedfa708dc078e9c0423723aba7e9b",
+      "sources": [
+        "https://aws.amazon.com/bedrock/pricing/",
+        "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-mistral-ai-ministral-3-8b.html"
+      ],
+      "verified_at": "2026-07-23T00:00:00Z",
+      "capabilities_verified_at": "2026-07-30T00:00:00Z"
+    },
+    {
+      "provider": "bedrock",
+      "model": "mistral.ministral-3-8b-instruct",
+      "region": "ap-southeast-2",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 0.1545,
+        "output_per_million": 0.1545,
+        "cache_read_input_per_million": null,
+        "cache_write_input_per_million": null,
+        "cache_write_1h_input_per_million": null,
+        "reasoning_output_per_million": null,
+        "batch_discount_fraction": null,
+        "cache_storage_per_million_tokens_hour": null,
+        "long_context_threshold_tokens": null,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": null,
+        "long_context_output_multiplier": null,
+        "version": "2026-07-23"
+      },
+      "pricing_semantics": {},
+      "capabilities": {
+        "adaptive_thinking": "unknown",
+        "batch": "unknown",
+        "bedrock_mantle": "supported",
+        "chat_completions": "supported",
+        "context_editing": "unknown",
+        "converse": "supported",
+        "converse_stream": "supported",
+        "count_tokens": "unknown",
+        "embeddings": "unknown",
+        "explicit_cache": "unknown",
+        "flex": "unknown",
+        "generate_content": "unknown",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "unknown",
+        "invoke_model": "supported",
+        "message_batches": "unknown",
+        "messages_api": "unknown",
+        "manual_thinking": "unknown",
+        "prompt_cache": "unknown",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "unknown",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "unknown",
+        "responses_api": "unsupported",
+        "stream_generate_content": "unknown",
+        "streaming": "supported",
+        "tools": "unknown",
+        "vision": "unknown",
+        "json_mode": "unknown",
+        "context_window_tokens": 128000
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "unknown"
+      },
+      "cache_profile": {
+        "state": "unknown"
+      },
+      "content_digest": "abf61ab9eb7f1b07feb7bf178764ce684e7dfe196e6c0fcfb27af2308aafbf1d",
+      "sources": [
+        "https://aws.amazon.com/bedrock/pricing/",
+        "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-mistral-ai-ministral-3-8b.html"
+      ],
+      "verified_at": "2026-07-23T00:00:00Z",
+      "capabilities_verified_at": "2026-07-30T00:00:00Z"
+    },
+    {
+      "provider": "vertex",
+      "model": "gemini-2.5-pro",
+      "region": "global",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 1.25,
+        "output_per_million": 10,
+        "cache_read_input_per_million": 0.125,
+        "cache_write_input_per_million": null,
+        "cache_write_1h_input_per_million": null,
+        "reasoning_output_per_million": 10,
+        "batch_discount_fraction": 0.5,
+        "cache_storage_per_million_tokens_hour": 4.5,
+        "long_context_threshold_tokens": 200000,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": 2,
+        "long_context_output_multiplier": 1.5,
+        "version": "2026-07-10"
+      },
+      "pricing_semantics": {
+        "region_agnostic_pricing": true
+      },
+      "capabilities": {
+        "adaptive_thinking": "unknown",
+        "batch": "supported",
+        "bedrock_mantle": "unknown",
+        "chat_completions": "unknown",
+        "context_editing": "unknown",
+        "converse": "unknown",
+        "converse_stream": "unknown",
+        "count_tokens": "unknown",
+        "embeddings": "unknown",
+        "explicit_cache": "supported",
+        "flex": "unknown",
+        "generate_content": "supported",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "unknown",
+        "invoke_model": "unknown",
+        "message_batches": "unknown",
+        "messages_api": "unknown",
+        "manual_thinking": "unknown",
+        "prompt_cache": "unknown",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "unknown",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "unknown",
+        "responses_api": "unknown",
+        "stream_generate_content": "supported",
+        "streaming": "supported",
+        "tools": "supported",
+        "vision": "supported",
+        "json_mode": "supported",
+        "context_window_tokens": 1048576
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "unknown"
+      },
+      "cache_profile": {
+        "state": "unknown"
+      },
+      "content_digest": "c16dc3ec0955f933213c0c74544030c8ad04e67f724dd40ff73933e46ce64e3f",
+      "sources": [
+        "https://cloud.google.com/vertex-ai/generative-ai/pricing",
+        "https://ai.google.dev/gemini-api/docs/models/gemini-2.5-pro"
+      ],
+      "verified_at": "2026-07-10T00:00:00Z",
+      "capabilities_verified_at": "2026-07-30T00:00:00Z"
+    },
+    {
+      "provider": "vertex",
+      "model": "gemini-2.5-flash",
+      "region": "global",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 0.3,
+        "output_per_million": 2.5,
+        "cache_read_input_per_million": 0.03,
+        "cache_write_input_per_million": null,
+        "cache_write_1h_input_per_million": null,
+        "reasoning_output_per_million": 2.5,
+        "batch_discount_fraction": 0.5,
+        "cache_storage_per_million_tokens_hour": 1,
+        "long_context_threshold_tokens": null,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": null,
+        "long_context_output_multiplier": null,
+        "version": "2026-07-10"
+      },
+      "pricing_semantics": {
+        "region_agnostic_pricing": true
+      },
+      "capabilities": {
+        "adaptive_thinking": "unknown",
+        "batch": "supported",
+        "bedrock_mantle": "unknown",
+        "chat_completions": "unknown",
+        "context_editing": "unknown",
+        "converse": "unknown",
+        "converse_stream": "unknown",
+        "count_tokens": "unknown",
+        "embeddings": "unknown",
+        "explicit_cache": "supported",
+        "flex": "unknown",
+        "generate_content": "supported",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "unknown",
+        "invoke_model": "unknown",
+        "message_batches": "unknown",
+        "messages_api": "unknown",
+        "manual_thinking": "unknown",
+        "prompt_cache": "unknown",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "unknown",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "unknown",
+        "responses_api": "unknown",
+        "stream_generate_content": "supported",
+        "streaming": "supported",
+        "tools": "supported",
+        "vision": "supported",
+        "json_mode": "supported",
+        "context_window_tokens": 1048576
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "unknown"
+      },
+      "cache_profile": {
+        "state": "unknown"
+      },
+      "content_digest": "436e4eced688cee12495f1a4fe1febf2dee81c14a37763d3ea893249042f1853",
+      "sources": [
+        "https://cloud.google.com/vertex-ai/generative-ai/pricing",
+        "https://ai.google.dev/gemini-api/docs/models/gemini-2.5-flash"
+      ],
+      "verified_at": "2026-07-10T00:00:00Z",
+      "capabilities_verified_at": "2026-07-30T00:00:00Z"
+    },
+    {
+      "provider": "vertex",
+      "model": "claude-sonnet-4-6",
+      "region": "global",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 3,
+        "output_per_million": 15,
+        "cache_read_input_per_million": 0.3,
+        "cache_write_input_per_million": 3.75,
+        "cache_write_1h_input_per_million": 6,
+        "reasoning_output_per_million": null,
+        "batch_discount_fraction": 0.5,
+        "cache_storage_per_million_tokens_hour": null,
+        "long_context_threshold_tokens": null,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": null,
+        "long_context_output_multiplier": null,
+        "version": "2026-07-10"
+      },
+      "pricing_semantics": {},
+      "capabilities": {
+        "adaptive_thinking": "unknown",
+        "batch": "unknown",
+        "bedrock_mantle": "unknown",
+        "chat_completions": "unknown",
+        "context_editing": "unknown",
+        "converse": "unknown",
+        "converse_stream": "unknown",
+        "count_tokens": "unknown",
+        "embeddings": "unknown",
+        "explicit_cache": "unknown",
+        "flex": "unknown",
+        "generate_content": "unknown",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "unknown",
+        "invoke_model": "unknown",
+        "message_batches": "unknown",
+        "messages_api": "supported",
+        "manual_thinking": "unknown",
+        "prompt_cache": "supported",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "unknown",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "supported",
+        "responses_api": "unknown",
+        "stream_generate_content": "unknown",
+        "streaming": "supported",
+        "tools": "supported",
+        "vision": "supported",
+        "json_mode": "supported",
+        "context_window_tokens": 1000000
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "unknown"
+      },
+      "cache_profile": {
+        "state": "unknown"
+      },
+      "content_digest": "f4c30e73709c5cddf4d32306099bd7566e0bdd3c58374ca4c56c668bc49e7663",
+      "sources": [
+        "https://cloud.google.com/vertex-ai/generative-ai/pricing",
+        "https://platform.claude.com/docs/en/about-claude/pricing",
+        "https://platform.claude.com/docs/en/build-with-claude/context-windows"
+      ],
+      "verified_at": "2026-07-10T00:00:00Z",
+      "capabilities_verified_at": "2026-07-30T00:00:00Z"
+    },
+    {
+      "provider": "vertex",
+      "model": "claude-haiku-4-5@20251001",
+      "region": "global",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 1,
+        "output_per_million": 5,
+        "cache_read_input_per_million": 0.1,
+        "cache_write_input_per_million": 1.25,
+        "cache_write_1h_input_per_million": 2,
+        "reasoning_output_per_million": null,
+        "batch_discount_fraction": 0.5,
+        "cache_storage_per_million_tokens_hour": null,
+        "long_context_threshold_tokens": null,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": null,
+        "long_context_output_multiplier": null,
+        "version": "2026-07-10"
+      },
+      "pricing_semantics": {},
+      "capabilities": {
+        "adaptive_thinking": "unknown",
+        "batch": "unknown",
+        "bedrock_mantle": "unknown",
+        "chat_completions": "unknown",
+        "context_editing": "unknown",
+        "converse": "unknown",
+        "converse_stream": "unknown",
+        "count_tokens": "unknown",
+        "embeddings": "unknown",
+        "explicit_cache": "unknown",
+        "flex": "unknown",
+        "generate_content": "unknown",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "unknown",
+        "invoke_model": "unknown",
+        "message_batches": "unknown",
+        "messages_api": "supported",
+        "manual_thinking": "unknown",
+        "prompt_cache": "supported",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "unknown",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "supported",
+        "responses_api": "unknown",
+        "stream_generate_content": "unknown",
+        "streaming": "supported",
+        "tools": "supported",
+        "vision": "supported",
+        "json_mode": "supported",
+        "context_window_tokens": 200000
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "unknown"
+      },
+      "cache_profile": {
+        "state": "unknown"
+      },
+      "content_digest": "c997627425fc17841b36564c55a89547e1f4af68b58655a967d28a8ae1d04d44",
+      "sources": [
+        "https://cloud.google.com/vertex-ai/generative-ai/pricing",
+        "https://platform.claude.com/docs/en/about-claude/pricing",
+        "https://platform.claude.com/docs/en/build-with-claude/context-windows"
+      ],
+      "verified_at": "2026-07-10T00:00:00Z",
+      "capabilities_verified_at": "2026-07-30T00:00:00Z"
+    },
+    {
+      "provider": "deepseek",
+      "model": "deepseek-v4-flash",
+      "region": "global",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 0.14,
+        "output_per_million": 0.28,
+        "cache_read_input_per_million": 0.0028,
+        "cache_write_input_per_million": null,
+        "cache_write_1h_input_per_million": null,
+        "reasoning_output_per_million": null,
+        "batch_discount_fraction": null,
+        "cache_storage_per_million_tokens_hour": null,
+        "long_context_threshold_tokens": null,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": null,
+        "long_context_output_multiplier": null,
+        "version": "2026-08-13"
+      },
+      "pricing_semantics": {},
+      "capabilities": {
+        "adaptive_thinking": "unknown",
+        "batch": "unknown",
+        "bedrock_mantle": "unknown",
+        "chat_completions": "supported",
+        "context_editing": "unknown",
+        "converse": "unknown",
+        "converse_stream": "unknown",
+        "count_tokens": "unsupported",
+        "embeddings": "unknown",
+        "explicit_cache": "unknown",
+        "flex": "unknown",
+        "generate_content": "unknown",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "unknown",
+        "invoke_model": "unknown",
+        "message_batches": "unknown",
+        "messages_api": "unknown",
+        "manual_thinking": "unknown",
+        "prompt_cache": "unknown",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "unknown",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "unknown",
+        "responses_api": "unknown",
+        "stream_generate_content": "unknown",
+        "streaming": "supported",
+        "tools": "supported",
+        "vision": "unknown",
+        "json_mode": "supported",
+        "context_window_tokens": 1000000
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "unsupported"
+      },
+      "cache_profile": {
+        "state": "unsupported"
+      },
+      "content_digest": "8e94006ccfc4c48cee3829ac1bfe82c3577d2a0258e1796780eda1189485fac6",
+      "sources": [
+        "https://api-docs.deepseek.com/quick_start/pricing",
+        "https://api-docs.deepseek.com/guides/kv_cache",
+        "https://api-docs.deepseek.com/api/create-chat-completion"
+      ],
+      "verified_at": "2026-08-13T00:00:00Z",
+      "capabilities_verified_at": "2026-08-13T00:00:00Z"
+    },
+    {
+      "provider": "deepseek",
+      "model": "deepseek-v4-pro",
+      "region": "global",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 0.435,
+        "output_per_million": 0.87,
+        "cache_read_input_per_million": 0.003625,
+        "cache_write_input_per_million": null,
+        "cache_write_1h_input_per_million": null,
+        "reasoning_output_per_million": null,
+        "batch_discount_fraction": null,
+        "cache_storage_per_million_tokens_hour": null,
+        "long_context_threshold_tokens": null,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": null,
+        "long_context_output_multiplier": null,
+        "version": "2026-08-13"
+      },
+      "pricing_semantics": {},
+      "capabilities": {
+        "adaptive_thinking": "unknown",
+        "batch": "unknown",
+        "bedrock_mantle": "unknown",
+        "chat_completions": "supported",
+        "context_editing": "unknown",
+        "converse": "unknown",
+        "converse_stream": "unknown",
+        "count_tokens": "unsupported",
+        "embeddings": "unknown",
+        "explicit_cache": "unknown",
+        "flex": "unknown",
+        "generate_content": "unknown",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "unknown",
+        "invoke_model": "unknown",
+        "message_batches": "unknown",
+        "messages_api": "unknown",
+        "manual_thinking": "unknown",
+        "prompt_cache": "unknown",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "unknown",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "unknown",
+        "responses_api": "unknown",
+        "stream_generate_content": "unknown",
+        "streaming": "supported",
+        "tools": "supported",
+        "vision": "unknown",
+        "json_mode": "supported",
+        "context_window_tokens": 1000000
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "unsupported"
+      },
+      "cache_profile": {
+        "state": "unsupported"
+      },
+      "content_digest": "ae50bb0f0796e339a366dda329d26609406450d1d542e477e7a4a67f4fe95172",
+      "sources": [
+        "https://api-docs.deepseek.com/quick_start/pricing",
+        "https://api-docs.deepseek.com/guides/kv_cache",
+        "https://api-docs.deepseek.com/api/create-chat-completion"
+      ],
+      "verified_at": "2026-08-13T00:00:00Z",
+      "capabilities_verified_at": "2026-08-13T00:00:00Z"
+    },
+    {
+      "provider": "moonshot",
+      "model": "kimi-k3",
+      "region": "global",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 3,
+        "output_per_million": 15,
+        "cache_read_input_per_million": 0.3,
+        "cache_write_input_per_million": null,
+        "cache_write_1h_input_per_million": null,
+        "reasoning_output_per_million": null,
+        "batch_discount_fraction": null,
+        "cache_storage_per_million_tokens_hour": null,
+        "long_context_threshold_tokens": null,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": null,
+        "long_context_output_multiplier": null,
+        "version": "2026-08-13"
+      },
+      "pricing_semantics": {},
+      "capabilities": {
+        "adaptive_thinking": "unknown",
+        "batch": "unknown",
+        "bedrock_mantle": "unknown",
+        "chat_completions": "supported",
+        "context_editing": "unknown",
+        "converse": "unknown",
+        "converse_stream": "unknown",
+        "count_tokens": "unknown",
+        "embeddings": "unknown",
+        "explicit_cache": "unknown",
+        "flex": "unknown",
+        "generate_content": "unknown",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "unknown",
+        "invoke_model": "unknown",
+        "message_batches": "unknown",
+        "messages_api": "unknown",
+        "manual_thinking": "unknown",
+        "prompt_cache": "unknown",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "unknown",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "unknown",
+        "responses_api": "unknown",
+        "stream_generate_content": "unknown",
+        "streaming": "unknown",
+        "tools": "supported",
+        "vision": "supported",
+        "json_mode": "supported",
+        "context_window_tokens": 1048576
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "unknown"
+      },
+      "cache_profile": {
+        "state": "unknown"
+      },
+      "content_digest": "b8189115e58af41dc0e09df1f003a37dfe60b5aa0590712d889c0692cb758c34",
+      "sources": [
+        "https://platform.kimi.ai/docs/pricing/chat-k3",
+        "https://platform.kimi.ai/docs/guide/kimi-k3-quickstart"
+      ],
+      "verified_at": "2026-08-13T00:00:00Z",
+      "capabilities_verified_at": "2026-08-13T00:00:00Z"
+    },
+    {
+      "provider": "moonshot",
+      "model": "kimi-k2.7-code",
+      "region": "global",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 0.95,
+        "output_per_million": 4,
+        "cache_read_input_per_million": 0.19,
+        "cache_write_input_per_million": null,
+        "cache_write_1h_input_per_million": null,
+        "reasoning_output_per_million": null,
+        "batch_discount_fraction": null,
+        "cache_storage_per_million_tokens_hour": null,
+        "long_context_threshold_tokens": null,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": null,
+        "long_context_output_multiplier": null,
+        "version": "2026-08-13"
+      },
+      "pricing_semantics": {},
+      "capabilities": {
+        "adaptive_thinking": "unknown",
+        "batch": "unknown",
+        "bedrock_mantle": "unknown",
+        "chat_completions": "supported",
+        "context_editing": "unknown",
+        "converse": "unknown",
+        "converse_stream": "unknown",
+        "count_tokens": "unknown",
+        "embeddings": "unknown",
+        "explicit_cache": "unknown",
+        "flex": "unknown",
+        "generate_content": "unknown",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "unknown",
+        "invoke_model": "unknown",
+        "message_batches": "unknown",
+        "messages_api": "unknown",
+        "manual_thinking": "unknown",
+        "prompt_cache": "unknown",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "unknown",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "unknown",
+        "responses_api": "unknown",
+        "stream_generate_content": "unknown",
+        "streaming": "unknown",
+        "tools": "supported",
+        "vision": "supported",
+        "json_mode": "supported",
+        "context_window_tokens": 262144
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "unknown"
+      },
+      "cache_profile": {
+        "state": "unknown"
+      },
+      "content_digest": "09045b1519708cbe8f92e37f167d11290feabb91d3a731b3df668c5614395a87",
+      "sources": [
+        "https://platform.kimi.ai/docs/pricing/chat-k27-code"
+      ],
+      "verified_at": "2026-08-13T00:00:00Z",
+      "capabilities_verified_at": "2026-08-13T00:00:00Z"
+    },
+    {
+      "provider": "xai",
+      "model": "grok-4.5",
+      "region": "global",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 2,
+        "output_per_million": 6,
+        "cache_read_input_per_million": 0.3,
+        "cache_write_input_per_million": null,
+        "cache_write_1h_input_per_million": null,
+        "reasoning_output_per_million": null,
+        "batch_discount_fraction": null,
+        "cache_storage_per_million_tokens_hour": null,
+        "long_context_threshold_tokens": 200000,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": 2,
+        "long_context_output_multiplier": 2,
+        "version": "2026-08-13"
+      },
+      "pricing_semantics": {},
+      "capabilities": {
+        "adaptive_thinking": "unknown",
+        "batch": "unknown",
+        "bedrock_mantle": "unknown",
+        "chat_completions": "supported",
+        "context_editing": "unknown",
+        "converse": "unknown",
+        "converse_stream": "unknown",
+        "count_tokens": "unknown",
+        "embeddings": "unknown",
+        "explicit_cache": "unknown",
+        "flex": "unknown",
+        "generate_content": "unknown",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "unknown",
+        "invoke_model": "unknown",
+        "message_batches": "unknown",
+        "messages_api": "unknown",
+        "manual_thinking": "unknown",
+        "prompt_cache": "unknown",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "unknown",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "unknown",
+        "responses_api": "unknown",
+        "stream_generate_content": "unknown",
+        "streaming": "unknown",
+        "tools": "supported",
+        "vision": "supported",
+        "json_mode": "supported",
+        "context_window_tokens": 500000
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "unknown"
+      },
+      "cache_profile": {
+        "state": "unknown"
+      },
+      "content_digest": "bafd27c0c739890f26957190c5ba97ddf741e5629f51181ab3d12e7ad234eea4",
+      "sources": [
+        "https://docs.x.ai/developers/grok-4-5",
+        "https://docs.x.ai/developers/models/grok-4.5"
+      ],
+      "verified_at": "2026-08-13T00:00:00Z",
+      "capabilities_verified_at": "2026-08-13T00:00:00Z"
+    },
+    {
+      "provider": "xai",
+      "model": "grok-4.3",
+      "region": "global",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 1.25,
+        "output_per_million": 2.5,
+        "cache_read_input_per_million": 0.2,
+        "cache_write_input_per_million": null,
+        "cache_write_1h_input_per_million": null,
+        "reasoning_output_per_million": null,
+        "batch_discount_fraction": null,
+        "cache_storage_per_million_tokens_hour": null,
+        "long_context_threshold_tokens": 200000,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": 2,
+        "long_context_output_multiplier": 2,
+        "version": "2026-08-13"
+      },
+      "pricing_semantics": {},
+      "capabilities": {
+        "adaptive_thinking": "unknown",
+        "batch": "unknown",
+        "bedrock_mantle": "unknown",
+        "chat_completions": "supported",
+        "context_editing": "unknown",
+        "converse": "unknown",
+        "converse_stream": "unknown",
+        "count_tokens": "unknown",
+        "embeddings": "unknown",
+        "explicit_cache": "unknown",
+        "flex": "unknown",
+        "generate_content": "unknown",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "unknown",
+        "invoke_model": "unknown",
+        "message_batches": "unknown",
+        "messages_api": "unknown",
+        "manual_thinking": "unknown",
+        "prompt_cache": "unknown",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "unknown",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "unknown",
+        "responses_api": "unknown",
+        "stream_generate_content": "unknown",
+        "streaming": "unknown",
+        "tools": "supported",
+        "vision": "supported",
+        "json_mode": "supported",
+        "context_window_tokens": 1000000
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "unknown"
+      },
+      "cache_profile": {
+        "state": "unknown"
+      },
+      "content_digest": "5ff6217ccf24ae6f6db8b6012e882ab8bc1a15bf3f4d1090850687121d6f7547",
+      "sources": [
+        "https://docs.x.ai/developers/models/grok-4.3"
+      ],
+      "verified_at": "2026-08-13T00:00:00Z",
+      "capabilities_verified_at": "2026-08-13T00:00:00Z"
+    },
+    {
+      "provider": "mistral",
+      "model": "mistral-large-2512",
+      "region": "global",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 0.5,
+        "output_per_million": 1.5,
+        "cache_read_input_per_million": null,
+        "cache_write_input_per_million": null,
+        "cache_write_1h_input_per_million": null,
+        "reasoning_output_per_million": null,
+        "batch_discount_fraction": 0.5,
+        "cache_storage_per_million_tokens_hour": null,
+        "long_context_threshold_tokens": null,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": null,
+        "long_context_output_multiplier": null,
+        "version": "2026-08-13"
+      },
+      "pricing_semantics": {},
+      "capabilities": {
+        "adaptive_thinking": "unknown",
+        "batch": "unknown",
+        "bedrock_mantle": "unknown",
+        "chat_completions": "supported",
+        "context_editing": "unknown",
+        "converse": "unknown",
+        "converse_stream": "unknown",
+        "count_tokens": "unknown",
+        "embeddings": "unknown",
+        "explicit_cache": "unknown",
+        "flex": "unknown",
+        "generate_content": "unknown",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "unknown",
+        "invoke_model": "unknown",
+        "message_batches": "unknown",
+        "messages_api": "unknown",
+        "manual_thinking": "unknown",
+        "prompt_cache": "unknown",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "unknown",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "unknown",
+        "responses_api": "unknown",
+        "stream_generate_content": "unknown",
+        "streaming": "unknown",
+        "tools": "supported",
+        "vision": "supported",
+        "json_mode": "supported",
+        "context_window_tokens": 256000
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "unknown"
+      },
+      "cache_profile": {
+        "state": "unknown"
+      },
+      "content_digest": "9c60f286dddfb37621e6ece30c9220bb15fc0de0653c8032e78f258c799d3a28",
+      "sources": [
+        "https://mistral.ai/pricing/api",
+        "https://docs.mistral.ai/models/mistral-large-3-25-12"
+      ],
+      "verified_at": "2026-08-13T00:00:00Z",
+      "capabilities_verified_at": "2026-08-13T00:00:00Z"
+    },
+    {
+      "provider": "mistral",
+      "model": "mistral-medium-3504",
+      "region": "global",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 1.5,
+        "output_per_million": 7.5,
+        "cache_read_input_per_million": null,
+        "cache_write_input_per_million": null,
+        "cache_write_1h_input_per_million": null,
+        "reasoning_output_per_million": null,
+        "batch_discount_fraction": 0.5,
+        "cache_storage_per_million_tokens_hour": null,
+        "long_context_threshold_tokens": null,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": null,
+        "long_context_output_multiplier": null,
+        "version": "2026-08-13"
+      },
+      "pricing_semantics": {},
+      "capabilities": {
+        "adaptive_thinking": "unknown",
+        "batch": "unknown",
+        "bedrock_mantle": "unknown",
+        "chat_completions": "supported",
+        "context_editing": "unknown",
+        "converse": "unknown",
+        "converse_stream": "unknown",
+        "count_tokens": "unknown",
+        "embeddings": "unknown",
+        "explicit_cache": "unknown",
+        "flex": "unknown",
+        "generate_content": "unknown",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "unknown",
+        "invoke_model": "unknown",
+        "message_batches": "unknown",
+        "messages_api": "unknown",
+        "manual_thinking": "unknown",
+        "prompt_cache": "unknown",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "unknown",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "unknown",
+        "responses_api": "unknown",
+        "stream_generate_content": "unknown",
+        "streaming": "unknown",
+        "tools": "supported",
+        "vision": "supported",
+        "json_mode": "supported",
+        "context_window_tokens": 256000
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "unknown"
+      },
+      "cache_profile": {
+        "state": "unknown"
+      },
+      "content_digest": "1ffb26fb072a660c9387a7a1839e1818b61c38911b2cff92117b738893528480",
+      "sources": [
+        "https://mistral.ai/pricing/api",
+        "https://docs.mistral.ai/models/mistral-medium-3-5-26-04"
+      ],
+      "verified_at": "2026-08-13T00:00:00Z",
+      "capabilities_verified_at": "2026-08-13T00:00:00Z"
+    },
+    {
+      "provider": "mistral",
+      "model": "codestral-2508",
+      "region": "global",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 0.3,
+        "output_per_million": 0.9,
+        "cache_read_input_per_million": null,
+        "cache_write_input_per_million": null,
+        "cache_write_1h_input_per_million": null,
+        "reasoning_output_per_million": null,
+        "batch_discount_fraction": 0.5,
+        "cache_storage_per_million_tokens_hour": null,
+        "long_context_threshold_tokens": null,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": null,
+        "long_context_output_multiplier": null,
+        "version": "2026-08-13"
+      },
+      "pricing_semantics": {},
+      "capabilities": {
+        "adaptive_thinking": "unknown",
+        "batch": "unknown",
+        "bedrock_mantle": "unknown",
+        "chat_completions": "supported",
+        "context_editing": "unknown",
+        "converse": "unknown",
+        "converse_stream": "unknown",
+        "count_tokens": "unknown",
+        "embeddings": "unknown",
+        "explicit_cache": "unknown",
+        "flex": "unknown",
+        "generate_content": "unknown",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "unknown",
+        "invoke_model": "unknown",
+        "message_batches": "unknown",
+        "messages_api": "unknown",
+        "manual_thinking": "unknown",
+        "prompt_cache": "unknown",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "unknown",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "unknown",
+        "responses_api": "unknown",
+        "stream_generate_content": "unknown",
+        "streaming": "unknown",
+        "tools": "supported",
+        "vision": "unsupported",
+        "json_mode": "supported",
+        "context_window_tokens": 128000
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "unknown"
+      },
+      "cache_profile": {
+        "state": "unknown"
+      },
+      "content_digest": "d72415a379632d3e743ea15290ba452f03d59f24b1647328f5b3cd7771ca5bfd",
+      "sources": [
+        "https://mistral.ai/pricing/api",
+        "https://docs.mistral.ai/models/codestral-25-08"
+      ],
+      "verified_at": "2026-08-13T00:00:00Z",
+      "capabilities_verified_at": "2026-08-13T00:00:00Z"
+    },
+    {
+      "provider": "groq",
+      "model": "llama-3.1-8b-instant",
+      "region": "global",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 0.05,
+        "output_per_million": 0.08,
+        "cache_read_input_per_million": null,
+        "cache_write_input_per_million": null,
+        "cache_write_1h_input_per_million": null,
+        "reasoning_output_per_million": null,
+        "batch_discount_fraction": null,
+        "cache_storage_per_million_tokens_hour": null,
+        "long_context_threshold_tokens": null,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": null,
+        "long_context_output_multiplier": null,
+        "version": "2026-08-13"
+      },
+      "pricing_semantics": {},
+      "capabilities": {
+        "adaptive_thinking": "unknown",
+        "batch": "unknown",
+        "bedrock_mantle": "unknown",
+        "chat_completions": "supported",
+        "context_editing": "unknown",
+        "converse": "unknown",
+        "converse_stream": "unknown",
+        "count_tokens": "unknown",
+        "embeddings": "unknown",
+        "explicit_cache": "unknown",
+        "flex": "unknown",
+        "generate_content": "unknown",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "unknown",
+        "invoke_model": "unknown",
+        "message_batches": "unknown",
+        "messages_api": "unknown",
+        "manual_thinking": "unknown",
+        "prompt_cache": "unknown",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "unknown",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "unknown",
+        "responses_api": "unknown",
+        "stream_generate_content": "unknown",
+        "streaming": "unknown",
+        "tools": "supported",
+        "vision": "unsupported",
+        "json_mode": "unknown",
+        "context_window_tokens": 131072
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "unknown"
+      },
+      "cache_profile": {
+        "state": "unknown"
+      },
+      "content_digest": "58936c74b83167230f9d00c3c6d77193d5419c990daa7ded7b57a3c805dd9b27",
+      "sources": [
+        "https://console.groq.com/docs/models",
+        "https://console.groq.com/docs/tool-use",
+        "https://console.groq.com/docs/vision",
+        "https://console.groq.com/docs/structured-outputs"
+      ],
+      "verified_at": "2026-08-13T00:00:00Z",
+      "capabilities_verified_at": "2026-08-13T00:00:00Z"
+    },
+    {
+      "provider": "groq",
+      "model": "llama-3.3-70b-versatile",
+      "region": "global",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 0.59,
+        "output_per_million": 0.79,
+        "cache_read_input_per_million": null,
+        "cache_write_input_per_million": null,
+        "cache_write_1h_input_per_million": null,
+        "reasoning_output_per_million": null,
+        "batch_discount_fraction": null,
+        "cache_storage_per_million_tokens_hour": null,
+        "long_context_threshold_tokens": null,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": null,
+        "long_context_output_multiplier": null,
+        "version": "2026-08-13"
+      },
+      "pricing_semantics": {},
+      "capabilities": {
+        "adaptive_thinking": "unknown",
+        "batch": "unknown",
+        "bedrock_mantle": "unknown",
+        "chat_completions": "supported",
+        "context_editing": "unknown",
+        "converse": "unknown",
+        "converse_stream": "unknown",
+        "count_tokens": "unknown",
+        "embeddings": "unknown",
+        "explicit_cache": "unknown",
+        "flex": "unknown",
+        "generate_content": "unknown",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "unknown",
+        "invoke_model": "unknown",
+        "message_batches": "unknown",
+        "messages_api": "unknown",
+        "manual_thinking": "unknown",
+        "prompt_cache": "unknown",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "unknown",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "unknown",
+        "responses_api": "unknown",
+        "stream_generate_content": "unknown",
+        "streaming": "unknown",
+        "tools": "supported",
+        "vision": "unsupported",
+        "json_mode": "unknown",
+        "context_window_tokens": 131072
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "unknown"
+      },
+      "cache_profile": {
+        "state": "unknown"
+      },
+      "content_digest": "f5bad5b8d20994592e3087c358b36eb548bc0ae99317ea84ce375f7c013790ee",
+      "sources": [
+        "https://console.groq.com/docs/models",
+        "https://console.groq.com/docs/tool-use",
+        "https://console.groq.com/docs/vision",
+        "https://console.groq.com/docs/structured-outputs"
+      ],
+      "verified_at": "2026-08-13T00:00:00Z",
+      "capabilities_verified_at": "2026-08-13T00:00:00Z"
+    },
+    {
+      "provider": "groq",
+      "model": "openai/gpt-oss-120b",
+      "region": "global",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 0.15,
+        "output_per_million": 0.6,
+        "cache_read_input_per_million": 0.075,
+        "cache_write_input_per_million": null,
+        "cache_write_1h_input_per_million": null,
+        "reasoning_output_per_million": null,
+        "batch_discount_fraction": null,
+        "cache_storage_per_million_tokens_hour": null,
+        "long_context_threshold_tokens": null,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": null,
+        "long_context_output_multiplier": null,
+        "version": "2026-08-13"
+      },
+      "pricing_semantics": {},
+      "capabilities": {
+        "adaptive_thinking": "unknown",
+        "batch": "unknown",
+        "bedrock_mantle": "unknown",
+        "chat_completions": "supported",
+        "context_editing": "unknown",
+        "converse": "unknown",
+        "converse_stream": "unknown",
+        "count_tokens": "unknown",
+        "embeddings": "unknown",
+        "explicit_cache": "unknown",
+        "flex": "unknown",
+        "generate_content": "unknown",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "unknown",
+        "invoke_model": "unknown",
+        "message_batches": "unknown",
+        "messages_api": "unknown",
+        "manual_thinking": "unknown",
+        "prompt_cache": "unknown",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "unknown",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "unknown",
+        "responses_api": "unknown",
+        "stream_generate_content": "unknown",
+        "streaming": "unknown",
+        "tools": "supported",
+        "vision": "unsupported",
+        "json_mode": "supported",
+        "context_window_tokens": 131072
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "unknown"
+      },
+      "cache_profile": {
+        "state": "unknown"
+      },
+      "content_digest": "19c08e34139f154a5cd5498933eb05ca1da8c8ec238aa6af27a402812ce4258a",
+      "sources": [
+        "https://console.groq.com/docs/models",
+        "https://console.groq.com/docs/prompt-caching",
+        "https://console.groq.com/docs/tool-use",
+        "https://console.groq.com/docs/structured-outputs",
+        "https://console.groq.com/docs/vision"
+      ],
+      "verified_at": "2026-08-13T00:00:00Z",
+      "capabilities_verified_at": "2026-08-13T00:00:00Z"
+    },
+    {
+      "provider": "groq",
+      "model": "openai/gpt-oss-20b",
+      "region": "global",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 0.075,
+        "output_per_million": 0.3,
+        "cache_read_input_per_million": 0.0375,
+        "cache_write_input_per_million": null,
+        "cache_write_1h_input_per_million": null,
+        "reasoning_output_per_million": null,
+        "batch_discount_fraction": null,
+        "cache_storage_per_million_tokens_hour": null,
+        "long_context_threshold_tokens": null,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": null,
+        "long_context_output_multiplier": null,
+        "version": "2026-08-13"
+      },
+      "pricing_semantics": {},
+      "capabilities": {
+        "adaptive_thinking": "unknown",
+        "batch": "unknown",
+        "bedrock_mantle": "unknown",
+        "chat_completions": "supported",
+        "context_editing": "unknown",
+        "converse": "unknown",
+        "converse_stream": "unknown",
+        "count_tokens": "unknown",
+        "embeddings": "unknown",
+        "explicit_cache": "unknown",
+        "flex": "unknown",
+        "generate_content": "unknown",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "unknown",
+        "invoke_model": "unknown",
+        "message_batches": "unknown",
+        "messages_api": "unknown",
+        "manual_thinking": "unknown",
+        "prompt_cache": "unknown",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "unknown",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "unknown",
+        "responses_api": "unknown",
+        "stream_generate_content": "unknown",
+        "streaming": "unknown",
+        "tools": "supported",
+        "vision": "unsupported",
+        "json_mode": "supported",
+        "context_window_tokens": 131072
+      },
+      "lifecycle": {
+        "status": "reviewed"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "unknown"
+      },
+      "cache_profile": {
+        "state": "unknown"
+      },
+      "content_digest": "fe098687c7f1df091a042a4f2e05b8d75f87db5b28068f5d5c02320f12a65205",
+      "sources": [
+        "https://console.groq.com/docs/models",
+        "https://console.groq.com/docs/prompt-caching",
+        "https://console.groq.com/docs/tool-use",
+        "https://console.groq.com/docs/structured-outputs",
+        "https://console.groq.com/docs/vision"
+      ],
+      "verified_at": "2026-08-13T00:00:00Z",
+      "capabilities_verified_at": "2026-08-13T00:00:00Z"
+    }
+  ]
+}

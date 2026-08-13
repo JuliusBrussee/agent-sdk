@@ -1,0 +1,271 @@
+{
+  "schema": "cavebench.agent.corpus.v1",
+  "source_repo": "https://github.com/benchflow-ai/skillsbench",
+  "source_sha": "9a1f4dd5f7659f75707435da3ce854b6e48321d1",
+  "license": "Apache-2.0",
+  "generated_at": "2026-08-06T07:42:20Z",
+  "filter": "sorted listing order; canonical shape; Dockerfile free of skills COPY; docker build within timeout; seed <= limit; oracle+unmodified verifier reward == 1.0; first -limit passers vendored, every skip recorded",
+  "skills_note": "environment/skills is never vendored and never given to benchmark arms; skills are SkillsBench's experiment variable, not this benchmark's. Oracle validation mounts skills read-only because some oracles import them; agents never see them.",
+  "tasks": [
+    {
+      "id": "3d-scan-calc",
+      "category": "industrial-physical-systems",
+      "difficulty": "hard",
+      "image_digest": "sha256:77839249018eb47b65b85f0b4910b6088387cae09109d0323427cf0288541c84",
+      "workdir": "/root",
+      "seed_bytes": 21697,
+      "oracle_reward": "1",
+      "file_sha256": {
+        "3d-scan-calc/environment/Dockerfile": "35ef5b0ff40cbfa1e98d34e28390d738afdb66bfdaa5120216565dd200844051",
+        "3d-scan-calc/environment/material_density_table.md": "72a9aca1b634f8cf9d6e29beed47f8d31796d727a3017b616b32e10d953d9f64",
+        "3d-scan-calc/environment/scan_data.stl": "d7f6193b534e9feacd21e8de1fd193c1cf7cf22f80915bb04b86a89e0dbc17a8",
+        "3d-scan-calc/task.md": "99d7ef3e5ebe2785cd936f269be6d8f179831f6fd788f484146ffffa6fad91b8",
+        "3d-scan-calc/verifier/test.sh": "dfb59780bbce55de353a8c7f25ad136e7c0fc75da3744bd54b273aed42a8bb16",
+        "3d-scan-calc/verifier/test_outputs.py": "0129d7f08adddad68bd2e93f0aaea79d6b2e05d7b2f2aaa06f17d4b71804b9ff"
+      }
+    },
+    {
+      "id": "ada-bathroom-plan-repair",
+      "category": "industrial-physical-systems",
+      "difficulty": "hard",
+      "image_digest": "sha256:fda0faa5db325c022b52f96cf51cbcb825ddebd22683ab7576719ffc7d12f6bf",
+      "workdir": "/root",
+      "seed_bytes": 786296,
+      "oracle_reward": "1",
+      "file_sha256": {
+        "ada-bathroom-plan-repair/environment/Dockerfile": "b701253e03786b32691eab76c02d240c3059ebc57bb444469a514ce21cd4ce65",
+        "ada-bathroom-plan-repair/environment/input/ada_bath_input.dxf": "1f4d94c0928a1b7366feb97f96ec33547e16f1f33e6b5cd5c6b4de2fd9d329fb",
+        "ada-bathroom-plan-repair/environment/input/ada_rules.json": "4d7fecd2cd3924cf6871ebe40b4c8d0233b702f959412c20983e0f7b1b00f19b",
+        "ada-bathroom-plan-repair/environment/input/layer_schema.json": "a477afc067e8b5fa858228a70c55e4299c3f6be7ad0e2674ddf4df212e9eed17",
+        "ada-bathroom-plan-repair/environment/input/screenshot_before.jpg": "dda34adf5bb70516bb93d5fbebf0beac64729c145f583183320a9f114ce09255",
+        "ada-bathroom-plan-repair/environment/output_schema/changes_schema.json": "e8a54d1969ddb215ecd7193ed07235f734d205c046983def20aa0afb063a7bfd",
+        "ada-bathroom-plan-repair/environment/output_schema/extracted_original_layout_schema.json": "38ddcd9c9d934360346df30dc2e49523754bd0fdd03a4c143c28d647ca81ab2a",
+        "ada-bathroom-plan-repair/environment/output_schema/layer_inventory_schema.json": "30dc3341f61f6a6b69a493a73b27409dda387cb53be1e91872fc4a5a3f70a223",
+        "ada-bathroom-plan-repair/environment/output_schema/repaired_layout_schema.json": "47fe931aa8db33aa7d3a2c2d40ae5f1f45761a588e06e9739b19bf59e81c1c28",
+        "ada-bathroom-plan-repair/environment/output_schema/violations_before_schema.json": "2057d1ed2f95f20f0fc8c07b0a4809b60478cdcd239cd0e95ca43011cff99e80",
+        "ada-bathroom-plan-repair/task.md": "b68a30f4ca0d8fa45a3ff58208d5d0aac1e2d31b04c760abfcd74f1c1f9ae6e9",
+        "ada-bathroom-plan-repair/verifier/test.sh": "5c6221915e19bc16b6873b0dcc984c6993b8ecc83cc0869d8ed9534819ba6fab",
+        "ada-bathroom-plan-repair/verifier/test_outputs.py": "66c450cb6e23a0912355f16e4f128b18f473a42ad865c3d1ea8601054aec8547"
+      }
+    },
+    {
+      "id": "azure-bgp-oscillation-route-leak",
+      "category": "software-engineering",
+      "difficulty": "medium",
+      "image_digest": "sha256:ff7d271497fc38fafa67a38ad77f6a3e601be792030bb992fb783701a1759fca",
+      "workdir": "/app",
+      "seed_bytes": 154862,
+      "oracle_reward": "1",
+      "file_sha256": {
+        "azure-bgp-oscillation-route-leak/environment/Dockerfile": "a5f0ef554f645eae907d655d4b332478b9aa6131114791632b55bf3bf9c8d929",
+        "azure-bgp-oscillation-route-leak/environment/data/azuredeploy.json": "9ba29fed1be48400ba7aed8dd2a80e8e50664e671e3c70654a03cf56eaf1447c",
+        "azure-bgp-oscillation-route-leak/environment/data/azuredeploy.parameters.json": "0ba6f52b33e74b986154b41ace6b6834b9979b843e5f3a4d7525cbd180d73201",
+        "azure-bgp-oscillation-route-leak/environment/data/azurevirtualwanarchitecturefigure1.jpg": "471438bf8aa21dc28e6813ecc09b9f0fe220de1a0b74fd71f51d970a4fbb63c0",
+        "azure-bgp-oscillation-route-leak/environment/data/metadata.json": "d6c61f4fee43fec90bc7f43a67bd73fa649b8200d7ed4d06a3cdde603a695795",
+        "azure-bgp-oscillation-route-leak/environment/generate_data.py": "50df2355c51a4453fd99dc3c92053be2cc1098c49bc5ee79be5cdd802fdfd481",
+        "azure-bgp-oscillation-route-leak/task.md": "928f6d33162bb994b7a0e4ee858383d307585df097c4e5efac312716f7beab27",
+        "azure-bgp-oscillation-route-leak/verifier/test.sh": "fe7195562321b71ace6e1f6858994939238cc7ce0ec2d0ae3b610278489a42b7",
+        "azure-bgp-oscillation-route-leak/verifier/test_outputs.py": "a4b39c30b6b0efcec27b7217f8001c1efe0e90b4f67f78d79951f4466f5dff6c"
+      }
+    },
+    {
+      "id": "bike-rebalance",
+      "category": "mathematics-or-formal-reasoning",
+      "difficulty": "medium",
+      "image_digest": "sha256:d818f7dab0bea5c7d8236ece837e94cc4baa8d48c43209518af51c99fc1d1f76",
+      "workdir": "/root",
+      "seed_bytes": 4029,
+      "oracle_reward": "1",
+      "file_sha256": {
+        "bike-rebalance/environment/Dockerfile": "afd7df77ab59e64036f344583590172f7a24e079093dc83074537cca244e819b",
+        "bike-rebalance/environment/data.json": "c978582b2fa369b589b3b829e8d80e912d6994eb4072289c91f02669989c017c",
+        "bike-rebalance/task.md": "f03115b34093cbb29c2424fb29a7c96a90257b4a57f7e4adad9d7caec15bf87f",
+        "bike-rebalance/verifier/test.sh": "ee72f22b7cb8fcdfe222d36715980f08bb5c6d0273d9c7dbecfc60407331ac0f",
+        "bike-rebalance/verifier/test_outputs.py": "930c406ed2c38235cadd42dbf08d8a205a81c548cfdea4c19094104597336479"
+      }
+    },
+    {
+      "id": "citation-check",
+      "category": "office-white-collar",
+      "difficulty": "medium",
+      "image_digest": "sha256:f3c31200ea9511a0e357e369967c3db2c5145afba78b70e721b7ff521c1b4843",
+      "workdir": "/root",
+      "seed_bytes": 1297108,
+      "oracle_reward": "1",
+      "file_sha256": {
+        "citation-check/environment/Dockerfile": "e0f83c33f46b22ea0ea378b76cd6905b67e057240c29c0f214aa095f758318e7",
+        "citation-check/environment/test.bib": "855055b29c1c2e8fa6f9d601cef8560669b15ef3e3941330d8777b5c414b7948",
+        "citation-check/task.md": "8699c59d1ae337f72d137be07381eabb7450ec2835cd1b0693183b2fef7b2eb1",
+        "citation-check/verifier/test.sh": "8793d4be74268ffb9c492f85a094d871709e9a11f7c9cf4f3a023381d7b454ec",
+        "citation-check/verifier/test_outputs.py": "f2134453d38c3493403ccba5f1c29db0322ea1eeea820aa769a9f63123ea16ae"
+      }
+    },
+    {
+      "id": "crystallographic-wyckoff-position-analysis",
+      "category": "natural-science",
+      "difficulty": "medium",
+      "image_digest": "sha256:8077bbce8d5c1d147f061b6d79745467339eecca195563fa5c84736e2b99feb3",
+      "workdir": "/root",
+      "seed_bytes": 1244459,
+      "oracle_reward": "1.00",
+      "file_sha256": {
+        "crystallographic-wyckoff-position-analysis/environment/Al2O3_mp-7048.cif": "acf75f0c9376e541ccc186ddda6489a2454a9f5c4e38b2e55e0434dbd7ceac21",
+        "crystallographic-wyckoff-position-analysis/environment/CF4_mp-1167.cif": "29825a94dad344f290cb716f41901036a3259348285dd117eee1e18688876c4e",
+        "crystallographic-wyckoff-position-analysis/environment/C_mp-169.cif": "a6090b870559560ba8019d2be1fa31ed32aeae1b7a588fbfb0983e84d750c36a",
+        "crystallographic-wyckoff-position-analysis/environment/C_mp-683919.cif": "3dd1f454bdf9ad54b31975321346b5112c7c2488110d3d1fb1e9a769cf5c3630",
+        "crystallographic-wyckoff-position-analysis/environment/Dockerfile": "fed8e53c0c335074c1f538d1f4deac5a4fc6dcd447cb44879a92266dde9bf3b8",
+        "crystallographic-wyckoff-position-analysis/environment/FeS2_mp-1522.cif": "3ae9acae5b5234d7d7f67392768c892300a49b82e3fddeffda4ded41a54faa1e",
+        "crystallographic-wyckoff-position-analysis/environment/FeS2_mp-226.cif": "d0cb19046818017de2b8bdd9a8954d6b94a9fab3e13850386c0ce491caa76f1e",
+        "crystallographic-wyckoff-position-analysis/environment/HgSe_mp-1018722.cif": "09ebff1e3268eca09faecf8b53883486df3f8f0fd0f6b965687d48c45e148017",
+        "crystallographic-wyckoff-position-analysis/environment/SiO2_mp-12787.cif": "b0caab25d10a0ec46b0c54c2c2929de9987ea89b3cad430f74fef4723f4a5fee",
+        "crystallographic-wyckoff-position-analysis/environment/SiO2_mp-542814.cif": "98811e46544e2f8104793366eef5d87960dc21e469a1416a0d40720b4856c6da",
+        "crystallographic-wyckoff-position-analysis/environment/SiO2_mp-6945.cif": "f48912f1c741a8ac6d9e1c4655969f0a9d8c41947459461dec45e87b82c9cc48",
+        "crystallographic-wyckoff-position-analysis/environment/SiO2_mp-7000.cif": "1db3c82404d27bdd0dbe79f49c3136b2460dd4f8890ca9833943e7e4f55e7e63",
+        "crystallographic-wyckoff-position-analysis/task.md": "654663a5bde548cb6965379ec553f963749de5fc352ce5bcab0d83e1197f32fe",
+        "crystallographic-wyckoff-position-analysis/verifier/test.sh": "5939ecd309126463f4ada4e8d0b9d13b98ecde05eb6c201c5ab45d6bd36ac0d6",
+        "crystallographic-wyckoff-position-analysis/verifier/test_outputs.py": "ae4650215ef954bd25cbfc348b5c95fab18a9731c85b29745ab2bfe1a9f0adb9"
+      }
+    },
+    {
+      "id": "dialogue-parser",
+      "category": "software-engineering",
+      "difficulty": "easy",
+      "image_digest": "sha256:453de215bf330f57e7dcff3e8b72c439573c811f00c0c36b57029ca336f8973c",
+      "workdir": "/app",
+      "seed_bytes": 22785,
+      "oracle_reward": "1.0",
+      "file_sha256": {
+        "dialogue-parser/environment/Dockerfile": "e0fdab0e028c11d5437caf3b827f10aa65fcf224c8a9689fecc7fa49f3ec92e7",
+        "dialogue-parser/environment/script.txt": "f63dcc28386cb2f963362eb78d40af75eb362945646c3c86e2a699bb2f14b409",
+        "dialogue-parser/task.md": "f96d2d4f1332d6bb55d699e654f05a81334db8015b875af44f6f473565b8a390",
+        "dialogue-parser/verifier/test.sh": "57d2cb2cbd76d173357da476eb525e07678aabbb4b22392563718fe867e12f67",
+        "dialogue-parser/verifier/test_outputs.py": "d0effcfa8ba898260bce69ba8a0c4852f4959a83e9130cc69c13847f0f05b01c"
+      }
+    },
+    {
+      "id": "dynamic-object-aware-egomotion",
+      "category": "industrial-physical-systems",
+      "difficulty": "medium",
+      "image_digest": "sha256:151bdd5e674a07fde6a7b49d5657796b53e0e5e5de7c95624a4bec7816f88dde",
+      "workdir": "/root",
+      "seed_bytes": 938376,
+      "oracle_reward": "1",
+      "file_sha256": {
+        "dynamic-object-aware-egomotion/environment/Dockerfile": "0e5cb183cb4d64403f66fa5579485ba70a8dd109cfa9052d494282e18a25e9e3",
+        "dynamic-object-aware-egomotion/environment/input.mp4": "d25ca708bcc09f7ff10e979775608d2f303cc507def22961a5d9c1833a663441",
+        "dynamic-object-aware-egomotion/task.md": "83e6093c4ea969e48089297f20c7c85d396dbee22a82e39756cf1c7c16e600e5",
+        "dynamic-object-aware-egomotion/verifier/dyn_masks.npz": "920b5689528ed91bc05740485eec4f66620fac0195cf67f86d450c400142f6e1",
+        "dynamic-object-aware-egomotion/verifier/instructions.json": "d7c50a040a546b8d1eeb16238b5beea7305defcda8b44e3b9ce9a4ae089ddf70",
+        "dynamic-object-aware-egomotion/verifier/test.sh": "65db85999d85a335bae22c33bd42bb0976b930ecbed437b8c8a37aac4726d713",
+        "dynamic-object-aware-egomotion/verifier/test_outputs.py": "0b19e77ea7a336b331790d87beb0199bc31fa733d6746060220a2ad2a463994d"
+      }
+    },
+    {
+      "id": "earthquake-plate-calculation",
+      "category": "natural-science",
+      "difficulty": "medium",
+      "image_digest": "sha256:b63b889a9eced0ab404030ee7dce6e0d6beeb614f370eaca0db13103b662cff7",
+      "workdir": "/root",
+      "seed_bytes": 1679074,
+      "oracle_reward": "1",
+      "file_sha256": {
+        "earthquake-plate-calculation/environment/Dockerfile": "ffe7cc9b40c43210daeeb01cbf52fbc7f660ca766682a689ca9897acce8330f4",
+        "earthquake-plate-calculation/environment/PB2002_boundaries.json": "42b3e0876a7e40f133e958ba7ab85f8851b5c693a046fbc3b138e7751863d92a",
+        "earthquake-plate-calculation/environment/PB2002_plates.json": "922918f970baf7e645821a4a728b945dbb5eeac1337d71d087fba021bcc79e21",
+        "earthquake-plate-calculation/environment/earthquakes_2024.json": "55580cfc907cb4fada9e0ca57de17d36399a04936cfe736b81b5f128b0f246ec",
+        "earthquake-plate-calculation/task.md": "7e74700780429be4ca3e2722749224ce761c2e864a3aed97e96fce7f4b2c9d88",
+        "earthquake-plate-calculation/verifier/test.sh": "fe7195562321b71ace6e1f6858994939238cc7ce0ec2d0ae3b610278489a42b7",
+        "earthquake-plate-calculation/verifier/test_outputs.py": "d5ddbf850e17561cc7074bda9d0c5457fd7b263e62179ecdff620337ae3efb14"
+      }
+    },
+    {
+      "id": "econ-detrending-correlation",
+      "category": "finance-economics",
+      "difficulty": "medium",
+      "image_digest": "sha256:380d01f948395f3e7fdf6da4534a700adecb0232bd704a971d135230ce9bab1f",
+      "workdir": "/root",
+      "seed_bytes": 102287,
+      "oracle_reward": "1",
+      "file_sha256": {
+        "econ-detrending-correlation/environment/CPI.xlsx": "b85b623165f078588d5412f99b624c2b7eca9d0fb93ea55039e28b4e2a0f1911",
+        "econ-detrending-correlation/environment/Dockerfile": "8d68f3346fb1d061a25cb6b86da188a79a30a2b0a894cb96424fec07fcd5ddba",
+        "econ-detrending-correlation/environment/ERP-2025-table10.xls": "7ca56ea3978f1ee38b51f35bfa5694f589f728a20d39a97d4e14b78525cb34f6",
+        "econ-detrending-correlation/environment/ERP-2025-table12.xls": "606b5bb00467eed87359dcb1233e28e97979978d2b70c6a228e004640604f814",
+        "econ-detrending-correlation/task.md": "7956e369eb1bce4db2000e3fad9f7d564269505061ccb5c28d21f90ef51a47a4",
+        "econ-detrending-correlation/verifier/test.sh": "c51f1d7aec614fda9fedf6db675921bad464e31cc66151bb40684b874f463223",
+        "econ-detrending-correlation/verifier/test_outputs.py": "7a1dcf2db177d6297e36c7b4ea563518af5c8102031e1d3c9afa04fe8b25b366"
+      }
+    },
+    {
+      "id": "energy-ac-optimal-power-flow",
+      "category": "industrial-physical-systems",
+      "difficulty": "medium",
+      "image_digest": "sha256:e691ce554125e98c024d95c8ff72886472a77895e1c31bc1f4f30f96c1017903",
+      "workdir": "/root",
+      "seed_bytes": 145375,
+      "oracle_reward": "1",
+      "file_sha256": {
+        "energy-ac-optimal-power-flow/environment/Dockerfile": "ce2575cee0f66002fae1cabf01d1b9da64e5fb726f5342333ef2b77fecb123b5",
+        "energy-ac-optimal-power-flow/environment/math-model.md": "e51853ecdaf938b4c7ffdd2c36ec6c81133d93e6d93a435184f9756d32032ac5",
+        "energy-ac-optimal-power-flow/environment/network.json": "89ad13669c77866c25526fed3a89cd2ec08b997e3eaca07c391355974a967873",
+        "energy-ac-optimal-power-flow/task.md": "19cda3fb55a79bbc8bb07f7cfec4a2dbf6dc8ffe67c4ca940cd432f556f8e79b",
+        "energy-ac-optimal-power-flow/verifier/test.sh": "37e038940579be6aca02a6c5567d3749afd848021f91cf264d0c8d97b66144ba",
+        "energy-ac-optimal-power-flow/verifier/test_outputs.py": "6d5ec397bfc3c244e63580ca382134411a3879a4aa6c518570396b5b0097cd47"
+      }
+    },
+    {
+      "id": "energy-market-pricing",
+      "category": "industrial-physical-systems",
+      "difficulty": "hard",
+      "image_digest": "sha256:6516db92f5be4851735042e70b17311317b61f284155666c86f284559513bccc",
+      "workdir": "/root",
+      "seed_bytes": 1431803,
+      "oracle_reward": "1",
+      "file_sha256": {
+        "energy-market-pricing/environment/Dockerfile": "aeaa101f251ae62e378cac31515a502cd07bf4b4beb4f2ee4bb90f75cf4983d0",
+        "energy-market-pricing/environment/network.json": "e2161afc51409365c72738918454a8819630f64ff0238e70ee1f7b30453b4bc9",
+        "energy-market-pricing/task.md": "42b51ce40b3e09bf7db1b4b4fd5e335686b8608dad80591336491c033f640e5f",
+        "energy-market-pricing/verifier/test.sh": "55a257735b8acd4fb23fdd06ebff92593842bb6dc8ee6ec67d60c06eb5382b1a",
+        "energy-market-pricing/verifier/test_outputs.py": "72049be44ff8228ce8380efe5ffcb89adef8629845b762b929570d122b428066"
+      }
+    }
+  ],
+  "skipped": [
+    {
+      "id": "adaptive-cruise-control",
+      "reason": "seed 58070117 bytes exceeds limit"
+    },
+    {
+      "id": "civ6-adjacency-optimizer",
+      "reason": "Dockerfile references skills"
+    },
+    {
+      "id": "court-form-filling",
+      "reason": "seed 41150523 bytes exceeds limit"
+    },
+    {
+      "id": "dapt-intrusion-detection",
+      "reason": "seed 66647004 bytes exceeds limit"
+    },
+    {
+      "id": "data-to-d3",
+      "reason": "seed 1081108443 bytes exceeds limit"
+    },
+    {
+      "id": "debug-trl-grpo",
+      "reason": "verifier failed: /verifier/test.sh: line 9: /logs/verifier/reward.txt: No such file or directory"
+    },
+    {
+      "id": "drone-planning-control",
+      "reason": "Dockerfile references skills"
+    },
+    {
+      "id": "earthquake-phase-association",
+      "reason": "docker build failed: ERROR: failed to build: failed to solve: Canceled: context canceled"
+    },
+    {
+      "id": "edit-pdf",
+      "reason": "seed 27728526 bytes exceeds limit"
+    }
+  ]
+}
