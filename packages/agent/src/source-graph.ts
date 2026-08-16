@@ -1,4 +1,4 @@
-import { opendir, readFile, realpath } from "node:fs/promises";
+import { glob, opendir, readFile, realpath } from "node:fs/promises";
 import { builtinModules, createRequire, findPackageJSON } from "node:module";
 import { basename, dirname, extname, isAbsolute, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -6,6 +6,45 @@ import { init, parse } from "es-module-lexer";
 import { sha256, stableStringify } from "./context-ir.js";
 
 export type SourceManifestEntry = { name: string; sha256: string };
+
+/**
+ * Watched project inputs: the file patterns whose contents join the
+ * source-graph hash, dev snapshot staging, and lock invalidation. Markdown is
+ * a project input under the agent-directory convention (instructions.md,
+ * skills/*.md), so an md edit invalidates the lock and reloads dev like any
+ * source change.
+ */
+export const PROJECT_SOURCE_PATTERNS = [
+  "src/**/*.ts",
+  "src/**/*.tsx",
+  "src/**/*.js",
+  "src/**/*.mjs",
+  "src/**/*.cjs",
+  "src/**/*.json",
+  "**/*.md",
+] as const;
+
+const PROJECT_SOURCE_EXCLUDED_DIRS =
+  /(?:^|\/|\\)(?:node_modules|\.git|dist|coverage|\.turbo)(?:\/|\\|$)/;
+
+function excludedProjectSourcePath(path: string): boolean {
+  return PROJECT_SOURCE_EXCLUDED_DIRS.test(path) ||
+    /^(?:node_modules|\.git|dist|coverage|\.turbo)$/.test(path);
+}
+
+/** Every watched project input under `root`, as absolute paths. */
+export async function projectSourceFiles(root: string): Promise<string[]> {
+  const files: string[] = [];
+  for (const pattern of PROJECT_SOURCE_PATTERNS) {
+    for await (const path of glob(pattern, {
+      cwd: root,
+      exclude: (name: string) => excludedProjectSourcePath(name),
+    })) {
+      files.push(resolve(root, path));
+    }
+  }
+  return files;
+}
 
 const SOURCE_EXTENSIONS = [".ts", ".tsx", ".mts", ".cts", ".js", ".mjs", ".cjs"];
 const RESOLUTION_EXTENSIONS = [...SOURCE_EXTENSIONS, ".json"];

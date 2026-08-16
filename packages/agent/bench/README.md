@@ -45,9 +45,9 @@ paired execution can establish compiler behavior or runtime work reduction.
 From the repository root:
 
 ```bash
-node packages/agent/bench/compiler-replay.mjs --check
-node packages/agent/bench/compiler-replay.mjs
-node --test packages/agent/bench/tests/*.test.mjs
+node public/agent/bench/compiler-replay.mjs --check
+node public/agent/bench/compiler-replay.mjs
+node --test public/agent/bench/tests/*.test.mjs
 ```
 
 The normal run writes `compiler-replay-report.json`. `--check` performs all

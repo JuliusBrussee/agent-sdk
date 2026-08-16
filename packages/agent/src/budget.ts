@@ -150,6 +150,7 @@ export function callCeilingCost(
   denomination: BudgetDenomination,
   call: CallCeiling,
   outputTokens: number,
+  accountingAt?: Date,
 ): number | undefined {
   if (!Number.isSafeInteger(call.inputTokenCeiling) || call.inputTokenCeiling < 0 ||
       !Number.isSafeInteger(outputTokens) || outputTokens < 0) {
@@ -160,6 +161,7 @@ export function callCeilingCost(
     `${call.provider}/${call.model}`,
     call.inputTokenCeiling,
     outputTokens,
+    accountingAt,
   );
 }
 
@@ -168,15 +170,15 @@ export function callCeilingCost(
  * Pure: unlike {@link planCall} it takes nothing, so it is safe to ask at any
  * point that is only deciding, not spending.
  */
-export function callFitsBudget(meter: BudgetMeter, call: CallCeiling): boolean {
+export function callFitsBudget(meter: BudgetMeter, call: CallCeiling, accountingAt?: Date): boolean {
   if (meter.revoked || meter.capBreached) return false;
-  const full = callCeilingCost(meter.denomination, call, call.outputTokenCap);
+  const full = callCeilingCost(meter.denomination, call, call.outputTokenCap, accountingAt);
   return full !== undefined && full <= meter.remaining();
 }
 
 /** True when the public catalog prices this model, so a USD budget can bind on it. */
-export function modelIsPriced(provider: string, model: string): boolean {
-  return catalogSearchCeiling(`${provider}/${model}`, 0, 0) !== undefined;
+export function modelIsPriced(provider: string, model: string, accountingAt?: Date): boolean {
+  return catalogSearchCeiling(`${provider}/${model}`, 0, 0, accountingAt) !== undefined;
 }
 
 /**
@@ -441,6 +443,45 @@ export class BudgetMeter {
   get calls(): number {
     return this.callIndex;
   }
+
+  /**
+   * Preload spend journaled by a prior attempt of a durable run, in contract
+   * order: tranches first (money released), then settled spend (money spent),
+   * then the call index — so `remaining()` after restore is what the crashed
+   * process saw between calls. Only a fresh meter may restore: settled money
+   * from the journal and settled money from this process must never blend
+   * ambiguously. Breach state is recomputed from the amounts, never trusted
+   * from the journal.
+   */
+  restorePrior(prior: {
+    settled: number;
+    calls: number;
+    tranches: readonly BudgetTranche[];
+  }): void {
+    if (this.settledAmount !== 0 || this.reservedAmount !== 0 ||
+        this.callIndex !== 0 || this.trancheLog.length > 0) {
+      throw new Error("cave_durable_meter_not_fresh");
+    }
+    for (const tranche of prior.tranches) {
+      if (!Number.isFinite(tranche.amount) || tranche.amount <= 0) {
+        throw new Error("cave_durable_journal_corrupt: invalid journaled tranche");
+      }
+      this.releasedAmount += tranche.amount;
+      // `release()` refuses to fund past `max`; a journal that claims more
+      // was released than the contract allows is corrupt, not a bigger
+      // budget.
+      if (this.releasedAmount > this.max) {
+        throw new Error("cave_durable_journal_corrupt: journaled tranches exceed the budget max");
+      }
+      this.trancheLog.push(Object.freeze({ ...tranche }));
+    }
+    if (!Number.isFinite(prior.settled) || prior.settled < 0) {
+      throw new Error("cave_durable_journal_corrupt: invalid journaled settled amount");
+    }
+    this.settledAmount += prior.settled;
+    if (Number.isSafeInteger(prior.calls) && prior.calls > 0) this.callIndex = prior.calls;
+    if (this.settledAmount > this.max) this.breachedFlag = true;
+  }
 }
 
 /**
@@ -557,6 +598,38 @@ export interface RunReceipt {
   readonly breakers: readonly BreakerEvent[];
   /** Every context compaction, with its real cost and its modeled effect kept apart. */
   readonly compactions: readonly ReceiptCompaction[];
+  /** Present only on a resumed durable run. */
+  readonly resume?: ReceiptResume;
+}
+
+/**
+ * Summary of the attempts a durable run made before this process. Per-call
+ * detail for prior attempts lives in the run's journal, not here: `calls`
+ * above lists only this attempt's calls, while `totalEstimatedUsd`,
+ * `totalTokens`, and `spent` cover the whole logical run so the receipt and
+ * the result can never disagree about what the run cost.
+ */
+export interface ReceiptResume {
+  /** Total attempts including this one (a first resume reports 2). */
+  readonly attempts: number;
+  /** Provider calls settled by prior attempts, across the whole agent tree. */
+  readonly priorCalls: number;
+  /** Estimated list-price subtotal of prior attempts' settled calls. */
+  readonly priorEstimatedUsd: number;
+  readonly priorTokens: number;
+  /** True when any prior attempt's call went unpriced; rolls into `unpriced` above. */
+  readonly priorUnpriced: boolean;
+  /** Prior settled spend in the budget's denomination; `undefined` without a budget. */
+  readonly priorSettled: number | undefined;
+  /**
+   * Provider calls that were in flight at a crash: their intent was journaled
+   * but their usage never came back, so the provider may have billed money
+   * this ledger could not see. The at-least-once ceiling, surfaced instead of
+   * hidden — these calls appear in NO other figure on this receipt.
+   */
+  readonly possibleDoubleCountCalls: number;
+  /** True when the crash left a partial turn that resume discarded and re-drove. */
+  readonly discardedPartialTurn: boolean;
 }
 
 /**
@@ -625,6 +698,7 @@ export class ReceiptRecorder {
     stopReason: RunStopReason;
     meter: BudgetMeter | undefined;
     breakers?: readonly BreakerEvent[];
+    resume?: ReceiptResume;
   }): RunReceipt {
     const ownUsd = this.callLog.reduce((total, call) => total + call.estimatedUsd, 0);
     const ownTokens = this.callLog.reduce(
@@ -664,10 +738,15 @@ export class ReceiptRecorder {
       // count the same dollars twice and can print a figure larger than the
       // whole tree spent. Each child's receipt carries its own.
       overspent: input.meter?.overspent ?? 0,
-      totalEstimatedUsd: roundUsd(ownUsd + nestedUsd),
-      totalTokens: ownTokens + nestedTokens,
+      // A resumed run's totals cover the whole logical run: prior attempts'
+      // settled spend is folded in (their per-call detail is in the journal,
+      // summarized under `resume`), so the receipt cannot under-report a run
+      // just because it crossed a process boundary.
+      totalEstimatedUsd: roundUsd(ownUsd + nestedUsd + (input.resume?.priorEstimatedUsd ?? 0)),
+      totalTokens: ownTokens + nestedTokens + (input.resume?.priorTokens ?? 0),
       unpriced: this.callLog.some((call) => call.unpriced) ||
-        this.subagentLog.some((child) => child.unpriced),
+        this.subagentLog.some((child) => child.unpriced) ||
+        (input.resume?.priorUnpriced ?? false),
       calls: Object.freeze([...this.callLog]),
       tools: Object.freeze([...this.toolLog].map(([name, entry]) => Object.freeze({
         name,
@@ -698,6 +777,7 @@ export class ReceiptRecorder {
         modeledBasis: "modeled" as const,
         workingCallsAfter: Math.max(0, this.callLog.length - entry.callsBefore),
       }))),
+      ...(input.resume === undefined ? {} : { resume: Object.freeze({ ...input.resume }) }),
     });
   }
 }
@@ -865,21 +945,22 @@ export function planCall(
   meter: BudgetMeter | undefined,
   call: CallCeiling,
   compactionAvailable: boolean,
+  accountingAt?: Date,
 ): CallPlan {
   if (meter === undefined) {
     return { action: "proceed", reservation: undefined, outputTokenCap: call.outputTokenCap };
   }
   if (meter.revoked) return { action: "stop", reason: "wallet_revoked" };
-  const full = callCeilingCost(meter.denomination, call, call.outputTokenCap);
+  const full = callCeilingCost(meter.denomination, call, call.outputTokenCap, accountingAt);
   if (full === undefined) return { action: "stop", reason: "budget_exhausted" };
   const fullReservation = meter.reserve(full, call.outputTokenCap);
   if (fullReservation !== undefined) {
     return { action: "proceed", reservation: fullReservation, outputTokenCap: call.outputTokenCap };
   }
   if (compactionAvailable) return { action: "compact" };
-  const clampedCap = affordableOutputTokens(meter, call);
+  const clampedCap = affordableOutputTokens(meter, call, accountingAt);
   if (clampedCap === undefined) return { action: "stop", reason: "budget_exhausted" };
-  const clampedCost = callCeilingCost(meter.denomination, call, clampedCap);
+  const clampedCost = callCeilingCost(meter.denomination, call, clampedCap, accountingAt);
   if (clampedCost === undefined) return { action: "stop", reason: "budget_exhausted" };
   const clampedReservation = meter.reserve(clampedCost, clampedCap);
   if (clampedReservation === undefined) return { action: "stop", reason: "budget_exhausted" };
@@ -896,17 +977,18 @@ export function planCall(
 export function affordableOutputTokens(
   meter: BudgetMeter,
   call: CallCeiling,
+  accountingAt?: Date,
 ): number | undefined {
   const remaining = meter.remaining();
   const floor = meter.outputFloorTokens;
   if (call.outputTokenCap < floor) return undefined;
-  const floorCost = callCeilingCost(meter.denomination, call, floor);
+  const floorCost = callCeilingCost(meter.denomination, call, floor, accountingAt);
   if (floorCost === undefined || floorCost > remaining) return undefined;
   let low = floor;
   let high = call.outputTokenCap;
   while (low < high) {
     const middle = low + Math.ceil((high - low) / 2);
-    const cost = callCeilingCost(meter.denomination, call, middle);
+    const cost = callCeilingCost(meter.denomination, call, middle, accountingAt);
     if (cost !== undefined && cost <= remaining) low = middle;
     else high = middle - 1;
   }

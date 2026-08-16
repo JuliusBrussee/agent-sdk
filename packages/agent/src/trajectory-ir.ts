@@ -1,5 +1,5 @@
 import { sha256, stableStringify } from "./context-ir.js";
-import { catalogCost } from "./catalog.js";
+import { catalogCost, catalogPriceFingerprint } from "./catalog.js";
 import type { ContextKind, ToolEffect } from "./primitives.js";
 
 export const TRAJECTORY_IR_SCHEMA_VERSION = 1 as const;
@@ -57,6 +57,10 @@ export interface NormalizeTrajectoryOptions {
   readonly split: WorkloadSplit;
   /** Tool declarations keyed by runtime name. Missing tools become `external`. */
   readonly toolEffects?: Readonly<Record<string, ToolEffect>>;
+  /** Compiler-owned boundaries for a live Caveman run. Scheduled imported
+   * traces without both times remain unpriced. */
+  readonly accountingStartedAt?: Date;
+  readonly accountingFinishedAt?: Date;
 }
 
 const SPLITS: readonly WorkloadSplit[] = ["profile", "development", "holdout"];
@@ -138,7 +142,7 @@ function projectCavemanResult(
   const cacheReadTokens = nonNegativeInteger(result.cacheReadTokens, "cache_read_tokens");
   const cacheWriteTokens = nonNegativeInteger(result.cacheWriteTokens, "cache_write_tokens");
   const reasoningTokens = nonNegativeInteger(result.reasoningTokens, "reasoning_tokens");
-  const repriced = usageBasis === "provider_reported" ? catalogCost({
+  const usage = {
     provider,
     model,
     inputTokens,
@@ -146,7 +150,17 @@ function projectCavemanResult(
     cacheReadTokens,
     cacheWriteTokens,
     reasoningTokens,
-  }) : { priced: false, usd: 0 };
+  };
+  const atStart = catalogCost(usage, options.accountingStartedAt);
+  const atFinish = catalogCost(usage, options.accountingFinishedAt);
+  const startFingerprint = catalogPriceFingerprint(provider, model, options.accountingStartedAt);
+  const finishFingerprint = catalogPriceFingerprint(provider, model, options.accountingFinishedAt);
+  // Never trust a caller's dollar field. Reprice official token buckets at the
+  // owned run boundaries, and reject a recurring price transition.
+  const repriced = usageBasis === "provider_reported" && atStart.priced && atFinish.priced &&
+    startFingerprint !== undefined && startFingerprint === finishFingerprint && atStart.usd === atFinish.usd
+    ? atStart
+    : { priced: false, usd: 0 };
   const calls = Array.isArray(receipt.calls) ? receipt.calls.length : invalidNumber("model_calls");
   return {
     schema_version: TRAJECTORY_IR_SCHEMA_VERSION,
@@ -400,6 +414,12 @@ function validateOptions(options: NormalizeTrajectoryOptions): void {
     throw new Error("cave_trajectory_agent_digest_invalid");
   }
   if (!SPLITS.includes(options.split)) throw new Error("cave_trajectory_split_invalid");
+  const boundaries = [options.accountingStartedAt, options.accountingFinishedAt];
+  if (boundaries.some((value) => value !== undefined &&
+    (!(value instanceof Date) || Number.isNaN(value.getTime()))) ||
+    (boundaries[0] === undefined) !== (boundaries[1] === undefined)) {
+    throw new Error("cave_trajectory_accounting_time_invalid");
+  }
 }
 
 function looksLikeCavemanRunResult(value: Record<string, unknown>): boolean {

@@ -11,6 +11,7 @@ import {
   catalogCost,
   catalogCostForPrice,
   catalogModelRuntimeEligible,
+  catalogPriceFingerprint,
   catalogRuntimeModel,
   catalogSearchCeiling,
 } from "../dist/catalog.js";
@@ -21,13 +22,13 @@ const catalogYamlPath = [
   resolve(packageRoot, "../shared/provider-catalog/catalog/current.yaml"),
   resolve(packageRoot, "../../shared/provider-catalog/catalog/current.yaml"),
 ].find((candidate) => existsSync(candidate));
-assert.ok(catalogYamlPath, "provider catalog must exist in standalone repository");
+assert.ok(catalogYamlPath, "provider catalog must exist beside public/ or repository root");
 const catalogModulePath = resolve(packageRoot, "src/catalog.ts");
 const generatedManifestPath = [
   resolve(packageRoot, "../shared/provider-catalog/generated/manifest.json"),
   resolve(packageRoot, "../../shared/provider-catalog/generated/manifest.json"),
 ].find((candidate) => existsSync(candidate));
-assert.ok(generatedManifestPath, "generated provider catalog manifest must exist in standalone repository");
+assert.ok(generatedManifestPath, "generated provider catalog manifest must exist beside public/ or repository root");
 
 test("CATALOG_SHA256 pins the exact provider-catalog bytes it was generated from", async () => {
   const bytes = await readFile(catalogYamlPath);
@@ -129,6 +130,46 @@ test("Anthropic thinking uses the explicit provider-attested output-token rate",
     reasoningTokens: 1_000_000,
   });
   assert.deepEqual(reasoned, { priced: true, usd: 5 });
+});
+
+test("DeepSeek recurring UTC prices use explicit half-open request time and otherwise fail closed", () => {
+  const flash = {
+    provider: "deepseek",
+    model: "deepseek-v4-flash",
+    inputTokens: 1_000_000,
+    outputTokens: 1_000_000,
+    cacheReadTokens: 1_000_000,
+    cacheWriteTokens: 0,
+    reasoningTokens: 1_000_000,
+  };
+  const cases = [
+    ["2026-08-16T15:59:59Z", 0.4228],
+    ["2026-08-16T16:00:00Z", 0.887],
+    ["2026-08-17T00:59:59Z", 0.887],
+    ["2026-08-17T01:00:00Z", 1.774],
+    ["2026-08-17T03:59:59Z", 1.774],
+    ["2026-08-17T04:00:00Z", 0.887],
+    ["2026-08-17T05:59:59Z", 0.887],
+    ["2026-08-17T06:00:00Z", 1.774],
+    ["2026-08-17T09:59:59Z", 1.774],
+    ["2026-08-17T10:00:00Z", 0.887],
+  ];
+  for (const [at, usd] of cases) {
+    assert.deepEqual(catalogCost(flash, new Date(at)), { priced: true, usd }, at);
+  }
+  assert.deepEqual(catalogCost(flash), { priced: false, usd: 0 });
+  assert.equal(catalogSearchCeiling("deepseek/deepseek-v4-flash", 1_000_000, 1_000_000), undefined);
+  assert.equal(catalogSearchCeiling(
+    "deepseek/deepseek-v4-flash", 1_000_000, 1_000_000, new Date("2026-08-17T01:00:00Z"),
+  ), 1.76);
+  const offPeak = catalogPriceFingerprint("deepseek", flash.model, new Date("2026-08-17T00:59:59Z"));
+  const peak = catalogPriceFingerprint("deepseek", flash.model, new Date("2026-08-17T01:00:00Z"));
+  assert.ok(offPeak?.includes(PRICE_PROVENANCE_SHA256));
+  assert.notEqual(offPeak, peak);
+  assert.equal(
+    peak,
+    catalogPriceFingerprint("deepseek", flash.model, new Date("2026-08-17T03:59:59Z")),
+  );
 });
 
 test("nullable optional rates fail closed only when their token class is observed", () => {

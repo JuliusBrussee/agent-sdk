@@ -14,3 +14,16 @@ Initial standalone repository assembled 2026-08-13 from three local sources:
 Source repositories remain untouched. This repository becomes standalone Agent
 SDK development surface; future changes should land here first, then be mirrored
 out deliberately.
+
+## 2026-08-16 v2 sync
+
+Second tree snapshot from `Caveman-Cloud` master at `0cee35ed` (Agent SDK v2:
+convention loader, TS cache planner, skills, durable execution on an own
+journal substrate, receipts/doctor polish). Synced `public/agent` →
+`packages/agent`, `public/create-caveman-agent` → `packages/create-caveman-agent`,
+`public/evals/src` → `packages/evals/src`, plus the vendored provider-catalog
+snapshot, four wire schemas, and the catalog generator. `catalog.ts` regenerated
+in-repo; repository URLs (package.json + tests) stay pinned to
+`caveman-agent-sdk`; replay provenance path stays on the `packages/agent`
+layout. Full suite green after sync: 507 runtime + 10 replay + 11 initializer +
+2 example tests.

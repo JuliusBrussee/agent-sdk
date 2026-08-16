@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { CaveBuildLock, CavePlan } from "./build.js";
+import { catalogPriceFingerprint } from "./catalog.js";
 import { sha256, stableStringify, type ContextIR } from "./context-ir.js";
 import {
   prepareLockedHarnessExecution,
@@ -77,7 +78,13 @@ const HARNESS_RESULT_KEYS = [
 /** Revalidate a caller-controlled adapter result before exposing any claim. */
 export function validateHarnessResult(
   value: unknown,
-  input: { readonly adapter: HarnessAdapter; readonly request: HarnessRequest },
+  input: {
+    readonly adapter: HarnessAdapter;
+    readonly request: HarnessRequest;
+    /** Trusted times captured around adapter.run by the owning pipeline. */
+    readonly accountingStartedAt: Date;
+    readonly accountingFinishedAt: Date;
+  },
 ): HarnessResult {
   if (!isRecord(value) || !exactObjectKeys(value, HARNESS_RESULT_KEYS)) {
     throw new Error("cave_harness_result_shape_invalid");
@@ -92,7 +99,12 @@ export function validateHarnessResult(
     plan: input.request.plan,
   });
   validateTransformEvidence(input.request, prepared.plan);
-  validateExecution(execution, prepared.plan);
+  validateExecution(
+    execution,
+    prepared.plan,
+    input.accountingStartedAt,
+    input.accountingFinishedAt,
+  );
   if (canonicalStringSet(execution.evaluatedTransformIDs) !==
         canonicalStringSet(input.request.evaluatedTransformIDs) ||
       canonicalStringSet(execution.appliedTransformIDs) !==
@@ -193,9 +205,11 @@ export function createHarnessAdapter(
       }
       if (isAborted(frozenRequest.signal)) throw new Error("cave_harness_aborted");
       validateTransformEvidence(frozenRequest, frozenRequest.plan);
+      const accountingStartedAt = new Date();
       const execution = snapshotExecution(await invoke(frozenRequest));
+      const accountingFinishedAt = new Date();
       if (isAborted(frozenRequest.signal)) throw new Error("cave_harness_aborted");
-      validateExecution(execution, frozenRequest.plan);
+      validateExecution(execution, frozenRequest.plan, accountingStartedAt, accountingFinishedAt);
       return {
         terminal: execution.terminal,
         text: execution.text,
@@ -269,6 +283,7 @@ export function createVercelAISDKAdapter(
     method: "generate",
     usage: "LanguageModelUsage.v4",
   }, async (request) => {
+    const accountingAt = new Date();
     const startedAt = performance.now();
     const response = await agent.generate({
       prompt: request.prompt,
@@ -286,6 +301,7 @@ export function createVercelAISDKAdapter(
       model: actualModel,
       usage: usageFromAISDK(response.usage, request.plan.reasoning !== "none"),
       latencyMs: Math.round(performance.now() - startedAt),
+      accountingAt,
     });
   });
 }
@@ -313,6 +329,7 @@ export function createEveAdapter(
     method: "send.result",
     usage: "step.completed.data.usage",
   }, async (request) => {
+    const accountingAt = new Date();
     const startedAt = performance.now();
     const response = await session.send({
       message: request.prompt,
@@ -332,6 +349,7 @@ export function createEveAdapter(
       model: identity.model,
       usage,
       latencyMs: Math.round(performance.now() - startedAt),
+      accountingAt,
     });
   });
 }
@@ -374,6 +392,7 @@ export function createMastraAdapter(
     usage: "FullOutput.totalUsage",
     ...(maxSteps === undefined ? {} : { preExecutionControls: { maxSteps } }),
   }, async (request) => {
+    const accountingAt = new Date();
     const startedAt = performance.now();
     const response = await agent.generate(request.prompt, {
       maxProcessorRetries: 0,
@@ -393,6 +412,7 @@ export function createMastraAdapter(
       model: actualModel,
       usage: usageFromMastra(response.totalUsage ?? response.usage, request.plan.reasoning !== "none"),
       latencyMs: Math.round(performance.now() - startedAt),
+      accountingAt,
     });
   });
 }
@@ -413,6 +433,7 @@ function harnessExecution(input: {
   model: string;
   usage: NormalizedUsage;
   latencyMs: number;
+  accountingAt: Date;
 }): HarnessExecution {
   const expected = expectedProviderModel(input.request.plan);
   if (input.provider !== expected.provider || input.model !== expected.model) {
@@ -422,7 +443,7 @@ function harnessExecution(input: {
     provider: input.provider,
     model: input.model,
     ...input.usage,
-  }, { requirePriced: true });
+  }, { requirePriced: true, accountingAt: input.accountingAt });
   return {
     terminal: true,
     text: input.text,
@@ -760,14 +781,39 @@ function validateTransformEvidence(
   }
 }
 
-function validateExecution(execution: HarnessExecution, plan: CavePlan): void {
+function validateExecution(
+  execution: HarnessExecution,
+  plan: CavePlan,
+  accountingStartedAt: Date,
+  accountingFinishedAt: Date,
+): void {
   const [provider, ...modelParts] = plan.model.split("/");
   const model = modelParts.join("/");
   try {
+    const startFingerprint = catalogPriceFingerprint(
+      provider ?? "",
+      model,
+      accountingStartedAt,
+    );
+    const finishFingerprint = catalogPriceFingerprint(
+      provider ?? "",
+      model,
+      accountingFinishedAt,
+    );
+    if (startFingerprint === undefined || startFingerprint !== finishFingerprint) {
+      throw new Error("cave_provider_price_window_changed");
+    }
     validateProviderUsage(execution, {
       expected: { provider: provider ?? "", model },
       reportedCostUsd: execution.costUsd,
       requirePriced: true,
+      accountingAt: accountingStartedAt,
+    });
+    validateProviderUsage(execution, {
+      expected: { provider: provider ?? "", model },
+      reportedCostUsd: execution.costUsd,
+      requirePriced: true,
+      accountingAt: accountingFinishedAt,
     });
   } catch {
     throw new Error("cave_harness_incomplete_evidence");

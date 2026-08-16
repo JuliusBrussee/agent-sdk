@@ -4,6 +4,16 @@ import type {
   StandardSchemaV1,
 } from "@standard-schema/spec";
 
+const TOOL_IMPLEMENTATION_SOURCE = Symbol.for(
+  "@caveman-ai/agent:tool-implementation-source",
+);
+/**
+ * Marks a definition whose input is a Standard Schema, so a wrapper that can
+ * only re-check the converted draft-07 JSON Schema (see `routine()`) can refuse
+ * rather than silently drop the vendor's refinements and transforms.
+ */
+const TOOL_STANDARD_SCHEMA = Symbol.for("@caveman-ai/agent:tool-standard-schema");
+
 export const AUTO = Symbol.for("@caveman-ai/agent:auto");
 export type Auto = { readonly kind: "auto"; readonly [AUTO]: true };
 
@@ -190,16 +200,26 @@ export function tool(
       return options.execute(validated.value, signal);
     },
   } as const;
-  Object.defineProperty(
-    definition,
-    Symbol.for("@caveman-ai/agent:tool-implementation-source"),
-    {
-      value: Function.prototype.toString.call(options.execute),
+  // A wrapper (`routine()`) whose own `execute` source is identical for every
+  // instance may declare the source that actually identifies it; otherwise the
+  // closure's own text is the identity that lock/drift/durable checks fold in.
+  const declaredSource = Reflect.get(options, TOOL_IMPLEMENTATION_SOURCE);
+  Object.defineProperty(definition, TOOL_IMPLEMENTATION_SOURCE, {
+    value: typeof declaredSource === "string"
+      ? declaredSource
+      : Function.prototype.toString.call(options.execute),
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  });
+  if (standard !== undefined) {
+    Object.defineProperty(definition, TOOL_STANDARD_SCHEMA, {
+      value: true,
       enumerable: false,
       configurable: false,
       writable: false,
-    },
-  );
+    });
+  }
   return Object.freeze(definition);
 }
 
@@ -412,6 +432,7 @@ export function output<T extends TSchema | undefined = undefined>(options: {
 
 export type QualityGrader =
   | { type: "contains"; fragments: string[] }
+  | { type: "not_contains"; fragments: string[] }
   | { type: "tool_called"; tools: string[] }
   | { type: "exact_match"; expected: string }
   | { type: "json_schema"; schema: TSchema };
@@ -461,15 +482,15 @@ export function evalFixture(options: {
     throw new Error("caveman agent: eval split must be profile, development, or holdout");
   }
   if (options.quality.length === 0) throw new Error("caveman agent: eval needs at least one quality grader");
-  const known = new Set(["contains", "tool_called", "exact_match", "json_schema"]);
+  const known = new Set(["contains", "not_contains", "tool_called", "exact_match", "json_schema"]);
   for (const grader of options.quality) {
     if (!known.has(grader.type)) {
       throw new Error(`caveman agent: unknown grader ${(grader as { type: string }).type}`);
     }
-    if (grader.type === "contains" &&
+    if ((grader.type === "contains" || grader.type === "not_contains") &&
         (grader.fragments.length === 0 || grader.fragments.some((fragment) =>
           typeof fragment !== "string" || fragment.trim() === ""))) {
-      throw new Error("caveman agent: contains grader needs non-empty fragments");
+      throw new Error(`caveman agent: ${grader.type} grader needs non-empty fragments`);
     }
     if (grader.type === "tool_called" &&
         (grader.tools.length === 0 || grader.tools.some((name) =>

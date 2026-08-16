@@ -1,0 +1,61 @@
+{
+  "schema": "caveman.agent.receipt-print-fixture.v1",
+  "runId": "ticket-4711",
+  "agentId": "support-bot",
+  "basis": "estimated_list_price_subtotal",
+  "claimBasis": "inferred",
+  "stopReason": "complete",
+  "denomination": "usd",
+  "max": 0.05,
+  "released": 0.05,
+  "spent": 0.0107,
+  "capBreached": false,
+  "overspent": 0,
+  "totalEstimatedUsd": 0.0107,
+  "totalTokens": 15304,
+  "unpriced": false,
+  "calls": [
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "inputTokens": 250,
+      "outputTokens": 90,
+      "cacheReadTokens": 12800,
+      "cacheWriteTokens": 0,
+      "reasoningTokens": 0,
+      "estimatedUsd": 0.00406,
+      "unpriced": false,
+      "usageBasis": "provider_reported"
+    },
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "inputTokens": 140,
+      "outputTokens": 50,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0,
+      "reasoningTokens": 0,
+      "estimatedUsd": 0.00078,
+      "unpriced": false,
+      "usageBasis": "provider_reported"
+    }
+  ],
+  "tools": [],
+  "subagents": [],
+  "tranches": [],
+  "breakers": [],
+  "compactions": [],
+  "resume": {
+    "attempts": 2,
+    "priorCalls": 2,
+    "priorEstimatedUsd": 0.00586,
+    "priorTokens": 1974,
+    "priorUnpriced": false,
+    "priorSettled": 0.00586,
+    "possibleDoubleCountCalls": 1,
+    "discardedPartialTurn": true
+  },
+  "mode": "observe-only",
+  "durationMs": 5100,
+  "receiptPath": ".caveman/runs/2026-08-15T09-30-02/receipt.json"
+}

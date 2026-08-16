@@ -263,7 +263,11 @@ async function runClaudeAgentWithOptions(
           // presence. A subscription or unknown regime cannot authorize a USD
           // cap because no per-token dollar charge is proven.
           if (options.maxBudgetUsd !== undefined && credentialRegime !== "metered") {
-            throw new Error("cave_budget_denomination_unavailable");
+            // F8 message shaping: the refusal is unchanged; the message names
+            // the fix instead of only the wire code.
+            throw new Error(
+              `cave_budget_denomination_unavailable: the Claude credential the SDK selected (${message.apiKeySource}) is not a positively identified metered API key, so maxBudgetUsd would meter fiction — set ANTHROPIC_API_KEY, or drop maxBudgetUsd (token counts still report)`,
+            );
           }
           assistantModel ??= message.model;
         }

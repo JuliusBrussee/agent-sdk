@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
+import { mkdtempSync } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { test } from "node:test";
+
+// The workspace-leak check reads the WHOLE temp directory, so any other test
+// file spawning a sandboxed tool at the same moment shows up in one snapshot
+// and not the other. `node --test` runs files in parallel, so this process
+// gets its own temp root before anything allocates a workspace in it.
+process.env.TMPDIR = process.env.TMP = process.env.TEMP =
+  mkdtempSync(`${tmpdir()}/caveman-agent-credentials-`);
 
 import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
 import {

@@ -15,7 +15,7 @@
     "schema": { "const": "caveman.agent.run-receipt.v1" },
     "runId": {
       "type": "string",
-      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
     },
     "agentId": { "type": "string", "minLength": 1 },
     "basis": { "const": "estimated_list_price_subtotal" },
@@ -58,7 +58,8 @@
     "compactions": {
       "type": "array",
       "items": { "$ref": "#/$defs/compaction" }
-    }
+    },
+    "resume": { "$ref": "#/$defs/resume" }
   },
   "$defs": {
     "nonNegativeInteger": { "type": "integer", "minimum": 0 },
@@ -172,6 +173,25 @@
         "modeledNetTokens": { "type": "number" },
         "modeledBasis": { "const": "modeled" },
         "workingCallsAfter": { "$ref": "#/$defs/nonNegativeInteger" }
+      }
+    },
+    "resume": {
+      "description": "Summary of a durable run's prior attempts; present only on resumed runs. Prior per-call detail lives in the run journal — totalEstimatedUsd, totalTokens, and spent cover the whole logical run. possibleDoubleCountCalls are in-flight calls a crash made unaccountable; they appear in no other figure.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "attempts", "priorCalls", "priorEstimatedUsd", "priorTokens",
+        "priorUnpriced", "possibleDoubleCountCalls", "discardedPartialTurn"
+      ],
+      "properties": {
+        "attempts": { "type": "integer", "minimum": 2 },
+        "priorCalls": { "$ref": "#/$defs/nonNegativeInteger" },
+        "priorEstimatedUsd": { "type": "number", "minimum": 0 },
+        "priorTokens": { "$ref": "#/$defs/nonNegativeInteger" },
+        "priorUnpriced": { "type": "boolean" },
+        "priorSettled": { "type": "number", "minimum": 0 },
+        "possibleDoubleCountCalls": { "$ref": "#/$defs/nonNegativeInteger" },
+        "discardedPartialTurn": { "type": "boolean" }
       }
     }
   }

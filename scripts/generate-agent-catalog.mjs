@@ -1,14 +1,14 @@
 #!/usr/bin/env node
-// Generates packages/agent/src/catalog.ts from typed JSON artifact compiled from
-// this repository's pinned provider-catalog source of truth.
+// Generates public/agent/src/catalog.ts from the typed JSON artifact compiled
+// from the repo's single provider-catalog source of truth.
 //
 // The generated module carries a truthful CATALOG_SHA256 (the sha256 of the
-// catalog bytes it was generated from). packages/agent/tests/catalog.drift.runtime.mjs
+// catalog bytes it was generated from). public/agent/tests/catalog.drift.runtime.mjs
 // recomputes both the digest and the rendered module, so an edited catalog fails
 // the suite until this script is re-run.
 //
 // Usage:
-//   node scripts/generate-agent-catalog.mjs            # write packages/agent/src/catalog.ts
+//   node scripts/generate-agent-catalog.mjs            # write public/agent/src/catalog.ts
 //   node scripts/generate-agent-catalog.mjs --out FILE # write elsewhere
 //   node scripts/generate-agent-catalog.mjs --check    # exit 1 if the file is stale
 //
@@ -39,7 +39,7 @@ const artifactCandidates = [
 ];
 export const ARTIFACT_PATH = artifactCandidates.find((candidate) => existsSync(candidate)) ?? artifactCandidates[0];
 
-const CATALOG_LABEL = "packages/shared/provider-catalog/catalog/current.yaml";
+const CATALOG_LABEL = "public/shared/provider-catalog/catalog/current.yaml";
 const GENERATOR_LABEL = "scripts/generate-agent-catalog.mjs";
 
 // Catalog's own region-agnostic marker. catalog/catalog.go uses same
@@ -121,15 +121,18 @@ export function selectRows(rows, label = CATALOG_LABEL) {
     }
     if (seenPrices.has(key)) throw new Error(`${label}: duplicate region-agnostic row ${key}`);
     seenPrices.add(key);
+    const mode = cacheMode(row.cache_profile, key, label);
+    const schedule = recurringUTCPricing(row.recurring_utc_pricing, mode, key, label);
     selected.push({
       key,
       price: {
         inputPerMillion: input,
         outputPerMillion: output,
-        cacheMode: cacheMode(row.cache_profile, key, label),
+        cacheMode: mode,
         cacheReadPerMillion: rate(row.pricing.cache_read_input_per_million, `${key}.cache_read_input_per_million`, label),
         cacheWritePerMillion: rate(row.pricing.cache_write_input_per_million, `${key}.cache_write_input_per_million`, label),
         reasoningPerMillion: rate(row.pricing.reasoning_output_per_million, `${key}.reasoning_output_per_million`, label),
+        ...(schedule === null ? {} : { recurringUTCPricing: schedule }),
       },
     });
   }
@@ -152,6 +155,62 @@ function supportState(value, field, label) {
   throw new Error(`${label}: ${field} must be supported, unsupported, or unknown`);
 }
 
+/**
+ * Selects every runtime-eligible USD row carrying a supported cache profile —
+ * ALL regions, because provider cache facts (Bedrock especially) are regional.
+ * These are capability facts plus the grounded rates the in-SDK cache planner
+ * derives write/read multipliers from; unknown rates stay null, never guessed.
+ */
+export function selectCacheProfiles(rows, label = CATALOG_LABEL) {
+  const selected = [];
+  const seen = new Set();
+  for (const row of rows) {
+    const lifecycle = row.lifecycle?.status;
+    if (!PRICEABLE_LIFECYCLES.has(lifecycle)) continue;
+    if (row.currency !== REQUIRED_CURRENCY) continue;
+    const profile = row.cache_profile;
+    if (profile?.state !== "supported") continue;
+    const key = `${row.provider}/${row.model}@${row.region}`;
+    if (seen.has(key)) throw new Error(`${label}: duplicate cache-profile row ${key}`);
+    seen.add(key);
+    if (typeof profile.id !== "string" || profile.id === "" || !CACHE_MODES.has(profile.mode) ||
+        typeof profile.attribution !== "string" || profile.attribution === "") {
+      throw new Error(`${label}: ${key}.cache_profile has invalid id, mode, or attribution`);
+    }
+    const bound = (value, field) => {
+      if (value === undefined || value === null) return 0;
+      if (!Number.isSafeInteger(value) || value < 0) {
+        throw new Error(`${label}: ${key}.cache_profile.${field} must be a non-negative integer`);
+      }
+      return value;
+    };
+    const endpoints = profile.endpoints;
+    if (!Array.isArray(endpoints) || endpoints.some((item) => typeof item !== "string" || item === "")) {
+      throw new Error(`${label}: ${key}.cache_profile.endpoints must be non-empty strings`);
+    }
+    selected.push({
+      key,
+      profile: {
+        id: profile.id,
+        mode: profile.mode,
+        attribution: profile.attribution,
+        minPrefixTokens: bound(profile.min_prefix_tokens, "min_prefix_tokens"),
+        maxBreakpoints: bound(profile.max_breakpoints, "max_breakpoints"),
+        ttlSeconds: bound(profile.ttl_seconds, "ttl_seconds"),
+        rolling: profile.rolling === true,
+        routingKey: profile.routing_key === true,
+        maxRpmPerKey: bound(profile.max_rpm_per_key, "max_rpm_per_key"),
+        endpoints: [...endpoints],
+        inputPerMillion: rate(row.pricing?.input_per_million, `${key}.input_per_million`, label),
+        cacheReadPerMillion: rate(row.pricing?.cache_read_input_per_million, `${key}.cache_read_input_per_million`, label),
+        cacheWritePerMillion: rate(row.pricing?.cache_write_input_per_million, `${key}.cache_write_input_per_million`, label),
+      },
+    });
+  }
+  selected.sort((left, right) => (left.key < right.key ? -1 : left.key > right.key ? 1 : 0));
+  return selected;
+}
+
 function cacheMode(profile, key, label) {
   const state = profile?.state;
   if (state === "unknown" || state === "unsupported") return state;
@@ -167,6 +226,68 @@ function rate(value, field, label) {
   return value;
 }
 
+function recurringUTCPricing(value, mode, key, label) {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "object" || Array.isArray(value) ||
+      typeof value.effective_from !== "string" || !Number.isFinite(Date.parse(value.effective_from)) ||
+      !Array.isArray(value.windows) || value.windows.length === 0) {
+    throw new Error(`${label}: ${key}.recurring_utc_pricing is malformed`);
+  }
+  const timeOfDay = (text, field) => {
+    const match = typeof text === "string" && /^(\d{2}):(\d{2}):(\d{2})$/.exec(text);
+    if (match === false || match === null) {
+      throw new Error(`${label}: ${key}.recurring_utc_pricing.${field} must be HH:MM:SS`);
+    }
+    const hour = Number(match[1]);
+    const minute = Number(match[2]);
+    const second = Number(match[3]);
+    if (hour > 23 || minute > 59 || second > 59) {
+      throw new Error(`${label}: ${key}.recurring_utc_pricing.${field} is outside a UTC day`);
+    }
+    return hour * 3600 + minute * 60 + second;
+  };
+  const pricing = (raw, field) => {
+    if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+      throw new Error(`${label}: ${key}.recurring_utc_pricing.${field} is malformed`);
+    }
+    const input = rate(raw.input_per_million, `${key}.recurring_utc_pricing.${field}.input_per_million`, label);
+    const output = rate(raw.output_per_million, `${key}.recurring_utc_pricing.${field}.output_per_million`, label);
+    if (input === null || output === null) {
+      throw new Error(`${label}: ${key}.recurring_utc_pricing.${field} needs input and output rates`);
+    }
+    return {
+      inputPerMillion: input,
+      outputPerMillion: output,
+      cacheMode: mode,
+      cacheReadPerMillion: rate(raw.cache_read_input_per_million, `${key}.recurring_utc_pricing.${field}.cache_read_input_per_million`, label),
+      cacheWritePerMillion: rate(raw.cache_write_input_per_million, `${key}.recurring_utc_pricing.${field}.cache_write_input_per_million`, label),
+      reasoningPerMillion: rate(raw.reasoning_output_per_million, `${key}.recurring_utc_pricing.${field}.reasoning_output_per_million`, label),
+    };
+  };
+  let previousEnd = -1;
+  const windows = value.windows.map((window, index) => {
+    if (window === null || typeof window !== "object" || Array.isArray(window)) {
+      throw new Error(`${label}: ${key}.recurring_utc_pricing.windows[${index}] is malformed`);
+    }
+    const startSecondUTC = timeOfDay(window.start, `windows[${index}].start`);
+    const endSecondUTC = timeOfDay(window.end, `windows[${index}].end`);
+    if (startSecondUTC >= endSecondUTC || startSecondUTC < previousEnd) {
+      throw new Error(`${label}: ${key}.recurring_utc_pricing.windows must be ordered non-overlapping half-open ranges`);
+    }
+    previousEnd = endSecondUTC;
+    return {
+      startSecondUTC,
+      endSecondUTC,
+      price: pricing(window.pricing, `windows[${index}].pricing`),
+    };
+  });
+  return {
+    effectiveFrom: value.effective_from,
+    defaultPrice: pricing(value.default_pricing, "default_pricing"),
+    windows,
+  };
+}
+
 function number(value) {
   const text = String(value);
   if (!/^(0|[1-9][0-9]*)(\.[0-9]+)?(e[+-]?[0-9]+)?$/.test(text)) {
@@ -179,7 +300,44 @@ function nullableNumber(value) {
   return value === null ? "null" : number(value);
 }
 
-/** Renders the full packages/agent/src/catalog.ts module text. */
+function renderPriceRates(price, indent) {
+  return [
+    `${indent}inputPerMillion: ${number(price.inputPerMillion)},`,
+    `${indent}outputPerMillion: ${number(price.outputPerMillion)},`,
+    `${indent}cacheMode: ${JSON.stringify(price.cacheMode)},`,
+    `${indent}cacheReadPerMillion: ${nullableNumber(price.cacheReadPerMillion)},`,
+    `${indent}cacheWritePerMillion: ${nullableNumber(price.cacheWritePerMillion)},`,
+    `${indent}reasoningPerMillion: ${nullableNumber(price.reasoningPerMillion)},`,
+  ];
+}
+
+function renderRecurringUTCPricing(schedule, indent) {
+  if (schedule === undefined || schedule === null) return [];
+  const child = `${indent}  `;
+  const grandchild = `${child}  `;
+  const windows = schedule.windows.flatMap((window) => [
+    `${grandchild}Object.freeze({`,
+    `${grandchild}  startSecondUTC: ${number(window.startSecondUTC)},`,
+    `${grandchild}  endSecondUTC: ${number(window.endSecondUTC)},`,
+    `${grandchild}  price: Object.freeze({`,
+    ...renderPriceRates(window.price, `${grandchild}    `),
+    `${grandchild}  }),`,
+    `${grandchild}}),`,
+  ]);
+  return [
+    `${indent}recurringUTCPricing: Object.freeze({`,
+    `${child}effectiveFrom: ${JSON.stringify(schedule.effectiveFrom)},`,
+    `${child}defaultPrice: Object.freeze({`,
+    ...renderPriceRates(schedule.defaultPrice, `${child}  `),
+    `${child}}),`,
+    `${child}windows: Object.freeze([`,
+    ...windows,
+    `${child}]),`,
+    `${indent}}),`,
+  ];
+}
+
+/** Renders the full public/agent/src/catalog.ts module text. */
 export function renderCatalogModule(catalogBytes, artifact, label = CATALOG_LABEL) {
   const digest = createHash("sha256").update(catalogBytes).digest("hex");
   if (artifact?.schema_version !== "provider-catalog.generated.v1" ||
@@ -191,14 +349,27 @@ export function renderCatalogModule(catalogBytes, artifact, label = CATALOG_LABE
   }
   const { selected, models: selectedModels, skipped } = selectRows(artifact.entries, label);
   if (selected.length === 0) throw new Error(`${label}: no priced region-agnostic rows found`);
+  const cacheProfiles = selectCacheProfiles(artifact.entries, label).map(({ key, profile }) => [
+    `  ${JSON.stringify(key)}: Object.freeze({`,
+    `    id: ${JSON.stringify(profile.id)},`,
+    `    mode: ${JSON.stringify(profile.mode)},`,
+    `    attribution: ${JSON.stringify(profile.attribution)},`,
+    `    minPrefixTokens: ${number(profile.minPrefixTokens)},`,
+    `    maxBreakpoints: ${number(profile.maxBreakpoints)},`,
+    `    ttlSeconds: ${number(profile.ttlSeconds)},`,
+    `    rolling: ${profile.rolling},`,
+    `    routingKey: ${profile.routingKey},`,
+    `    maxRpmPerKey: ${number(profile.maxRpmPerKey)},`,
+    `    endpoints: Object.freeze([${profile.endpoints.map((item) => JSON.stringify(item)).join(", ")}]),`,
+    `    inputPerMillion: ${nullableNumber(profile.inputPerMillion)},`,
+    `    cacheReadPerMillion: ${nullableNumber(profile.cacheReadPerMillion)},`,
+    `    cacheWritePerMillion: ${nullableNumber(profile.cacheWritePerMillion)},`,
+    `  }),`,
+  ].join("\n")).join("\n");
   const entries = selected.map(({ key, price }) => [
     `  ${JSON.stringify(key)}: Object.freeze({`,
-    `    inputPerMillion: ${number(price.inputPerMillion)},`,
-    `    outputPerMillion: ${number(price.outputPerMillion)},`,
-    `    cacheMode: ${JSON.stringify(price.cacheMode)},`,
-    `    cacheReadPerMillion: ${nullableNumber(price.cacheReadPerMillion)},`,
-    `    cacheWritePerMillion: ${nullableNumber(price.cacheWritePerMillion)},`,
-    `    reasoningPerMillion: ${nullableNumber(price.reasoningPerMillion)},`,
+    ...renderPriceRates(price, "    "),
+    ...renderRecurringUTCPricing(price.recurringUTCPricing, "    "),
     `  }),`,
   ].join("\n")).join("\n");
   const models = selectedModels.map(({ key, model }) => [
@@ -242,13 +413,29 @@ export const CATALOG_SHA256 = "${digest}";
 export const CATALOG_SEMANTIC_SHA256 = "${artifact.catalog_semantic_sha256}";
 export const PRICE_PROVENANCE_SHA256 = "${artifact.price_provenance_sha256}";
 
-export interface CatalogPrice {
+export interface CatalogPriceRates {
   inputPerMillion: number;
   outputPerMillion: number;
   cacheMode: "unknown" | "unsupported" | "explicit" | "implicit" | "affinity" | "automatic";
   cacheReadPerMillion: number | null;
   cacheWritePerMillion: number | null;
   reasoningPerMillion: number | null;
+}
+
+export interface CatalogRecurringUTCPriceWindow {
+  startSecondUTC: number;
+  endSecondUTC: number;
+  price: CatalogPriceRates;
+}
+
+export interface CatalogRecurringUTCPricing {
+  effectiveFrom: string;
+  defaultPrice: CatalogPriceRates;
+  windows: readonly CatalogRecurringUTCPriceWindow[];
+}
+
+export interface CatalogPrice extends CatalogPriceRates {
+  recurringUTCPricing?: CatalogRecurringUTCPricing;
 }
 
 export type CatalogSupportState = "unknown" | "unsupported" | "supported";
@@ -277,6 +464,42 @@ ${entries}
 const MODELS: Readonly<Record<string, CatalogModelFacts>> = Object.freeze({
 ${models}
 });
+
+/**
+ * Provider cache-capability facts for the in-SDK cache planner, one entry per
+ * runtime-eligible USD catalog row with a supported cache profile — every
+ * region, keyed "provider/model@region", because cache facts are regional.
+ * Rates ground write/read multipliers; null stays unknown, never guessed.
+ */
+export interface CatalogCacheProfile {
+  id: string;
+  mode: "explicit" | "implicit" | "affinity" | "automatic";
+  attribution: string;
+  minPrefixTokens: number;
+  maxBreakpoints: number;
+  ttlSeconds: number;
+  rolling: boolean;
+  routingKey: boolean;
+  maxRpmPerKey: number;
+  endpoints: readonly string[];
+  inputPerMillion: number | null;
+  cacheReadPerMillion: number | null;
+  cacheWritePerMillion: number | null;
+}
+
+const CACHE_PROFILES: Readonly<Record<string, CatalogCacheProfile>> = Object.freeze({
+${cacheProfiles}
+});
+
+/** Cache profile lookup mirroring the Go engine: empty region means "global". */
+export function catalogCacheProfile(
+  provider: string,
+  model: string,
+  region?: string,
+): CatalogCacheProfile | undefined {
+  const where = (region ?? "").trim() === "" ? "global" : (region ?? "").trim();
+  return CACHE_PROFILES[\`\${catalogProvider(provider.toLowerCase().trim())}/\${model.trim()}@\${where}\`];
+}
 
 ${skippedLines}
 function catalogProvider(provider: string): string {
@@ -313,12 +536,13 @@ export function catalogSearchCeiling(
   model: string,
   inputTokens: number,
   outputTokens: number,
+  accountingAt?: Date,
 ): number | undefined {
   const slash = model.indexOf("/");
   const normalized = slash < 0
     ? model
     : \`\${catalogProvider(model.slice(0, slash))}/\${model.slice(slash + 1)}\`;
-  const price = PRICES[normalized];
+  const price = catalogPriceAt(PRICES[normalized], accountingAt);
   if (!price || !Number.isSafeInteger(inputTokens) || inputTokens < 0 ||
       !Number.isSafeInteger(outputTokens) || outputTokens < 0) {
     return undefined;
@@ -345,7 +569,7 @@ export function catalogSearchCeiling(
 }
 
 export function catalogCostForPrice(
-  price: CatalogPrice | undefined,
+  price: CatalogPriceRates | undefined,
   usage: CatalogUsage,
 ): { priced: boolean; usd: number } {
   if (!price) return { priced: false, usd: 0 };
@@ -375,9 +599,63 @@ export function catalogCostForPrice(
   return { priced: true, usd: Math.round((usd + Number.EPSILON) * 1e10) / 1e10 };
 }
 
-export function catalogCost(usage: CatalogUsage): { priced: boolean; usd: number } {
+export function catalogPriceAt(
+  price: CatalogPrice | undefined,
+  accountingAt?: Date,
+): CatalogPriceRates | undefined {
+  return catalogPriceResolution(price, accountingAt)?.price;
+}
+
+function catalogPriceResolution(
+  price: CatalogPrice | undefined,
+  accountingAt?: Date,
+): { price: CatalogPriceRates; epoch: string } | undefined {
+  if (price === undefined) return undefined;
+  if (price.recurringUTCPricing === undefined) return { price, epoch: "static" };
+  if (accountingAt === undefined || Number.isNaN(accountingAt.getTime())) return undefined;
+  const effective = Date.parse(price.recurringUTCPricing.effectiveFrom);
+  if (!Number.isFinite(effective)) return undefined;
+  if (accountingAt.getTime() < effective) return { price, epoch: "pre-effective" };
+  const secondUTC = accountingAt.getUTCHours() * 3600 + accountingAt.getUTCMinutes() * 60 + accountingAt.getUTCSeconds();
+  for (const window of price.recurringUTCPricing.windows) {
+    if (secondUTC >= window.startSecondUTC && secondUTC < window.endSecondUTC) {
+      return { price: window.price, epoch: \`window:\${window.startSecondUTC}-\${window.endSecondUTC}\` };
+    }
+  }
+  return { price: price.recurringUTCPricing.defaultPrice, epoch: "default" };
+}
+
+/** Exact money-rate identity at a request time. It includes every nullable rate,
+ * cache semantics, schedule epoch, and the generated price-provenance digest. */
+export function catalogPriceFingerprint(
+  provider: string,
+  model: string,
+  accountingAt?: Date,
+): string | undefined {
+  const resolution = catalogPriceResolution(
+    PRICES[\`\${catalogProvider(provider)}/\${model}\`],
+    accountingAt,
+  );
+  if (resolution === undefined) return undefined;
+  const price = resolution.price;
+  return JSON.stringify([
+    PRICE_PROVENANCE_SHA256,
+    resolution.epoch,
+    price.inputPerMillion,
+    price.outputPerMillion,
+    price.cacheMode,
+    price.cacheReadPerMillion,
+    price.cacheWritePerMillion,
+    price.reasoningPerMillion,
+  ]);
+}
+
+export function catalogCost(
+  usage: CatalogUsage,
+  accountingAt?: Date,
+): { priced: boolean; usd: number } {
   const provider = catalogProvider(usage.provider);
-  return catalogCostForPrice(PRICES[\`\${provider}/\${usage.model}\`], usage);
+  return catalogCostForPrice(catalogPriceAt(PRICES[\`\${provider}/\${usage.model}\`], accountingAt), usage);
 }
 `;
 }

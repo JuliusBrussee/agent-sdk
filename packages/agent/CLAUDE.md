@@ -1,5 +1,9 @@
 # packages/agent
 
+> **Repository routing:** this repository is the source of truth for
+> `@caveman-ai/agent`. Agent SDK product work lands here first and is mirrored
+> out deliberately; other checkouts carry integration copies only.
+
 `@caveman-ai/agent`: opinionated TypeScript efficiency framework over exact-pinned
 Pi. `src/runtime.ts` owns agent execution, cache safety, tool isolation, runtime
 supervision, and content-blind evidence. Loopback runtime readiness requires
@@ -32,8 +36,9 @@ Local compile/execution/compression is accountless per ADR 0031; evidence stays
 `inferred`, Cloud registration is client-declared inspection, and verified
 savings stay zero. Build/compiler/contract hashes are unsigned integrity
 bindings, not binary provenance, signature, SBOM, or runtime attestation.
-Binding architecture and completion gates live in this package's README and
-tests. v2 locks stay readable.
+Binding architecture and
+completion gates:
+`docs/strategy/agent-compiler/`. v2 locks stay readable.
 Build lock Context IR contains static definition segments only. Eval/user input,
 history, and tool results are runtime segments and never enter lock digest.
 Conversation handles are opaque, process-local, transactional, single-owner,
@@ -161,7 +166,7 @@ Public entry points:
   exact-pinned upstream versions used by compiler, checker, and runtime,
   including the digest-bound `tool-free-v1` native compiler contract;
 - `src/catalog.ts` — GENERATED from
-  `packages/shared/provider-catalog/catalog/current.yaml` by
+  `public/shared/provider-catalog/catalog/current.yaml` by
   `scripts/generate-agent-catalog.mjs`; never hand-edit it and never hand-type a
   price. It carries every USD row the catalog prices region-agnostically
   (`region: global`) and omits regional-only rows rather than borrowing one
@@ -209,6 +214,34 @@ Public entry points:
   sha256 comparison. Live sessions are lock-ineligible by construction (host
   mode anywhere in the graph, root or subagent, is refused by `compile`).
   Example wrapper: `examples/coding-agent/`;
+- `src/cache-planner/` — in-SDK TS port of `public/cacheengine`'s deterministic
+  planner core plus three provider wire bridges (Anthropic native, OpenAI
+  chat + responses, Bedrock converse + invoke). The Go engine is the source of
+  truth: `tests/cache-planner-parity.runtime.mjs` asserts all 41 Go-exported
+  cases in `planner-fixtures/` byte-for-byte (Anthropic/OpenAI splice bytes,
+  Bedrock sorted-key reserialize, escape-heavy unicode bodies) and fails
+  loudly on catalog drift. Profile facts come from `src/catalog.ts`
+  `catalogCacheProfile` (generated, all regions). Deliberately NOT publicly
+  re-exported from `src/index.ts` — internal imports only. Live scope:
+  Anthropic caching is provider-native via Pi's own markers; the SDK planner
+  adds openai affinity routing keys and takes over other wires only when
+  proven live (#225). Off the gateway, `runtime.ts` applies exactly that
+  through Pi's `onPayload` seam — provider-native hints on the upstream
+  request only, pass-through on any uncertainty, caller-managed markers
+  respected (no double-apply; a routed gateway keeps precedence and disables
+  it). Mints nothing; results are at most `inferred` and `verifiedSavingsUsd`
+  stays zero. `cache-planner/static-checks.ts` owns the three static plan
+  checks + F2 failure voice: volatile frozen prefix (two composition passes,
+  the second under a +26h perturbed clock so day-stable values trip too —
+  #224 first half; composition side effects therefore run twice per build),
+  prefix-shrink regression (vs `.caveman/frozen-prefix.json`, written beside
+  the lock with its estimate `basis`; `--accept-prefix-shrink` resets the
+  baseline), and frozen prefix below the provider's catalog minimum —
+  build-failing for explicit-cache models only, a loud advisory for
+  affinity/implicit ones (goldens/README severity scoping). They run in
+  `build` BEFORE the eval gate; renderers are snapshot-tested byte-exact
+  against `goldens/failures/`, and wire codes appear only under
+  `caveman-agent build --verbose`;
 - `src/claude.ts` — public unlocked Claude Agent SDK facade;
 - `src/claude-runtime.ts` — exact-pinned public Claude executor. Public calls
   cannot inject build identity. Every locked/candidate call rejects before SDK
@@ -242,7 +275,84 @@ Public entry points:
   cap. None of these
   adapter controls proves dollar savings, a reserve-guaranteed cost cap, or fanout;
   these existing bridges are not profiled-v3 behavioral lowerers;
+- `src/dir-loader.ts` — the agent-directory convention (Phase 1, issue #216):
+  `loadAgentDir(rootDir)` lowers `instructions.md` + `agent.ts`
+  (`AgentDirConfig`: model, budget/breakers run defaults, and a context map
+  whose bare entries default to build stability — load-bearing for the
+  volatile-prefix check; values are evaluated once at composition, per-turn
+  re-evaluation is issue #224) + `tools/*.ts` (filename = tool name, default
+  export must be `tool()`) + `skills/*.md` + `subagents/<name>/` (recursed;
+  sibling slug collisions fail closed) into one ordinary `agent()` call.
+  Skills (Phase 3, issue #219) are descriptions in prefix, bodies on demand:
+  each skill file carries dependency-free line-parsed frontmatter — NOT
+  YAML: block scalars (`>`, `|`) and quoted values are rejected loudly
+  (`name` + one-line plain-text `description`; malformed fails closed
+  naming the file; filename minus `.md` must equal the name). Descriptions lower into ONE
+  build-stability `agent.skills` context segment (kind "skill" → frozen
+  prefix, sorted by name — build-stable by construction, so the
+  volatile-prefix check needs no exemption); bodies stay off the definition
+  (`agentDirSkills` registry) and are served by the framework `cave_skill`
+  read tool the runtime adds only when skills exist — an unknown name returns
+  the available names, never a throw, and the body is an ordinary live-zone
+  tool result, so loading one never moves the prefix
+  (`tests/skills.runtime.mjs` fixture). No embeddings, no ranking:
+  model-invoked selection only. It also writes a generated static-import module
+  entry at `.caveman/agent-dir-entry.mjs` so required-sandbox staging reaches
+  every convention file and the tool worker recomposes the identical
+  definition digest. The CLI dev watch path regenerates that entry by pure
+  directory scan (`generateAgentDirEntry`) — user modules are only ever
+  imported inside the staged snapshot, never live on the watch path;
+- `src/receipt-print.ts` — `renderReceipt`, the end-of-run receipt print
+  (F1), snapshot-tested byte-exact against `goldens/receipt-*.txt`. Cost and
+  cold estimate share one scope (root plus subagent calls), the cold
+  counterfactual stays `inferred` (recurring-priced models print an explicit
+  `unavailable`), unpriced never prints $0, a stopped run says it stopped,
+  and a breached cap prints the overage instead of a negative percent.
+  `writeRunReceipt` files the unmodified wire receipt under
+  `.caveman/runs/<stamp>/`; `run()` and each dev turn print it when
+  `RunOptions.printReceipt` opts in — directory-loaded agents default it on.
+  A resumed durable run adds one `resumed` line naming prior attempts and any
+  possible-double-count call, golden `receipt-resumed`;
+- `src/durable.ts` — opt-in durable execution (Phase 4, issue #218: own
+  substrate after the Workflow SDK proved non-embeddable; DBOS
+  checkpoint-resume + Inngest named events + Temporal in-journal versioning).
+  `RunOptions.durable = { runId, store? }` — runId is a caller-assigned
+  idempotency key; append-only JSONL journal (disk store default under
+  `.caveman/runs/durable/<runId>/`, 0700/0600 because it necessarily holds
+  message content, pluggable `DurableStore` for anything else). Ledger is
+  event-sourced fine-grained: `call_started` intent fsynced BEFORE every
+  provider call (root, subagents via the inherited execution-context journal,
+  compaction summarizers via onReserved/accrue), `call_settled` after —
+  resume preloads the meter with journaled settles so settled money is never
+  re-reserved and never lost, and an intent with no settle surfaces as
+  `receipt.resume.possibleDoubleCountCalls` (the documented at-least-once
+  ceiling), never silently. Conversation state checkpoints per turn (an async
+  pi subscriber pi awaits — the turn is durable before the next call). Pi's
+  state.messages is APPEND-ONLY: a compaction's replacement context lives
+  only in the loop's local view, so the journal keeps following pi.state and
+  a resume rebuilds the UNCOMPACTED transcript — compaction counters are
+  deliberately not restored so the resumed run may pay (metered, journaled)
+  to compact it again; the budget is the real bound. Resume rebuilds to the last boundary
+  ending in a user/tool-result message and re-enters via `pi.continue()`, so
+  the prompt is never asked twice; a lost partial turn re-drives with its
+  spend kept. Terminal journals replay without spending (same runId → same
+  result or same error); an ABORT is the deliberate twin of a crash and stays
+  resumable. Fail-closed identity: definition digest, input, and budget
+  contract must match the journal (`cave_durable_definition_changed` /
+  `_input_mismatch` / `_budget_changed`); unknown journal events and version
+  mismatches refuse; a per-run pid lockfile stops two processes double-driving
+  one run. v1 scope gates (each fails closed): no `conversation`, no
+  `maxCostUsd` (use `budget`), root runs only; breaker windows and
+  `previousSummary` restart on resume. Synthesized refusal and error/aborted
+  turns are never journaled as state, and an error turn without a live
+  reservation journals no settle — a phantom zero settle would hide the
+  double-count. `tests/durable.runtime.mjs` covers crash-mid-call resume,
+  lost-turn restart, idempotent replay, identity refusals, the lock, and
+  subagent settles landing path-tagged in the root journal;
 - `src/cli.ts` — `dev`, `build`, `check`, zero-spend `doctor`, `register`;
+  bare `dev` and `defineBuild({ entry: "." })` resolve to the directory
+  convention when `instructions.md` exists at the root, and markdown joins
+  the watched project inputs (`projectSourceFiles` in `src/source-graph.ts`);
   existing `build` command, not new verb, selects the exact native profiled v3
   path and preserves explicit profile/development/holdout roles. Locked
   production integration asserts selected output `64` becomes provider
@@ -296,7 +406,7 @@ Public entry points:
   **estimated list-price subtotals** from the public catalog, never invoices;
   an unpriced call is flagged, never counted as free. Serialized receipts carry
   `schema: caveman.agent.run-receipt.v1` and must validate against
-  `packages/shared/contracts/schemas/agent-run-receipt.schema.json`. That shared
+  `public/shared/contracts/schemas/agent-run-receipt.schema.json`. That shared
   shape is not sent through ADR 0032's anonymous CLI lane; future hub upload
   requires separate authenticated, tenant-scoped consent. Under a budget,
   `subagent()` caps become **wallets**: the child's `maxCostUsd` (USD runs) or
@@ -334,6 +444,38 @@ Public entry points:
   unchanged. Breaking stops between calls with
   `stopReason: "loop_detected"` / `"no_progress"`; the fan-out cap only blocks
   the extra calls. Every decision lands on `receipt.breakers`;
+- `src/routine.ts` — `routine(original, impl, { guard })`, the determinism
+  dividend's productized guard + deopt (`docs/DETERMINISM_DIVIDEND_SPEC.md`
+  §4.3). It returns an ORDINARY tool with the original's name, description, and
+  input schema, so sandbox, breaker, budget, and receipt behavior are unchanged.
+  Input is checked with typebox `Value.Check` against the tool's own JSON
+  schema — a check the routine adds, since the runtime never validates tool
+  input — then the optional guard runs; a schema failure, a guard rejection, a
+  throwing guard, or a throwing `impl` all **deopt** to the original tool and
+  return its result — no error escapes the fallback, though the ORIGINAL's own
+  error still propagates (auto's 48.9% silent-failure lesson: the guard is
+  load-bearing). `impl` output is not validated: the framework validates no
+  tool's output anywhere, and the output gate lives in customer CI (spec
+  §4.1.3). Refused at construction: a `cave_`-reserved name; a subagent tool
+  (framework-run execute, so a deopt could not reach the original); a
+  Standard Schema input (v1 could only re-check the converted draft-07 schema,
+  losing the vendor's refinements and transforms — JSON-schema tools only,
+  Standard Schema is a follow-up); another routine (double-counted outcomes);
+  and an `async` guard (a thenable is truthy, so it would admit everything — a
+  manually returned Promise still deopts safely at runtime). The composed tool
+  declares its own implementation source (`impl` + `guard` text under a routine
+  marker), so wrapping original→routine CHANGES the definition digest and
+  therefore invalidates the cache epoch, the build lock, and durable run
+  identity (`cave_durable_definition_changed`) across the swap — deliberate,
+  since the step's behavior changed. Outcomes are a closed runtime-declared vocabulary — `routine_hit`,
+  `routine_deopt_guard`, `routine_deopt_error` — read through
+  `routineOutcomes()`, and they are **observability only**: they feed `observed`
+  before/after measurement and mint no receipt line, metering change, or cost
+  math of any basis. Scope caveat: counters live in the process that runs the
+  closure, so a `sandbox: "required"` run records them in the tool worker and
+  the host list stays empty — an honest absence, not a zero. Carrying them
+  across that boundary (and into `caveman.tool_events`, whose `outcome` column
+  is a gateway-assigned closed `ok`/`error`/`unknown` vocabulary) is issue #248;
 - `src/compaction.ts` — budget-triggered compaction, and **the only place in this package
   that rewrites model-visible context**. That is why it lives here: compaction
   is a model-visible rewrite, so it can exist only where the builder owns the
@@ -377,7 +519,18 @@ Public entry points:
 
 `doctor` is framework readiness truth surface: Node, sandbox, engine registry,
 runtime CLI, project/Context IR, lock drift, provider selection, and per-harness
-locked-execution state. Caveman public CLI version probe is `caveman version`
+locked-execution state. It also recognizes a vercel/eve agent directory (F7:
+nested `agent/` layout, or flat with eve-only `channels/`/`schedules/`/
+`connections/`/`hooks/`; suppressed whenever `caveman.config.ts` exists) and
+prints what maps, what needs a rewrite, and what has no v1 equivalent —
+detection only, no import command, no file rewriting; the walk is
+`docs/eve-migration.md` (shipped in the npm tarball via `files`).
+`docs/cold-walk.md` is the Phase-5 release-gate script: each step marked
+VERIFIED-DRY or NEEDS-LIVE, blocking findings filed (#226 #227 #228).
+F8 first-run states: `cave_budget_denomination_unavailable` refusals keep the
+same fail-closed behavior but the message names the state's one-line fix
+(missing env var by provider / subscription / unprovable credential / unpriced
+model), tested in `tests/budget-regressions.runtime.mjs` F8 block. Caveman public CLI version probe is `caveman version`
 (not `--version`). Optional project/provider warnings do not hide foundation
 failures; Claude detail distinguishes public execution from fail-closed Cave
 Build execution; third-party adapter readiness remains separate per harness.
@@ -385,11 +538,11 @@ Build execution; third-party adapter readiness remains separate per harness.
 Claude Agent SDK dependency is governed by Anthropic Commercial Terms linked
 from its README, not package MIT license. Keep disclosure in public README.
 
-Run `npm --prefix packages/agent test`. Unknown state fails closed. Transform failure
+Run `pnpm --dir public/agent test`. Unknown state fails closed. Transform failure
 passes original bytes. Missing usage/pricing/eval/recovery writes no optimized
 legacy v2 lock. Exact tool-free native Pi may emit only its closed behavioral
 diff; generic/custom Pi and Vercel/Eve/Mastra v3 remain baseline-only. Claude
 Cave Build remains refused. Local evidence is always `inferred`; this package
 never mints verified savings or supports a public savings percentage.
 
-Authority: package README, tests, and generated wire/catalog artifacts.
+Authority: `docs/strategy/EFFICIENT_AGENT_BUILDER_SPEC.md`.

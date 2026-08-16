@@ -1,18 +1,38 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
-import { mkdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
+import { fileURLToPath } from "node:url";
 
 type Provider = "anthropic" | "openai" | "google";
 
+// The scaffolded default model per provider. Each is resolvable by the
+// runtime's pinned Pi registry, priced by the public catalog, and caches with
+// a minimum prefix the template's frozen prefix clears (1,024 tokens for the
+// Anthropic pick; 2,048 for the OpenAI and Google picks):
+// - anthropic/claude-sonnet-5 — explicit cache breakpoints.
+// - openai/gpt-5.4-mini — catalog cacheMode "affinity" (OpenAI's automatic
+//   prompt caching); no explicit-cache OpenAI model exists in the pinned
+//   registry, and this one keeps the template's $0.05/ticket budget viable.
+// - google/gemini-2.5-flash — implicit provider-managed caching; Google has
+//   no explicit-cache model in the catalog.
+// The generator rewrites the template agent.ts model line to this value.
 const MODELS: Record<Provider, string> = {
-  anthropic: "anthropic/claude-haiku-4-5",
+  anthropic: "anthropic/claude-sonnet-5",
   openai: "openai/gpt-5.4-mini",
   google: "google/gemini-2.5-flash",
 };
 
+// The exact model line templates/support-bot/agent.ts ships with; the
+// single-point mutation below (like the package.json name field) swaps it
+// for the chosen provider's model. Rewriting fails closed if the template
+// line ever drifts from this constant.
+const TEMPLATE_MODEL_LINE = `  model: "${MODELS.anthropic}",`;
+
 const USAGE = "usage: npm create @caveman-ai/agent@latest <project> [--provider anthropic|openai|google] [--no-install]";
+
+const TEMPLATE_DIR = fileURLToPath(new URL("../templates/support-bot", import.meta.url));
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
@@ -28,11 +48,18 @@ async function main(): Promise<void> {
   const provider = await chooseProvider(parsed.provider);
   const temporary = resolve(dirname(target), `.${basename(target)}.${process.pid}.${crypto.randomUUID()}.tmp`);
   try {
-    await mkdir(resolve(temporary, "src"), { recursive: true });
-    await mkdir(resolve(temporary, "evals"), { recursive: true });
+    await cp(TEMPLATE_DIR, temporary, { recursive: true });
+    const manifestPath = resolve(temporary, "package.json");
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as Record<string, unknown>;
+    manifest.name = name;
+    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+    await rewriteAgentModel(resolve(temporary, "agent.ts"), provider);
     await mkdir(resolve(temporary, ".caveman"), { recursive: true });
-    const files = projectFiles(name, provider);
-    for (const [path, content] of Object.entries(files)) {
+    const generated: Record<string, string> = {
+      ".caveman/provider.json": `${JSON.stringify({ provider, model: MODELS[provider] }, null, 2)}\n`,
+      ".gitignore": "node_modules/\n.caveman/traces/\n.caveman/agent-dir-entry.mjs\n.caveman/workload-profile.json\n.env*\n",
+    };
+    for (const [path, content] of Object.entries(generated)) {
       await writeFile(resolve(temporary, path), content, { flag: "wx", mode: 0o600 });
     }
     if (parsed.install) await installDependencies(temporary);
@@ -46,8 +73,8 @@ async function main(): Promise<void> {
     `provider ${provider} (${MODELS[provider]})`,
     `cd ${targetArg}`,
     ...(parsed.install ? [] : ["npm install"]),
-    "npm run dev",
-    "build evals start unapproved; inspect evals/build.eval.ts, set APPROVED = true, then npm run build",
+    "npm run ticket -- tickets/refund-request.md",
+    "build evals start unapproved; inspect evals/support.eval.ts, set APPROVED = true, then npm run build",
     "",
   ].join("\n"));
 }
@@ -87,6 +114,20 @@ function parseArgs(args: string[]): {
   };
 }
 
+// Pinned string models must use the provider/model form, and a pinned model
+// makes provider.json's fallback inert — so the template's model line itself
+// is rewritten to the chosen provider's default.
+async function rewriteAgentModel(agentTsPath: string, provider: Provider): Promise<void> {
+  const source = await readFile(agentTsPath, "utf8");
+  if (!source.includes(TEMPLATE_MODEL_LINE)) {
+    throw new Error("template agent.ts model line drifted from the generator's expectation");
+  }
+  await writeFile(
+    agentTsPath,
+    source.replace(TEMPLATE_MODEL_LINE, `  model: "${MODELS[provider]}",`),
+  );
+}
+
 async function installDependencies(directory: string): Promise<void> {
   const npmExecPath = process.env.npm_execpath;
   const windowsShell = !npmExecPath && process.platform === "win32";
@@ -104,12 +145,35 @@ async function installDependencies(directory: string): Promise<void> {
     const child = spawn(command, args, {
       cwd: directory,
       env: dependencyInstallEnv(),
-      stdio: "inherit",
+      // stderr is captured (and echoed) so an ETARGET on the not-yet-published
+      // SDK can be named instead of silently swallowed by the rollback.
+      stdio: ["ignore", "inherit", "pipe"],
+    });
+    const stderr: Buffer[] = [];
+    child.stderr?.on("data", (chunk: Buffer) => {
+      stderr.push(chunk);
+      process.stderr.write(chunk);
     });
     child.once("error", reject);
     child.once("exit", (code, signal) => {
-      if (code === 0) done();
-      else reject(new Error(`npm install failed (${signal ?? code})`));
+      if (code === 0) {
+        done();
+        return;
+      }
+      const captured = Buffer.concat(stderr).toString("utf8");
+      // Pre-release honesty: the template pins the @caveman-ai/agent version
+      // this scaffold ships against, which publishes at the Phase-5 release
+      // gate. Until then npm reports ETARGET; say why and how to proceed.
+      if (/ETARGET|No matching version found for @caveman-ai\/agent/.test(captured)) {
+        reject(new Error([
+          "npm could not find the pinned @caveman-ai/agent version — it is the",
+          "Agent SDK v2 release target and has not been published to npm yet",
+          "(pre-release scaffold). Re-run with --no-install and install the SDK",
+          "from a local checkout (npm link / file:) until it publishes.",
+        ].join("\n")));
+        return;
+      }
+      reject(new Error(`npm install failed (${signal ?? code})`));
     });
   });
 }
@@ -151,201 +215,26 @@ async function chooseProvider(flag: string | undefined): Promise<Provider> {
   }
 }
 
-function projectFiles(name: string, provider: Provider): Record<string, string> {
-  return {
-    "package.json": `${JSON.stringify({
-      name,
-      private: true,
-      type: "module",
-      engines: { node: ">=22.19.0" },
-      scripts: {
-        doctor: "caveman-agent doctor",
-        dev: "caveman-agent dev src/agent.ts",
-        run: "node --experimental-strip-types src/run.ts",
-        build: "caveman-agent build caveman.config.ts",
-        check: "caveman-agent check caveman.config.ts",
-        typecheck: "tsc --noEmit",
-      },
-      dependencies: {
-        "@caveman-ai/agent": "^0.2.0",
-      },
-      devDependencies: {
-        "typescript": "5.9.3",
-      },
-    }, null, 2)}\n`,
-    "tsconfig.json": `${JSON.stringify({
-      compilerOptions: {
-        target: "ES2024",
-        module: "NodeNext",
-        moduleResolution: "NodeNext",
-        allowImportingTsExtensions: true,
-        strict: true,
-        noEmit: true,
-        skipLibCheck: true,
-      },
-      include: ["src/**/*.ts", "evals/**/*.ts", "caveman.config.ts"],
-    }, null, 2)}\n`,
-    "src/agent.ts": `import { agent, auto } from "@caveman-ai/agent";
-
-export default agent({
-  id: ${JSON.stringify(name)},
-  instructions: "Reply with exactly: ready",
-  model: auto(),
-});
-`,
-    "src/run.ts": `import { run } from "@caveman-ai/agent";
-import { fileURLToPath } from "node:url";
-import definition from "./agent.ts";
-
-const rootDir = fileURLToPath(new URL("..", import.meta.url));
-
-// The economic dial, written out so it is visible on day one rather than
-// discovered later. Every figure is an estimated public-catalog list-price
-// subtotal, never an invoice.
-const result = await run(definition, "Reply with exactly: ready", {
-  rootDir,
-  entryPath: "src/agent.ts",
-  budget: {
-    // The runtime reserves each call's worst-case spend, then clamps output or
-    // stops when remaining headroom cannot fund it. Provider-reported usage can
-    // still exceed a reservation; capBreached/overspent record that overage and
-    // stop future spend.
-    maxUsd: 0.5,
-    // What happens as reserve headroom approaches the cap. "compact" (the
-    // default) rewrites context while the same cap can fund useful work after;
-    // "stop" skips straight to clamping the output and stopping.
-    onExhausted: "compact",
-  },
-});
-
-// A run that hits its cap returns partial work with a reason, never a throw.
-console.log(result.stopReason, result.text);
-console.log(\`estimated list-price subtotal: $\${result.receipt.totalEstimatedUsd}\`);
-`,
-    "evals/build.eval.ts": `import { eval as defineEval } from "@caveman-ai/agent";
-
-// One review switch. Build profiles first, selects on development, then opens
-// holdout only after plan freeze. Keep lineages independent across splits.
-const APPROVED = false;
-
-export const profile = defineEval({
-  id: "readiness-profile",
-  lineageId: "readiness-profile-family",
-  split: "profile",
-  approved: APPROVED,
-  input: "Reply with exactly: ready",
-  quality: [{ type: "exact_match", expected: "ready" }],
-});
-
-export const developmentDirect = defineEval({
-  id: "readiness-development-direct",
-  lineageId: "readiness-development-direct-family",
-  split: "development",
-  approved: APPROVED,
-  input: "Return exactly: ready",
-  quality: [{ type: "exact_match", expected: "ready" }],
-});
-
-export const developmentStatus = defineEval({
-  id: "readiness-development-status",
-  lineageId: "readiness-development-status-family",
-  split: "development",
-  approved: APPROVED,
-  input: "Answer with one word: ready",
-  quality: [{ type: "exact_match", expected: "ready" }],
-});
-
-export const holdoutDirect = defineEval({
-  id: "readiness-holdout-direct",
-  lineageId: "readiness-holdout-direct-family",
-  split: "holdout",
-  approved: APPROVED,
-  input: "Respond exactly with: ready",
-  quality: [{ type: "exact_match", expected: "ready" }],
-});
-
-export const holdoutStatus = defineEval({
-  id: "readiness-holdout-status",
-  lineageId: "readiness-holdout-status-family",
-  split: "holdout",
-  approved: APPROVED,
-  input: "Say ready and nothing else",
-  quality: [{ type: "exact_match", expected: "ready" }],
-});
-`,
-    "caveman.config.ts": `import { defineBuild } from "@caveman-ai/agent/build";
-
-export default defineBuild({
-  entry: "src/agent.ts",
-  evals: "evals/*.eval.ts",
-  maxSearchCostUsd: 2,
-});
-`,
-    ".caveman/provider.json": `${JSON.stringify({ provider, model: MODELS[provider] }, null, 2)}\n`,
-    ".gitignore": "node_modules/\n.caveman/traces/\n.env*\n",
-    "README.md": `# ${name}
-
-Set ${credentialName(provider)} in your shell. Never commit provider credentials.
-
-\`\`\`bash
-npm install
-npm run doctor
-npm run dev
-npm run run
-npm run typecheck
-\`\`\`
-
-If doctor reports missing signed runtime artifacts, run \`caveman setup --install\`,
-then rerun doctor.
-
-\`src/run.ts\` shows the budget dial. A run declares one denomination
-(\`maxUsd\` or \`maxTokens\`). The runtime reserves each call's worst-case spend,
-then clamps output or stops when remaining headroom cannot fund it. Provider-
-reported usage can still exceed a reservation; the receipt records that overage
-as \`capBreached\` and \`overspent\`, then the runtime stops future spend. When the
-cap binds, \`budget.onExhausted\` decides what happens: \`"compact"\` compresses
-the context before the clamp/stop rungs, while \`"stop"\` skips compaction. Budget
-exhaustion returns partial work plus a \`stopReason\` and receipt — never a throw.
-
-Build evals are intentionally unapproved. After confirming expected behavior,
-change \`APPROVED = false\` to \`APPROVED = true\` in \`evals/build.eval.ts\`, then:
-
-\`\`\`bash
-npm run build
-npm run check
-\`\`\`
-
-\`npm run build\` needs no prior traces: it runs profile evals, selects across two
-independent development task families, then opens two untouched holdout families.
-At least two families per validation split are required for the conservative
-retention bound. If content-blind RunResult,
-OpenTelemetry, or OpenInference rows exist under \`.caveman/traces/\`, same command
-uses them as profile evidence and skips profile-eval spend. It writes one runnable
-\`.caveman/agent.lock.json\`, plus workload profile and build report. No Caveman
-account is required for local compile or compression.
-
-Local results are inferred. Verified savings remain $0 until active real
-traffic passes existing Caveman rollout and ledger gates.
-`,
-  };
-}
-
-function credentialName(provider: Provider): string {
-  if (provider === "anthropic") return "ANTHROPIC_API_KEY";
-  if (provider === "openai") return "OPENAI_API_KEY";
-  return "GEMINI_API_KEY (or GOOGLE_API_KEY)";
-}
-
 function parseProvider(value: string): Provider {
   const normalized = value.trim().toLowerCase();
   if (normalized === "anthropic" || normalized === "openai" || normalized === "google") return normalized;
   throw new Error(`unsupported provider ${JSON.stringify(value)}`);
 }
 
+// Mirrors the SDK's slugifyAgentDirId: the project directory name becomes the
+// agent id, so both must slug the same way (lowercase, invalid chars → "-",
+// repeats collapsed, trimmed, [a-z0-9] first character, 96 max).
 function safeName(value: string): string {
-  const normalized = value.toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
-  if (!normalized) throw new Error("project name must contain a letter or number");
-  return normalized.slice(0, 96);
+  const normalized = value
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/-{2,}/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 96);
+  if (!/^[a-z0-9][a-z0-9_-]{0,95}$/.test(normalized)) {
+    throw new Error("project name must slug to a valid agent id ([a-z0-9][a-z0-9_-]*)");
+  }
+  return normalized;
 }
 
 async function assertAbsent(path: string): Promise<void> {

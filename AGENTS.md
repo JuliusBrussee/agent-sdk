@@ -5,6 +5,10 @@
 Standalone TypeScript repository for `@caveman-ai/agent` and
 `@caveman-ai/create-agent`.
 
+Repository is private during development. Planned destination is public release
+after licensing, history, packaging, test, and publication gates pass.
+Caveman-Cloud remains private commercial source.
+
 ## Non-negotiable contracts
 
 - Savings stay `inferred`; never mint or imply verified savings locally.

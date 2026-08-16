@@ -106,10 +106,13 @@ export interface NativePiCandidatePlanningInput {
   readonly observedDynamicKinds: ReadonlySet<ContextKind>;
   readonly transformCapabilities?: readonly TransformCapability[];
   readonly preferredTransforms?: ReadonlyMap<string, string>;
+  /** One admission instant for the entire static reservation frontier. */
+  readonly accountingAt?: Date;
 }
 
 /** Pure, compiler-owned finite candidate frontier for exact native Pi. */
 export function planNativePiCandidates(input: NativePiCandidatePlanningInput): CandidatePlan[] {
+  const accountingAt = input.accountingAt ?? new Date();
   const config = defineBuild(input.config);
   const policy = candidatePolicyFromConfig(config);
   const observedDynamicKinds = new Set(input.observedDynamicKinds);
@@ -130,6 +133,7 @@ export function planNativePiCandidates(input: NativePiCandidatePlanningInput): C
     transformCapabilities,
     observedDynamicKinds,
     policy,
+    accountingAt,
   );
   return prepareCandidatePlans(
     raw,
@@ -140,6 +144,7 @@ export function planNativePiCandidates(input: NativePiCandidatePlanningInput): C
       contextIR: input.contextIR,
       observedDynamicKinds,
     },
+    accountingAt,
   ).filter((candidate) =>
     nativePiPlanLoweringErrors(input.baselinePlan, candidate.plan).length === 0 &&
     compilerPassIDsForPlanDiff(input.baselinePlan, candidate.plan).length <= 16);
@@ -584,9 +589,17 @@ export async function executeCompiledPipeline(
     input.evaluatedTransformIDs, input.appliedTransformIDs, input.recoveryResolved);
   let selectedExecution: HarnessResult;
   try {
+    const accountingStartedAt = new Date();
+    const reported = await input.adapter.run(selectedRequest);
+    const accountingFinishedAt = new Date();
     selectedExecution = validateHarnessResult(
-      await input.adapter.run(selectedRequest),
-      { adapter: input.adapter, request: selectedRequest },
+      reported,
+      {
+        adapter: input.adapter,
+        request: selectedRequest,
+        accountingStartedAt,
+        accountingFinishedAt,
+      },
     );
   } catch (error) {
     if (input.signal?.aborted === true) throw error;
@@ -764,6 +777,7 @@ function resolveProfiledCandidates(
   profile: WorkloadProfile,
   lane: "generic" | "native_pi",
 ): CandidatePlan[] {
+  const accountingAt = new Date();
   const policy = candidatePolicyFromConfig(input.config);
   const observedDynamicKinds = observedDynamicContextKinds(profile.partitions.profile);
   const generated = input.candidates === undefined || lane === "native_pi";
@@ -771,6 +785,7 @@ function resolveProfiledCandidates(
     input.agent, input.contextIR, input.baselinePlan,
     input.modelCandidates ?? [input.baselinePlan.model], true, new Map(), undefined,
     observedDynamicKinds, policy,
+    accountingAt,
   );
   const prepared = prepareCandidatePlans(
     raw,
@@ -781,6 +796,7 @@ function resolveProfiledCandidates(
       contextIR: input.contextIR,
       observedDynamicKinds,
     },
+    accountingAt,
   ).filter((candidate) => candidate.static_rejection === undefined);
   if (lane === "native_pi") {
     return prepared.filter((candidate) =>

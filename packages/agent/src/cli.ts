@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 import { execFile, spawn } from "node:child_process";
 import { constants, readFileSync, watch } from "node:fs";
-import { glob, mkdir, open, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
+import { glob, mkdir, open, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
-import { catalogCost, catalogSearchCeiling, CATALOG_SHA256 } from "./catalog.js";
+import { catalogSearchCeiling, CATALOG_SHA256 } from "./catalog.js";
 import {
   agentDefinitionSHA256,
   buildPolicySHA256,
@@ -51,6 +51,24 @@ import {
   loadDevModule,
   type LoadedDevModule,
 } from "./dev-loader.js";
+import {
+  agentDirContextOrigins,
+  agentDirRunDefaults,
+  conventionEntryPath,
+  generateAgentDirEntry,
+  hasAgentDirConvention,
+  loadAgentDir,
+} from "./dir-loader.js";
+import {
+  findVolatileFrozenSegment,
+  frozenPrefixTokens,
+  providerPrefixMinimum,
+  renderBelowMinimumAdvisory,
+  renderStaticPlanFailure,
+  withPerturbedClock,
+  type StaticPlanFailure,
+} from "./cache-planner/static-checks.js";
+import { writeRunReceipt } from "./receipt-print.js";
 import { lowerAgentContext } from "./execution-kernel.js";
 import { createConversation, type AgentDefinition } from "./index.js";
 import {
@@ -64,7 +82,7 @@ import {
 } from "./runtime.js";
 import type { ContextKind, EvalDefinition } from "./primitives.js";
 import { normalizeTrajectory, type NormalizedTrajectory } from "./trajectory-ir.js";
-import { sourceGraphSHA256 } from "./source-graph.js";
+import { projectSourceFiles, sourceGraphSHA256 } from "./source-graph.js";
 import {
   CLAUDE_AGENT_SDK_VERSION,
   CLAUDE_CODE_VERSION,
@@ -114,7 +132,10 @@ function printHelp(): void {
     "",
     "Usage:",
     "caveman-agent dev [entry] [prompt]",
-    "caveman-agent build [config]",
+    "caveman-agent build [config] [--verbose] [--accept-prefix-shrink]",
+    "  --accept-prefix-shrink resets the frozen-prefix baseline; if the build",
+    "  then stops before locking (e.g. needs_eval), no new baseline is written",
+    "  until a build completes.",
     "caveman-agent check [config]",
     "caveman-agent doctor [--json]",
     "caveman-agent register",
@@ -139,6 +160,8 @@ type DoctorReport = {
   /** What a run on this machine would do today, with nothing else installed. */
   execution_mode: "optimized" | "observe-only";
   checks: DoctorCheck[];
+  /** Present only when the cwd looks like a vercel/eve agent directory (F7). */
+  eve_migration?: EveLayout;
   harnesses: Array<{
     id: "pi" | "claude" | "vercel-ai-sdk" | "eve" | "mastra";
     locked_execution: boolean;
@@ -146,6 +169,118 @@ type DoctorReport = {
   }>;
   next_action: string;
 };
+
+type EveLayout = {
+  /** Project-relative agent directory: "agent" (eve's nested default) or "." (flat). */
+  agent_dir: string;
+  /** Eve-only convention directories found (no v1 equivalent here). */
+  eve_only: string[];
+  /** Files/directories that map 1:1 onto the Caveman agent-directory convention. */
+  maps: string[];
+};
+
+// Eve's documented layout (vercel/eve README + docs/reference/project-layout.md,
+// verified 2026-08-15): an `agent/` directory — or the project root in the flat
+// layout — holding required instructions.md, optional agent.ts, tools/, skills/,
+// subagents/, sandbox/, plus the eve-only channels/, schedules/, connections/,
+// hooks/. Detection is deliberately conservative: the nested `agent/` shape is
+// an eve marker by itself (this convention keeps instructions.md at the root);
+// a flat directory is only called eve when an eve-only directory is present,
+// because a flat eve agent without one already IS this convention's shape —
+// the overlap is the migration.
+const EVE_ONLY_DIRS = ["channels", "schedules", "connections", "hooks"] as const;
+const EVE_SHARED_ENTRIES = [
+  "instructions.md",
+  "agent.ts",
+  "tools",
+  "skills",
+  "subagents",
+  "sandbox",
+] as const;
+
+async function detectEveLayout(root: string): Promise<EveLayout | undefined> {
+  const isDir = async (path: string) => {
+    try {
+      return (await stat(path)).isDirectory();
+    } catch {
+      return false;
+    }
+  };
+  const isFile = async (path: string) => {
+    try {
+      return (await stat(path)).isFile();
+    } catch {
+      return false;
+    }
+  };
+  // A directory that already carries caveman.config.ts is a Caveman project
+  // (native or already migrated) whatever else it contains — never flag it.
+  if (await isFile(resolve(root, "caveman.config.ts"))) return undefined;
+  for (const agentDir of ["agent", "."]) {
+    const base = resolve(root, agentDir);
+    if (!await isFile(resolve(base, "instructions.md"))) continue;
+    const eveOnly: string[] = [];
+    for (const name of EVE_ONLY_DIRS) {
+      if (await isDir(resolve(base, name))) eveOnly.push(`${name}/`);
+    }
+    if (agentDir === "." && eveOnly.length === 0) return undefined;
+    const maps: string[] = [];
+    for (const name of EVE_SHARED_ENTRIES) {
+      const path = resolve(base, name);
+      if (name.endsWith(".md") || name.endsWith(".ts")
+        ? await isFile(path)
+        : await isDir(path)) {
+        maps.push(name.includes(".") ? name : `${name}/`);
+      }
+    }
+    return { agent_dir: agentDir, eve_only: eveOnly, maps };
+  }
+  return undefined;
+}
+
+/**
+ * F7: doctor recognizes an eve directory and says what maps — nothing is
+ * rewritten and there is no import command; the convention overlap does the
+ * work, and one docs page walks the move. The mapping never overstates:
+ * agent.ts exists on both sides but the shapes differ, and eve-only
+ * directories are named as having no v1 equivalent rather than skipped.
+ */
+function renderEveMigration(eve: EveLayout): string {
+  const from = eve.agent_dir === "." ? "this directory" : `${eve.agent_dir}/`;
+  return [
+    "",
+    `vercel/eve agent directory detected (${[
+      ...(eve.agent_dir === "." ? [] : ["agent/ layout"]),
+      ...eve.eve_only,
+    ].join(", ")})`,
+    "",
+    `  moves as-is     ${["instructions.md", "subagents/"]
+      .filter((name) => eve.maps.includes(name))
+      .join(" · ") || "none found yet"} — same names, same meaning, into the project root`,
+    ...(() => {
+      const rewrites = [
+        ...(eve.maps.includes("agent.ts")
+          ? ["agent.ts (exports AgentDirConfig here: model, budget, breakers)"]
+          : []),
+        ...(eve.maps.includes("tools/")
+          ? ["tools/*.ts (each file must default-export this package's tool())"]
+          : []),
+        ...(eve.maps.includes("skills/")
+          ? ["skills/*.md (frontmatter: name + one-line plain description, filename = name)"]
+          : []),
+      ];
+      return rewrites.length > 0
+        ? [`  rewrite         ${rewrites.join(" · ")}`]
+        : [];
+    })(),
+    ...(eve.eve_only.length > 0
+      ? [`  no equivalent   ${eve.eve_only.join(" · ")} — channels, schedules, connections, and hooks are v2 scope here; Vercel Connect credentials are not supported`]
+      : []),
+    `  then            add caveman.config.ts + package.json, run caveman-agent doctor, then caveman-agent dev (from ${from} moved to a project root)`,
+    "  walk            docs/eve-migration.md in the @caveman-ai/agent package — about 10 minutes to a first receipt",
+    "",
+  ].join("\n");
+}
 
 async function doctor(args: string[]): Promise<void> {
   if (args.some((value) => value !== "--json")) {
@@ -326,6 +461,29 @@ async function doctor(args: string[]): Promise<void> {
     });
   }
 
+  // F7: recognize a vercel/eve agent directory and say what maps. Detection
+  // only — no files are read beyond existence checks, nothing is rewritten.
+  const eveLayout = await detectEveLayout(root);
+  if (eveLayout !== undefined) {
+    checks.push({
+      id: "eve_migration",
+      status: "warn",
+      detail: `vercel/eve agent directory detected (${[
+        ...(eveLayout.agent_dir === "." ? [] : ["agent/ layout"]),
+        ...eveLayout.eve_only,
+      ].join(", ")}) — ${
+        eveLayout.maps.length > 0
+          ? `found ${eveLayout.maps.join(", ")}: names map, but tools/*.ts and skills/*.md need their exports/frontmatter rewritten to this package's shapes`
+          : "no mappable files found yet"
+      }; ${
+        eveLayout.eve_only.length > 0
+          ? `${eveLayout.eve_only.join(", ")} have no v1 equivalent`
+          : "no eve-only directories found"
+      }`,
+      fix: "read docs/eve-migration.md in the @caveman-ai/agent package, move the mapped files, then run caveman-agent dev",
+    });
+  }
+
   let globalClaudeVersion = "global Claude Code not found (not required)";
   try {
     const { stdout } = await execFileAsync(process.env.CLAUDE_BIN ?? "claude", ["--version"], {
@@ -361,6 +519,7 @@ async function doctor(args: string[]): Promise<void> {
     ready,
     execution_mode: optimized ? "optimized" : "observe-only",
     checks,
+    ...(eveLayout === undefined ? {} : { eve_migration: eveLayout }),
     harnesses: [
       {
         id: "pi",
@@ -404,6 +563,7 @@ async function doctor(args: string[]): Promise<void> {
         return `${mark.padEnd(4)} ${check.id.padEnd(12)} ${check.detail}`;
       }),
       "",
+      ...(eveLayout === undefined ? [] : [renderEveMigration(eveLayout)]),
       `run mode: ${report.execution_mode}${report.execution_mode === "observe-only" ? " (no transforms or gateway telemetry)" : ""}`,
       `locked harnesses: ${report.harnesses.filter((item) => item.locked_execution).map((item) => item.id).join(", ") || "none"}`,
       `next: ${report.next_action}`,
@@ -518,15 +678,32 @@ async function register(_args: string[]): Promise<void> {
 
 async function dev(args: string[]): Promise<void> {
   const root = process.cwd();
-  const entry = args[0] ?? "src/agent.ts";
+  // Bare `caveman-agent dev` prefers the agent-directory convention when the
+  // project root carries instructions.md; otherwise the classic src/agent.ts
+  // default is unchanged. An explicit entry may also name a convention
+  // directory, which maps to its generated module entry.
+  const requested = args[0] ??
+    (await hasAgentDirConvention(root) ? "." : "src/agent.ts");
+  const requestedAbsolute = resolve(root, requested);
+  const entryAbsolute = await conventionEntryPath(requestedAbsolute);
+  const dirRoot = entryAbsolute === requestedAbsolute ? undefined : requestedAbsolute;
+  // Regenerate the directory convention's module entry before every staging
+  // pass so a tool added or removed mid-session lands in the staged graph.
+  // Pure directory scan — no live import of user modules on the watch path;
+  // the loader's imports happen inside the staged snapshot.
+  const refreshDirEntry = async (): Promise<void> => {
+    if (dirRoot !== undefined) await generateAgentDirEntry(dirRoot);
+  };
+  const entry = relative(root, entryAbsolute);
   const prompt = args.slice(1).join(" ") || "Reply with one short greeting.";
   const conversation = createConversation();
   const sessionId = conversation.sessionId;
   const interactive = args.length <= 1 && process.stdin.isTTY && process.stdout.isTTY;
   if (!interactive) {
+    await refreshDirEntry();
     const snapshot = await prepareDevSnapshot(root, entry);
     try {
-      await runDevTurn(snapshot, prompt, sessionId, conversation);
+      await runDevTurn(snapshot, prompt, sessionId, conversation, root);
     } finally {
       await snapshot.loaded.dispose();
     }
@@ -536,8 +713,10 @@ async function dev(args: string[]): Promise<void> {
   let revision = 0;
   const watcher = watch(root, { recursive: true }, (_event, filename) => {
     const path = filename?.toString().replaceAll("\\", "/") ?? "";
+    // .caveman/runs is the receipt trail every dev turn writes; watching it
+    // would mark the snapshot dirty after each turn's own receipt.
     if (path !== "" &&
-        /(?:^|\/)(?:node_modules|\.git|dist|coverage|\.turbo)(?:\/|$)/.test(path)) {
+        /(?:^|\/)(?:node_modules|\.git|dist|coverage|\.turbo|\.caveman\/runs)(?:\/|$)/.test(path)) {
       return;
     }
     revision += 1;
@@ -547,9 +726,10 @@ async function dev(args: string[]): Promise<void> {
   let snapshotRevision = -1;
   try {
     const initialRevision = revision;
+    await refreshDirEntry();
     snapshot = await prepareDevSnapshot(root, entry);
     snapshotRevision = initialRevision;
-    await runDevTurn(snapshot, prompt, sessionId, conversation);
+    await runDevTurn(snapshot, prompt, sessionId, conversation, root);
     while (true) {
       const promptDirty = revision !== snapshotRevision;
       const next = await readline.question(
@@ -560,13 +740,14 @@ async function dev(args: string[]): Promise<void> {
         const dirty = revision !== snapshotRevision;
         if (dirty) {
           const replacementRevision = revision;
+          await refreshDirEntry();
           const replacement = await prepareDevSnapshot(root, entry);
           const previous = snapshot;
           snapshot = replacement;
           snapshotRevision = replacementRevision;
           await previous.loaded.dispose();
         }
-        await runDevTurn(snapshot, next, sessionId, conversation);
+        await runDevTurn(snapshot, next, sessionId, conversation, root);
       } catch (error) {
         process.stderr.write(`${firstUsefulError(error)}\n`);
       }
@@ -603,6 +784,9 @@ async function prepareDevSnapshot(
             fixture.tools.sandbox === undefined ? [] : [fixture.tools.sandbox]
           ));
         },
+        // The staged snapshot already carries the generated convention entry;
+        // regenerating here would pin the staging directory's basename as id.
+        false,
       )
       : undefined;
     return { loaded, definition, ...(identity === undefined ? {} : { identity }) };
@@ -617,6 +801,7 @@ async function runDevTurn(
   prompt: string,
   sessionId: string,
   conversation: ConversationState,
+  projectRoot: string,
 ): Promise<void> {
   const { loaded, definition, identity } = snapshot;
   try {
@@ -627,27 +812,39 @@ async function runDevTurn(
         model: identity.selected_plan.model,
         reasoning: runtimeReasoning(identity.selected_plan.reasoning),
       };
+    // A directory-loaded agent carries run defaults from its agent.ts
+    // (budget, breakers); dev turns honor them like run() does.
+    const defaults = agentDirRunDefaults(definition);
     const result = await runAgentInternal(runtimeDefinition as AgentDefinition, prompt, {
       rootDir: loaded.rootDir,
       entryPath: loaded.entryPath,
       sessionId,
       conversation,
+      ...(defaults?.budget === undefined ? {} : { budget: defaults.budget }),
+      ...(defaults?.breakers === undefined ? {} : { breakers: defaults.breakers }),
       ...(identity === undefined ? {} : {
         lockedBuild: identity,
       }),
     });
-    const priced = catalogCost(result);
+    process.stdout.write(`\nagent response\n${result.text}\n\n`);
+    // F1/F5: every dev turn ends with the receipt print — one cost block,
+    // rendered by the same renderer the goldens pin. The receipt JSON lands
+    // under the real project root, not the staged snapshot.
+    try {
+      const { rendered } = await writeRunReceipt(projectRoot, result.receipt, {
+        mode: result.mode,
+        durationMs: result.latencyMs,
+      });
+      process.stdout.write(rendered);
+    } catch (error) {
+      process.stderr.write(`caveman-agent: receipt write failed: ${
+        error instanceof Error ? error.message : String(error)
+      }\n`);
+    }
     process.stdout.write([
       "",
-      "agent response",
-      result.text,
-      "",
-      `task cost: ${priced.priced ? `$${priced.usd.toFixed(6)} public catalog` : "$0 unpriced"}`,
       `context bill: ${formatBill(result.contextBill)}`,
-      `cache: ${result.cacheReadTokens} read / ${result.cacheWriteTokens} create tokens`,
-      `model: ${result.provider}/${result.model}`,
       `active safe transforms: ${result.transformIDs.length > 0 ? result.transformIDs.join(",") : "pass-through"} + stable-prefix guard`,
-      `run mode: ${result.mode}${result.mode === "observe-only" ? " (direct to provider; usage and local context estimates available)" : ""}`,
       `next action: ${identity ? "run caveman-agent check before deployment" : "approve eval fixture, then npm run build"}`,
       "local evidence: estimate only",
       "provider savings: not claimed",
@@ -689,11 +886,7 @@ async function stageDevLockInputs(
     evalFiles.push(resolve(root, path));
   }
   await loaded.includeSourceGraph(evalFiles);
-  const sourceFiles: string[] = [];
-  for (const pattern of SOURCE_PATTERNS) {
-    for await (const path of glob(pattern, { cwd: root })) sourceFiles.push(resolve(root, path));
-  }
-  await loaded.includeFiles(sourceFiles);
+  await loaded.includeFiles(await projectSourceFiles(root));
   await loaded.includeOptionalFiles(PACKAGE_STATE_FILES);
   return true;
 }
@@ -705,8 +898,23 @@ function firstUsefulError(error: unknown): string {
 
 async function build(args: string[]): Promise<void> {
   const root = process.cwd();
-  const configPath = args[0] ?? "caveman.config.ts";
+  const verbose = args.includes("--verbose");
+  const acceptPrefixShrink = args.includes("--accept-prefix-shrink");
+  const positional = args.filter((arg) => !arg.startsWith("--"));
+  const configPath = positional[0] ?? "caveman.config.ts";
   const loaded = await loadBuildInputs(root, configPath);
+  const lowered = await lowerBuildContext(root, loaded.agent);
+  // Static plan checks run BEFORE the eval gate (goldens/README.md ordering
+  // contract): they are free and deterministic, so a build with unapproved
+  // evals still fails fast on a static violation instead of printing
+  // needs_eval. Wire codes are demoted to --verbose.
+  const checks = await runStaticPlanChecks(root, loaded, lowered.ir, { acceptPrefixShrink });
+  for (const advisory of checks.advisories) process.stdout.write(advisory);
+  if (checks.failure !== undefined) {
+    process.stdout.write(renderStaticPlanFailure(checks.failure, { verbose }));
+    process.exitCode = 1;
+    return;
+  }
   const approved = loaded.evals.filter((item) => item.approved && item.required);
   if (approved.length === 0) {
     printBuildResult({
@@ -725,12 +933,12 @@ async function build(args: string[]): Promise<void> {
   // guesses which examples are holdout evidence.
   if (approved.some((fixture) => fixture.split !== undefined)) {
     await buildProfiled(root, loaded, approved);
+    await recordFrozenPrefix(root, lowered.ir);
     return;
   }
 
   const buildContexts = await Promise.all(approved.map((fixture) =>
     lowerBuildContext(root, loaded.agent, fixtureInput(fixture.input))));
-  const lowered = await lowerBuildContext(root, loaded.agent);
   const baseline = baselinePlan(loaded.agent, root, buildContexts.map((item) => item.ir));
   const transformRegistry = await loadTransformRegistry();
   const preferredTransforms = await profilePreferredTransforms(lowered);
@@ -780,7 +988,7 @@ async function build(args: string[]): Promise<void> {
     upstreamVersion: PI_UPSTREAM_VERSION,
     runner: async ({ plan, eval: fixture, seed, maxCostUsd, signal }) => runNativePiFixture({
       rootDir: root,
-      entryPath: loaded.config.entry,
+      entryPath: loaded.entryPath,
       definition: loaded.agent,
       plan,
       fixture,
@@ -793,6 +1001,160 @@ async function build(args: string[]): Promise<void> {
     }),
   });
   printBuildResult(result);
+  await recordFrozenPrefix(root, lowered.ir);
+}
+
+/**
+ * Static plan checks (phase 2): volatile frozen prefix (#224 first half),
+ * prefix-shrink regression against the locked plan, and frozen prefix below
+ * the provider's minimum cacheable length. Deterministic, provider-free, and
+ * ahead of the eval gate. Each check fires only on facts it actually has —
+ * an old lock without a frozen-prefix record, or a model without a catalog
+ * cache profile, honestly skips rather than guessing.
+ */
+async function runStaticPlanChecks(
+  root: string,
+  loaded: LoadedBuildInputs,
+  ir: ContextIR,
+  options: { acceptPrefixShrink?: boolean } = {},
+): Promise<{ failure: StaticPlanFailure | undefined; advisories: string[] }> {
+  const advisories: string[] = [];
+  // A second, independent composition pass must lower to a byte-identical
+  // frozen prefix; a run-varying context value declared build-stable differs.
+  // The second pass runs under a +26h clock so day-stable values
+  // (`toDateString()`) are caught, not just per-call ones. Note: composition
+  // side effects (module imports, context fns) run twice per build.
+  const requestedEntry = resolve(root, loaded.config.entry);
+  const secondAgent = await withPerturbedClock(() =>
+    loaded.entryPath !== requestedEntry
+      ? loadAgentDir(requestedEntry)
+      : loadAgent(loaded.entryPath));
+  const second = await lowerBuildContext(root, secondAgent);
+  const volatile = findVolatileFrozenSegment(ir, second.ir);
+  if (volatile !== undefined) {
+    const origin = agentDirContextOrigins(secondAgent)?.get(volatile.id);
+    return {
+      advisories,
+      failure: {
+        code: "cave_frozen_prefix_volatile_segment",
+        location: origin?.file ?? loaded.config.entry,
+        segmentId: volatile.id,
+        stability: volatile.stability,
+        ...(origin?.source === undefined ? {} : { sourcePreview: origin.source }),
+        fixToolPath: `tools/get_${volatile.id.replaceAll(/[^A-Za-z0-9_-]+/g, "_")}.ts`,
+      },
+    };
+  }
+
+  const currentTokens = frozenPrefixTokens(ir);
+  let lock: AnyCaveBuildLock | undefined;
+  try {
+    lock = await readLock(root);
+  } catch {
+    lock = undefined;
+  }
+  if (options.acceptPrefixShrink === true) {
+    // The shrink is declared intentional: reset the baseline. The build's
+    // end-of-lock record rewrite establishes the new one.
+    await rm(resolve(root, FROZEN_PREFIX_RECORD_PATH), { force: true });
+  } else if (lock !== undefined) {
+    const record = await readFrozenPrefixRecord(root);
+    if (record !== undefined && record.context_ir_sha256 === lock.context_ir_sha256 &&
+        currentTokens < record.frozen_prefix_tokens) {
+      return {
+        advisories,
+        failure: {
+          code: "cave_prefix_shrink_regression",
+          lockedTokens: record.frozen_prefix_tokens,
+          currentTokens,
+        },
+      };
+    }
+  }
+
+  const model = lock?.selected_plan.model ??
+    (typeof loaded.agent.model === "string" ? loaded.agent.model : undefined);
+  if (model !== undefined) {
+    const minimum = providerPrefixMinimum(model);
+    if (minimum !== undefined && currentTokens < minimum.minimumTokens) {
+      // Severity is mode-scoped (goldens/README.md): only an explicit-cache
+      // model fails — its lock would promise breakpoints over a cache that
+      // cannot exist. Affinity/implicit models still run below the minimum;
+      // they just read cold, and the advisory says so loudly.
+      if (minimum.mode === "explicit") {
+        return {
+          advisories,
+          failure: {
+            code: "cave_frozen_prefix_below_provider_minimum",
+            prefixTokens: currentTokens,
+            minimumTokens: minimum.minimumTokens,
+            model: minimum.model,
+          },
+        };
+      }
+      advisories.push(renderBelowMinimumAdvisory({
+        prefixTokens: currentTokens,
+        minimumTokens: minimum.minimumTokens,
+        model: minimum.model,
+      }));
+    }
+  }
+  return { failure: undefined, advisories };
+}
+
+const FROZEN_PREFIX_RECORD_PATH = ".caveman/frozen-prefix.json";
+/** The IR's token estimate basis (context-ir.ts estimateTokens: bytes / 4). */
+const FROZEN_PREFIX_TOKEN_BASIS = "local_estimate_bytes_over_4";
+
+interface FrozenPrefixRecord {
+  context_ir_sha256: string;
+  frozen_prefix_tokens: number;
+  basis: typeof FROZEN_PREFIX_TOKEN_BASIS;
+}
+
+async function readFrozenPrefixRecord(root: string): Promise<FrozenPrefixRecord | undefined> {
+  try {
+    const parsed: unknown = JSON.parse(
+      await readFile(resolve(root, FROZEN_PREFIX_RECORD_PATH), "utf8"),
+    );
+    if (isPlainRecord(parsed) &&
+        typeof parsed.context_ir_sha256 === "string" &&
+        /^[0-9a-f]{64}$/.test(parsed.context_ir_sha256) &&
+        Number.isSafeInteger(parsed.frozen_prefix_tokens) &&
+        Number(parsed.frozen_prefix_tokens) >= 0 &&
+        // A record on a different estimate basis must not be compared against
+        // this build's figures; the shrink check honestly skips it.
+        parsed.basis === FROZEN_PREFIX_TOKEN_BASIS) {
+      return parsed as unknown as FrozenPrefixRecord;
+    }
+  } catch {
+    // Missing or unreadable record: the shrink check honestly skips.
+  }
+  return undefined;
+}
+
+/**
+ * Records the frozen-prefix token count beside a lock this build just wrote
+ * (workload-profile.json pattern), binding it to the lock's context IR digest
+ * so the next build's shrink check compares like against like.
+ */
+async function recordFrozenPrefix(root: string, ir: ContextIR): Promise<void> {
+  let lock: AnyCaveBuildLock;
+  try {
+    lock = await readLock(root);
+  } catch {
+    return;
+  }
+  const digest = contextIRSHA256(ir);
+  if (lock.context_ir_sha256 !== digest) return;
+  const record: FrozenPrefixRecord = {
+    context_ir_sha256: digest,
+    frozen_prefix_tokens: frozenPrefixTokens(ir),
+    basis: FROZEN_PREFIX_TOKEN_BASIS,
+  };
+  const path = resolve(root, FROZEN_PREFIX_RECORD_PATH);
+  await mkdir(resolve(root, ".caveman"), { recursive: true });
+  await writeFile(path, `${JSON.stringify(record, null, 2)}\n`);
 }
 
 export type ProfiledEvalSplits = {
@@ -848,6 +1210,7 @@ async function buildProfiled(
   const transformRegistry = await loadTransformRegistry();
   const preferredTransforms = await profilePreferredTransforms(lowered);
   const modelCandidates = loaded.config.allowedModels ?? configuredModelCandidates(baseline.model);
+  const planningAccountingAt = new Date();
   const candidates = planNativePiCandidates({
     agent: loaded.agent,
     contextIR: lowered.ir,
@@ -857,6 +1220,7 @@ async function buildProfiled(
     observedDynamicKinds,
     preferredTransforms,
     transformCapabilities: transformRegistry.capabilities,
+    accountingAt: planningAccountingAt,
   });
   const runnable = candidates.filter((candidate) => candidate.static_rejection === undefined);
   const baselineCandidate = runnable.find((candidate) => candidate.plan.plan_id === baseline.plan_id);
@@ -881,6 +1245,7 @@ async function buildProfiled(
       baseline.model,
       contextByEvalID.get(fixture.id)!,
       loaded.agent.output?.maxTokens ?? 2_000,
+      planningAccountingAt,
     ));
   const profileCeiling = profileFixtureCeilings.reduce((sum, value) => sum + value, 0);
   const estimatedCeiling = roundCompilerUsd(profileCeiling + developmentCeiling + holdoutCeiling);
@@ -925,7 +1290,7 @@ async function buildProfiled(
       if (!(remaining > 0)) break;
       const profiled = await runProfileFixture(
         root,
-        loaded.config.entry,
+        loaded.entryPath,
         loaded.agent,
         baseline,
         fixture,
@@ -962,7 +1327,7 @@ async function buildProfiled(
   const target = nativePiCompilerTarget();
   const result = await compileProfiledNativePi({
     rootDir: root,
-    entryPath: loaded.config.entry,
+    entryPath: loaded.entryPath,
     agent: loaded.agent,
     contextIR: lowered.ir,
     profile,
@@ -1056,9 +1421,10 @@ function profileFixtureCeiling(
   model: string,
   contextIR: ContextIR,
   maxOutputTokens: number,
+  accountingAt: Date,
 ): number {
   const inputTokens = Object.values(contextBill(contextIR)).reduce((sum, value) => sum + value, 0);
-  const callCeiling = catalogSearchCeiling(model, inputTokens, maxOutputTokens);
+  const callCeiling = catalogSearchCeiling(model, inputTokens, maxOutputTokens, accountingAt);
   if (callCeiling === undefined) {
     throw new Error(`cave_compiler_profile_model_unpriced:${model}`);
   }
@@ -1083,6 +1449,7 @@ async function runProfileFixture(
     // closures; fixture mode receives default network/child/credential denial.
     sandbox: "required",
   } as AgentDefinition;
+  const accountingStartedAt = new Date();
   const result = await runAgentInternal(selected, fixtureInput(fixture.input), {
     rootDir: root,
     entryPath: entry,
@@ -1094,21 +1461,30 @@ async function runProfileFixture(
       sandboxProfile: await loadEvalSandboxProfile(root, fixture),
     } : {}),
   });
-  const priced = catalogCost(result);
+  const accountingFinishedAt = new Date();
+  const priced = result.usageBasis === "provider_reported" && result.priceBasis === "public_catalog"
+    ? { priced: true, usd: result.costUsd }
+    : { priced: false, usd: 0 };
   if (result.usageBasis !== "provider_reported" || result.priceBasis !== "public_catalog" ||
       !priced.priced) {
     throw new Error("cave_compiler_profile_cost_incomplete_after_run");
   }
-  return {
-    trajectory: normalizeTrajectory(result, {
+  const trajectory = normalizeTrajectory(result, {
       split: "profile",
       caseId: fixture.id,
       lineageId: fixture.lineageId!,
       inputSha256: sha256(stableStringify(fixture.input)),
       agentSha256: sha256(definition.id),
       toolEffects: Object.fromEntries(definition.tools.map((tool) => [tool.name, tool.effect])),
-    }),
-    catalogCostUsd: priced.usd,
+    accountingStartedAt,
+    accountingFinishedAt,
+  });
+  if (trajectory.price_basis !== "public_catalog") {
+    throw new Error("cave_compiler_profile_price_window_changed");
+  }
+  return {
+    trajectory,
+    catalogCostUsd: trajectory.cost_usd,
   };
 }
 
@@ -1588,16 +1964,10 @@ type LoadedBuildInputs = {
   agent: AgentDefinition;
   evals: EvalDefinition[];
   sourceSha256: string;
+  /** Absolute effective entry: the configured file, or a convention directory's generated entry. */
+  entryPath: string;
 };
 
-const SOURCE_PATTERNS = [
-  "src/**/*.ts",
-  "src/**/*.tsx",
-  "src/**/*.js",
-  "src/**/*.mjs",
-  "src/**/*.cjs",
-  "src/**/*.json",
-] as const;
 const PACKAGE_STATE_FILES = [
   "package.json",
   "package-lock.json",
@@ -1612,6 +1982,11 @@ async function loadBuildInputs(
   beforeSourceHash?: (
     inputs: Omit<LoadedBuildInputs, "sourceSha256">,
   ) => Promise<void>,
+  // Regenerating the convention's module entry is correct against the real
+  // project root but wrong inside a dev-staged snapshot (its temp basename
+  // would pin the wrong id) — the staged copy already carries the generated
+  // entry, so the dev path passes false and just imports it.
+  regenerateDirEntry = true,
 ): Promise<LoadedBuildInputs> {
   const configAbsolute = resolve(root, configPath);
   const imported = await importFresh(configAbsolute) as { default?: BuildConfig; config?: BuildConfig };
@@ -1619,8 +1994,11 @@ async function loadBuildInputs(
   if (!config || config.lock !== "strict" || config.sandbox !== "required") {
     throw new Error("caveman build: config must use strict lock and required sandbox");
   }
-  const entryAbsolute = resolve(root, config.entry);
-  const agent = await loadAgent(entryAbsolute);
+  const requestedEntry = resolve(root, config.entry);
+  const entryAbsolute = await conventionEntryPath(requestedEntry);
+  const agent = entryAbsolute !== requestedEntry && regenerateDirEntry
+    ? await loadAgentDir(requestedEntry)
+    : await loadAgent(entryAbsolute);
   const evalFiles: string[] = [];
   for await (const path of glob(config.evals, { cwd: root })) evalFiles.push(resolve(root, path));
   evalFiles.sort();
@@ -1631,11 +2009,9 @@ async function loadBuildInputs(
       if (isEval(value)) evals.push(value);
     }
   }
-  await beforeSourceHash?.({ config, agent, evals });
+  await beforeSourceHash?.({ config, agent, evals, entryPath: entryAbsolute });
   const sourceFiles = new Set<string>([configAbsolute, entryAbsolute, ...evalFiles]);
-  for (const pattern of SOURCE_PATTERNS) {
-    for await (const path of glob(pattern, { cwd: root })) sourceFiles.add(resolve(root, path));
-  }
+  for (const path of await projectSourceFiles(root)) sourceFiles.add(path);
   for (const source of agentFileSourcePaths(agent)) {
     sourceFiles.add(resolve(root, source));
   }
@@ -1652,7 +2028,7 @@ async function loadBuildInputs(
     }
   }
   const sourceSha256 = await sourceGraphSHA256(root, sourceFiles);
-  return { config, agent, evals, sourceSha256 };
+  return { config, agent, evals, sourceSha256, entryPath: entryAbsolute };
 }
 
 async function validLockIdentity(
@@ -1660,11 +2036,17 @@ async function validLockIdentity(
   entry: string,
   expectedAgent?: AgentDefinition,
   beforeSourceHash?: Parameters<typeof loadBuildInputs>[2],
+  regenerateDirEntry = true,
 ): Promise<AnyCaveBuildLock | undefined> {
   try {
     const lock = await readLock(root);
-    const loaded = await loadBuildInputs(root, "caveman.config.ts", beforeSourceHash);
-    if (resolve(root, loaded.config.entry) !== resolve(root, entry)) {
+    const loaded = await loadBuildInputs(
+      root,
+      "caveman.config.ts",
+      beforeSourceHash,
+      regenerateDirEntry,
+    );
+    if (loaded.entryPath !== await conventionEntryPath(resolve(root, entry))) {
       throw new Error("cave_stale_lock:entry");
     }
     if (expectedAgent !== undefined &&

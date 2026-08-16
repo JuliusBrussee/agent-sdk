@@ -1,8 +1,8 @@
 {
   "schema_version": "provider-catalog.generated.v1",
-  "catalog_semantic_sha256": "65a4d8176815411ff16e931560c9b1095eebb7928262b05828b3a9c34d945cad",
-  "price_provenance_sha256": "cc3ccdd32c9850a2ce7551582d52cad6199c9d3c25421b5ee893a82e12eaf35a",
-  "source_sha256": "7e5835fda729133fba6533186b6cfc9bd58103310ae2f41e504253a0945e7f9a",
+  "catalog_semantic_sha256": "f9f74e012f52474ed3f0d4fdc40feef766cb035dd61eec1d97282946385942bb",
+  "price_provenance_sha256": "3712b1307ed08b02a1bb2c6ec4df1c3af14a6a3b619cba8b34f513f4bcc00035",
+  "source_sha256": "44f273c90cd7ab4707888fdf7ac5aea21d668e2204ef8a66683644e9151e1ce8",
   "entries": [
     {
       "provider": "openai",
@@ -89,7 +89,7 @@
           "v1/responses"
         ]
       },
-      "content_digest": "69617a45d54fb87f784028f3954193d5f4a7e484dbd680b42ecd29c0091a808c",
+      "content_digest": "0e3971062b1c1a00fc3eb64a0287ae794518b286f412f8540fa0e16b9800ff2f",
       "sources": [
         "https://developers.openai.com/api/docs/guides/token-counting",
         "https://developers.openai.com/api/docs/guides/prompt-caching",
@@ -183,7 +183,7 @@
           "v1/responses"
         ]
       },
-      "content_digest": "e00dcdd4332147a2426cd1e7dab5051f7cf88e08158e3fe410400bb1697a145e",
+      "content_digest": "cbf307c344e8e72f7d033a3471591738d5a4a0d5564dfb517c5c73ff469a2ba4",
       "sources": [
         "https://developers.openai.com/api/docs/guides/token-counting",
         "https://developers.openai.com/api/docs/guides/prompt-caching",
@@ -286,7 +286,7 @@
           "v1/responses"
         ]
       },
-      "content_digest": "dc0faee3a8ac33ded0c25824ea9f37f8bb7c92fda777c936942e537b65fb9f57",
+      "content_digest": "b0281a4868f8e039e417ca7b8a45eb548f855114e147583efac1bdba4962cf0f",
       "sources": [
         "https://developers.openai.com/api/docs/guides/token-counting",
         "https://openai.com/api/pricing/",
@@ -390,7 +390,7 @@
           "v1/responses"
         ]
       },
-      "content_digest": "c08fa0304919d44116a9b91977f8837954864adc179934345ae750a11844e398",
+      "content_digest": "f93ba03bf884ff482c869ca74d75369937813f8c4ea59e8456241612c939035c",
       "sources": [
         "https://developers.openai.com/api/docs/guides/token-counting",
         "https://developers.openai.com/api/docs/guides/prompt-caching",
@@ -486,7 +486,7 @@
           "v1/responses"
         ]
       },
-      "content_digest": "526b32c6e372c1207ebfe062e7aecdfcfa52de5a85dade963ca1c1a4464f6adb",
+      "content_digest": "22af1d34855844f6904bf92bf86cd1eaff80698aaac3451641c4cf6105d20dde",
       "sources": [
         "https://developers.openai.com/api/docs/guides/token-counting",
         "https://openai.com/api/pricing/",
@@ -583,7 +583,7 @@
           "v1/responses"
         ]
       },
-      "content_digest": "68b67fca8de12806106dd8fed8fb49055f246a92773dcf4fe16031e87e6b3033",
+      "content_digest": "f36e090e6a85841cc8a5d2f73d2ef11659482fdad320dd865ae6c297f9eade8f",
       "sources": [
         "https://developers.openai.com/api/docs/guides/token-counting",
         "https://developers.openai.com/api/docs/guides/prompt-caching",
@@ -673,7 +673,7 @@
       "cache_profile": {
         "state": "unknown"
       },
-      "content_digest": "cbddf5bb27f9f6031487aa0751af1a5b9015e28fa728a8b8d5e11d26055ab75c",
+      "content_digest": "cbe76b8ab2c5fcab59a9b74c78a78ade3fe4b13ed98f5d6598de3c6db3f77492",
       "sources": [
         "https://developers.openai.com/api/docs/guides/token-counting",
         "https://developers.openai.com/api/docs/models/gpt-5.4-nano"
@@ -755,7 +755,7 @@
       "cache_profile": {
         "state": "unknown"
       },
-      "content_digest": "604545808360d9d63a1ee3be3eb1f0ae349859703e0b8e52ad1418a6d1bf1d9b",
+      "content_digest": "a98b2c61c44451623cf354961c3d10b7021a5c9f80162d58c79571086202002c",
       "sources": [
         "https://developers.openai.com/api/docs/guides/token-counting",
         "https://developers.openai.com/api/docs/models/gpt-5.4-nano"
@@ -831,7 +831,7 @@
       "cache_profile": {
         "state": "unknown"
       },
-      "content_digest": "1db950f3198c8c57a66a8b6593dffeb4ea44d057a739be5d90768b3ad2dc7ea1",
+      "content_digest": "65c37a9f88262c8d9c53639a165f4abd8f53bf9ca5e1ce4f341765c54e371352",
       "sources": [
         "https://openai.com/api/pricing/",
         "https://developers.openai.com/api/docs/models/text-embedding-3-large"
@@ -907,7 +907,7 @@
       "cache_profile": {
         "state": "unknown"
       },
-      "content_digest": "b4d88ededc2eaae279140199302feb9b6205fc7b2f23bc81875c136c0655e41c",
+      "content_digest": "5db0b508dfbd77c9947bc135b4a0bb704cb7fd809b38fc0982709411b59a03c4",
       "sources": [
         "https://openai.com/api/pricing/",
         "https://developers.openai.com/api/docs/models/text-embedding-3-small"
@@ -1006,7 +1006,7 @@
           "v1/messages"
         ]
       },
-      "content_digest": "9e045a0719aebefeab041fd7b8e2f0111fbbc86cf57b229153850e3b4dd6e05e",
+      "content_digest": "ff3798d07b409e27c79f7b87878d3587cd686c4619e34a5817324bd64cbe3d56",
       "sources": [
         "https://platform.claude.com/docs/en/build-with-claude/token-counting",
         "https://platform.claude.com/docs/en/build-with-claude/prompt-caching",
@@ -1109,7 +1109,7 @@
           "v1/messages"
         ]
       },
-      "content_digest": "824c3951501509a2d203b1f1c6bd651681677cd060dfd6962ba242376bd326d5",
+      "content_digest": "e99b8b998ce113e182033e17d4ddd8f7f89cef6792aa736a97066b7e1a73c758",
       "sources": [
         "https://platform.claude.com/docs/en/build-with-claude/token-counting",
         "https://platform.claude.com/docs/en/build-with-claude/prompt-caching",
@@ -1211,7 +1211,7 @@
           "v1/messages"
         ]
       },
-      "content_digest": "2f8034b1ea08f6f4205a54b0f78599bbdb07805e02c889e2cfcebe65485cc354",
+      "content_digest": "819f95a1cd60790740fd8d730a944b416b70b22299cdc42e7cf4b566c3395780",
       "sources": [
         "https://platform.claude.com/docs/en/build-with-claude/token-counting",
         "https://platform.claude.com/docs/en/build-with-claude/prompt-caching",
@@ -1306,7 +1306,7 @@
           "v1/messages"
         ]
       },
-      "content_digest": "341670b06faf671f7c9881aba4e136e91ebce0caaad33f188b3cc69b333e1a7d",
+      "content_digest": "12cf49b607ce65172b3668c1463bbce5d5a9945944a12d4585206d6182a4d62f",
       "sources": [
         "https://platform.claude.com/docs/en/build-with-claude/token-counting",
         "https://platform.claude.com/docs/en/build-with-claude/prompt-caching",
@@ -1400,7 +1400,7 @@
           "v1/messages"
         ]
       },
-      "content_digest": "13426fac91ffbd4e55c00e874af6445919eebedf1e6b2df8f44ccd0ca96b73a6",
+      "content_digest": "8cabede1dd0ce977ae308afc0328f77e7a08ef666873bb2bd459b50e6f44abe7",
       "sources": [
         "https://platform.claude.com/docs/en/build-with-claude/token-counting",
         "https://platform.claude.com/docs/en/build-with-claude/prompt-caching",
@@ -1503,7 +1503,7 @@
           "v1/messages"
         ]
       },
-      "content_digest": "3dd8eb46c8ed95d72ea69547c5b30b71eea0ab91fbdc9a8e77f020a4c3f9ad67",
+      "content_digest": "4a9398970881e8cdbb058981a9b33ba45fefd4567730e52df5e0b7fdab88811e",
       "sources": [
         "https://platform.claude.com/docs/en/build-with-claude/token-counting",
         "https://platform.claude.com/docs/en/build-with-claude/prompt-caching",
@@ -1593,7 +1593,7 @@
           "v1/messages"
         ]
       },
-      "content_digest": "082db2ed08385914016d2b13e099eb4c0f2c0d0426065f0bf29ba338bb7fca35",
+      "content_digest": "0955dcc3164f87f2bc56e88b3bee550fda5f298932cc37394a3820d83f0e9d85",
       "sources": [
         "https://platform.claude.com/docs/en/build-with-claude/prompt-caching",
         "https://platform.claude.com/docs/en/about-claude/pricing",
@@ -1682,7 +1682,7 @@
           "v1/messages"
         ]
       },
-      "content_digest": "40ca76e29a698d50054c66945f24423bb9cac640eceff12ad1b31e7d65382302",
+      "content_digest": "c3dede53907e5060eaf17e3eaf7bb11a3fbb18aef6ec5a71fa58780ad0ad6c66",
       "sources": [
         "https://platform.claude.com/docs/en/build-with-claude/prompt-caching",
         "https://platform.claude.com/docs/en/about-claude/pricing",
@@ -1775,7 +1775,7 @@
           "v1/messages"
         ]
       },
-      "content_digest": "56360266ac3ca62b5bdd307c0396cf751ce32c5601654c03ff978a6df9d05394",
+      "content_digest": "3c0c708e77951df459fb492a015b13eaca380d4f157c089f5adca9fec58b929d",
       "sources": [
         "https://platform.claude.com/docs/en/build-with-claude/token-counting",
         "https://platform.claude.com/docs/en/build-with-claude/prompt-caching",
@@ -1868,7 +1868,7 @@
           "generateContent"
         ]
       },
-      "content_digest": "5d0bc461b5a0fd4a94f05a13692e72cd8bbc20894d16644749b5281652dc3b82",
+      "content_digest": "780bcbd9fd792d47ef79a69270fe4fe8a56c8a65dd987f231797ba513bdafb93",
       "sources": [
         "https://ai.google.dev/api/tokens",
         "https://ai.google.dev/gemini-api/docs/caching",
@@ -1959,7 +1959,7 @@
           "generateContent"
         ]
       },
-      "content_digest": "8620bb02c0ba237a414a62c9c4c8d80d42ff3b699edb65547935411648dea5d6",
+      "content_digest": "193b0a26f58cf480ed7b42c02e90df8da22bff6afa86380882fdfa119f03637c",
       "sources": [
         "https://ai.google.dev/api/tokens",
         "https://ai.google.dev/gemini-api/docs/caching",
@@ -2050,7 +2050,7 @@
           "invoke-with-response-stream"
         ]
       },
-      "content_digest": "3019a937923d1a3852a8c89108c9b8d4391e683600c0248edaeff6000487d3c7",
+      "content_digest": "c9aeb2ef97e5011d59949e22895eef75e5f08e8bc734246a890f592f5a025065",
       "sources": [
         "https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html",
         "https://aws.amazon.com/bedrock/pricing/",
@@ -2140,7 +2140,7 @@
           "invoke-with-response-stream"
         ]
       },
-      "content_digest": "c05cb6945c6949581d95aae1bab45df10f7ee9e6e22992f12d11817e5ed7c1ca",
+      "content_digest": "0b0dfbcc292a152de9cb6929eaeb48dac36e3b32e719799ee84ddb467960131e",
       "sources": [
         "https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html",
         "https://aws.amazon.com/bedrock/pricing/",
@@ -2230,7 +2230,7 @@
           "invoke-with-response-stream"
         ]
       },
-      "content_digest": "7c439b00f3c6642109dd0019a00d21cd6188b924ad874ee1b208b02eb953789f",
+      "content_digest": "e53e3388a9a387b37543dc385f7869012712589c881e4c4214a1c4bed2605b42",
       "sources": [
         "https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html",
         "https://aws.amazon.com/bedrock/pricing/",
@@ -2321,7 +2321,7 @@
           "invoke-with-response-stream"
         ]
       },
-      "content_digest": "90ff90f751c3092fef139ef0b710f4e8785c12d8a0da2badc02a2b0773e57171",
+      "content_digest": "b7a6f0db4d833479741fd718e1595e29b77ff071277bb457365811874425077f",
       "sources": [
         "https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html",
         "https://aws.amazon.com/bedrock/pricing/",
@@ -2412,7 +2412,7 @@
           "invoke-with-response-stream"
         ]
       },
-      "content_digest": "f194f3242c873d3176a855d5391bd98b5b936399aba386f6bb06c610b44fb165",
+      "content_digest": "8b48eb644d8ca6284905b99ba8a94c0fd8e670c82d85a7c30296b9dc263c6089",
       "sources": [
         "https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html",
         "https://aws.amazon.com/bedrock/pricing/",
@@ -2490,7 +2490,7 @@
       "cache_profile": {
         "state": "unknown"
       },
-      "content_digest": "cbbb8ad0aee7849064d7509321aad3e3fe9735d8464ae1f3d8dc87a8bb60284f",
+      "content_digest": "fc166ae3ba1af33cde1b37c8eedca62bfad96e493d9cb7c694b877b21ba21cfd",
       "sources": [
         "https://aws.amazon.com/bedrock/pricing/",
         "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-nova-2-lite.html"
@@ -2566,7 +2566,7 @@
       "cache_profile": {
         "state": "unknown"
       },
-      "content_digest": "c7f45c83ec0624b0a395f3240f5c5cba7e7f9abb0704032a0fbaacaf1210415e",
+      "content_digest": "22ac14d0f570a2e2d00abe51bf7432d2a937842b2410d9a2acdb5151b9786f4d",
       "sources": [
         "https://aws.amazon.com/bedrock/pricing/",
         "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-meta-llama-4-maverick-17b-instruct.html"
@@ -2642,7 +2642,7 @@
       "cache_profile": {
         "state": "unknown"
       },
-      "content_digest": "0ae86f5bf0f143b4bfd4af4e801bf070302562b65f2775e66295618ce5f5d295",
+      "content_digest": "0823a0f39c0e20a4168d4eec055075ed8c39cf13154163361c5d063573e03765",
       "sources": [
         "https://aws.amazon.com/bedrock/pricing/",
         "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-meta-llama-4-scout-17b-instruct.html"
@@ -2718,7 +2718,7 @@
       "cache_profile": {
         "state": "unknown"
       },
-      "content_digest": "5bc42fd2a698c8a84a5bb0c9f27228c1d5fcd7a1870b7f95601a6db8a1caf8cc",
+      "content_digest": "c95b7d0b9f94a215d3a4420f62e7bd31eacdd6d4a4df50cd9dfc5bb8e6bc8c77",
       "sources": [
         "https://aws.amazon.com/bedrock/pricing/",
         "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-mistral-ai-mistral-large-3.html"
@@ -2794,7 +2794,7 @@
       "cache_profile": {
         "state": "unknown"
       },
-      "content_digest": "ab14c09e7bd7ac49773ad25a96f36edbba8aa3d2ecee6e5eb1c0c580ba35a87b",
+      "content_digest": "198d79658a3ace00d821e91a15d75eb1d3645c371685c47236e775072fbc6f77",
       "sources": [
         "https://aws.amazon.com/bedrock/pricing/",
         "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-mistral-ai-mistral-large-3.html"
@@ -2870,7 +2870,7 @@
       "cache_profile": {
         "state": "unknown"
       },
-      "content_digest": "4cc61838920fa7d8ce555d1a4fa02ab654767ee37062b8b24828fbe7f0df332c",
+      "content_digest": "7b618f3fbf2a08cf6c8b162ad1bed9653706c1f2b8851641ebde7dfe96a2c8bb",
       "sources": [
         "https://aws.amazon.com/bedrock/pricing/",
         "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-mistral-ai-mistral-large-3.html"
@@ -2946,7 +2946,7 @@
       "cache_profile": {
         "state": "unknown"
       },
-      "content_digest": "cb53219321072ec26c51d04fa75a526f2a7fa9db4a8e84459d2df2ae7a28182d",
+      "content_digest": "5d0de82673ded7665429a6bbaf220f5d479d242c879bb16293f73e6e32ce5a16",
       "sources": [
         "https://aws.amazon.com/bedrock/pricing/",
         "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-mistral-ai-mistral-large-3.html"
@@ -3022,7 +3022,7 @@
       "cache_profile": {
         "state": "unknown"
       },
-      "content_digest": "8e02903751d4ea7987943be01481de00993d99850f0b06aa2ee0e0985d66822b",
+      "content_digest": "b315146bc7a441b2edb8a17cd109adfa73ef51c967e934fbf767b4611b4d831d",
       "sources": [
         "https://aws.amazon.com/bedrock/pricing/",
         "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-mistral-ai-mistral-large-3.html"
@@ -3098,7 +3098,7 @@
       "cache_profile": {
         "state": "unknown"
       },
-      "content_digest": "fb155439bb776950a4150e8cdaef74cb4a904ea4e9005e7af58aa0d6f35add4c",
+      "content_digest": "1593248032e84d38c7c6e783476dc3bbd74715f12d3045aa9dbaaada5b4b78ae",
       "sources": [
         "https://aws.amazon.com/bedrock/pricing/",
         "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-mistral-ai-mistral-large-3.html"
@@ -3174,7 +3174,7 @@
       "cache_profile": {
         "state": "unknown"
       },
-      "content_digest": "b40c83a937f0d040f4aafd7df9cd8d5394019dbf5367c23a3e9c10088766079b",
+      "content_digest": "551cc348f29fa749700b5c795727b40ae779400a513750fb53fb9993a7c13bfe",
       "sources": [
         "https://aws.amazon.com/bedrock/pricing/",
         "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-mistral-ai-mistral-large-3.html"
@@ -3250,7 +3250,7 @@
       "cache_profile": {
         "state": "unknown"
       },
-      "content_digest": "f191b3b726717d33e129cddf9c208161998ba4196cf12896f945dc40c157a336",
+      "content_digest": "eaecc0a76a7c08e45070ee9380c61b6e78787d5b033b8029eeaa074f7474db65",
       "sources": [
         "https://aws.amazon.com/bedrock/pricing/",
         "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-mistral-ai-ministral-3-8b.html"
@@ -3326,7 +3326,7 @@
       "cache_profile": {
         "state": "unknown"
       },
-      "content_digest": "3474a0505770e4c12b80b1518a9ef02448ac3b641711ffafd33d51e373a279cf",
+      "content_digest": "19a2cc6253cac4baa89726e4a6d3b68d6447847374d2e35288835017fed8bc58",
       "sources": [
         "https://aws.amazon.com/bedrock/pricing/",
         "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-mistral-ai-ministral-3-8b.html"
@@ -3402,7 +3402,7 @@
       "cache_profile": {
         "state": "unknown"
       },
-      "content_digest": "32b848be7c4a6c3446e1a97f07c04c3ba3da5cf0ce259a094e751fc37d5a14e9",
+      "content_digest": "6606fa096821eb36ee39c6f1db44ea28cbbd452b53047077be187ede0c3b0e0e",
       "sources": [
         "https://aws.amazon.com/bedrock/pricing/",
         "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-mistral-ai-ministral-3-8b.html"
@@ -3478,7 +3478,7 @@
       "cache_profile": {
         "state": "unknown"
       },
-      "content_digest": "923c1ea619d76fb63556c4fb8497b6cec1283157bc2dab638302d45524bf3ef8",
+      "content_digest": "e26f09c1cd06c801fa59118211082a6190ff4cc8da96dc9312ffdcb40ecd2cbb",
       "sources": [
         "https://aws.amazon.com/bedrock/pricing/",
         "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-mistral-ai-ministral-3-8b.html"
@@ -3554,7 +3554,7 @@
       "cache_profile": {
         "state": "unknown"
       },
-      "content_digest": "7122aba9be9c31e5e08c771647a9768ace8b95c719f3409d6b4f7d0a1e3e87d9",
+      "content_digest": "7335aaa004aa0cd027ce2e58fb1e699103c036d88e8c76cc139e840e0f7f5917",
       "sources": [
         "https://aws.amazon.com/bedrock/pricing/",
         "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-mistral-ai-ministral-3-8b.html"
@@ -3630,7 +3630,7 @@
       "cache_profile": {
         "state": "unknown"
       },
-      "content_digest": "368bece4a1dc33cd09c6fe2eb49c92cf6e9e21b5b620587747611a8a65544ac6",
+      "content_digest": "ef4d2c04ea81585abfaf0c8076e6bd13477f5c6b44ba13671bb79df4a0d31327",
       "sources": [
         "https://aws.amazon.com/bedrock/pricing/",
         "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-mistral-ai-ministral-3-8b.html"
@@ -3706,7 +3706,7 @@
       "cache_profile": {
         "state": "unknown"
       },
-      "content_digest": "98fb2f139bee53a401df3f4f2fec68cea99e9998a1b98cd2ea2ed3cc86164ce6",
+      "content_digest": "d142220afe3af97cdbf831333176b2d67a7729c3af13e89d8db360c446c41307",
       "sources": [
         "https://aws.amazon.com/bedrock/pricing/",
         "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-mistral-ai-ministral-3-8b.html"
@@ -3782,7 +3782,7 @@
       "cache_profile": {
         "state": "unknown"
       },
-      "content_digest": "d648ca5ce241bb52a6a4bf877c94ee54d9b6c26bb4fc3a9e8746b0e9a55c91cb",
+      "content_digest": "b28caf139fb0cbb61c0f771d1fdc4e8be5b500cabbf44512833ece934cfbf982",
       "sources": [
         "https://aws.amazon.com/bedrock/pricing/",
         "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-mistral-ai-ministral-3-8b.html"
@@ -3858,7 +3858,7 @@
       "cache_profile": {
         "state": "unknown"
       },
-      "content_digest": "526b1a1d3aafe5aa9c7e73d7539d196a9aeedfa708dc078e9c0423723aba7e9b",
+      "content_digest": "7e87a002818f3893d29c12033798f67d3cda32c717e02c02ed73bdba25d48aea",
       "sources": [
         "https://aws.amazon.com/bedrock/pricing/",
         "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-mistral-ai-ministral-3-8b.html"
@@ -3934,7 +3934,7 @@
       "cache_profile": {
         "state": "unknown"
       },
-      "content_digest": "abf61ab9eb7f1b07feb7bf178764ce684e7dfe196e6c0fcfb27af2308aafbf1d",
+      "content_digest": "9848bc323c0a75dc8bd222e51562fa387a15d8fe458283cadbbbba4d442c0280",
       "sources": [
         "https://aws.amazon.com/bedrock/pricing/",
         "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-mistral-ai-ministral-3-8b.html"
@@ -4012,7 +4012,7 @@
       "cache_profile": {
         "state": "unknown"
       },
-      "content_digest": "c16dc3ec0955f933213c0c74544030c8ad04e67f724dd40ff73933e46ce64e3f",
+      "content_digest": "1ffb1e76f4ca1366743a35c2cce12398d3fbc28610f928cefe5e965df5dcb0c1",
       "sources": [
         "https://cloud.google.com/vertex-ai/generative-ai/pricing",
         "https://ai.google.dev/gemini-api/docs/models/gemini-2.5-pro"
@@ -4090,7 +4090,7 @@
       "cache_profile": {
         "state": "unknown"
       },
-      "content_digest": "436e4eced688cee12495f1a4fe1febf2dee81c14a37763d3ea893249042f1853",
+      "content_digest": "9a94657709d56c44a36ca0c49c00d0d02792844e7ecf68c3ece87315700f0a34",
       "sources": [
         "https://cloud.google.com/vertex-ai/generative-ai/pricing",
         "https://ai.google.dev/gemini-api/docs/models/gemini-2.5-flash"
@@ -4166,7 +4166,7 @@
       "cache_profile": {
         "state": "unknown"
       },
-      "content_digest": "f4c30e73709c5cddf4d32306099bd7566e0bdd3c58374ca4c56c668bc49e7663",
+      "content_digest": "2296d40948a3e55b3d30d834ca546faf81ce393c52f778f027c54975ff41f4cf",
       "sources": [
         "https://cloud.google.com/vertex-ai/generative-ai/pricing",
         "https://platform.claude.com/docs/en/about-claude/pricing",
@@ -4243,7 +4243,7 @@
       "cache_profile": {
         "state": "unknown"
       },
-      "content_digest": "c997627425fc17841b36564c55a89547e1f4af68b58655a967d28a8ae1d04d44",
+      "content_digest": "3f58b79517db45f9231454aae5d492de2ad24c6c221d3867f93f49c16eab279d",
       "sources": [
         "https://cloud.google.com/vertex-ai/generative-ai/pricing",
         "https://platform.claude.com/docs/en/about-claude/pricing",
@@ -4263,7 +4263,7 @@
         "cache_read_input_per_million": 0.0028,
         "cache_write_input_per_million": null,
         "cache_write_1h_input_per_million": null,
-        "reasoning_output_per_million": null,
+        "reasoning_output_per_million": 0.28,
         "batch_discount_fraction": null,
         "cache_storage_per_million_tokens_hour": null,
         "long_context_threshold_tokens": null,
@@ -4272,7 +4272,9 @@
         "long_context_output_multiplier": null,
         "version": "2026-08-13"
       },
-      "pricing_semantics": {},
+      "pricing_semantics": {
+        "region_agnostic_pricing": true
+      },
       "capabilities": {
         "adaptive_thinking": "unknown",
         "batch": "unknown",
@@ -4306,10 +4308,69 @@
         "context_window_tokens": 1000000
       },
       "lifecycle": {
-        "status": "reviewed"
+        "status": "routable"
       },
       "aliases": [],
       "price_intervals": [],
+      "recurring_utc_pricing": {
+        "effective_from": "2026-08-16T16:00:00Z",
+        "default_pricing": {
+          "input_per_million": 0.22,
+          "output_per_million": 0.66,
+          "cache_read_input_per_million": 0.007,
+          "cache_write_input_per_million": null,
+          "cache_write_1h_input_per_million": null,
+          "reasoning_output_per_million": 0.66,
+          "batch_discount_fraction": null,
+          "cache_storage_per_million_tokens_hour": null,
+          "long_context_threshold_tokens": null,
+          "long_context_threshold_inclusive": null,
+          "long_context_input_multiplier": null,
+          "long_context_output_multiplier": null,
+          "version": "2026-08-13"
+        },
+        "windows": [
+          {
+            "start": "01:00:00",
+            "end": "04:00:00",
+            "pricing": {
+              "input_per_million": 0.44,
+              "output_per_million": 1.32,
+              "cache_read_input_per_million": 0.014,
+              "cache_write_input_per_million": null,
+              "cache_write_1h_input_per_million": null,
+              "reasoning_output_per_million": 1.32,
+              "batch_discount_fraction": null,
+              "cache_storage_per_million_tokens_hour": null,
+              "long_context_threshold_tokens": null,
+              "long_context_threshold_inclusive": null,
+              "long_context_input_multiplier": null,
+              "long_context_output_multiplier": null,
+              "version": "2026-08-13"
+            }
+          },
+          {
+            "start": "06:00:00",
+            "end": "10:00:00",
+            "pricing": {
+              "input_per_million": 0.44,
+              "output_per_million": 1.32,
+              "cache_read_input_per_million": 0.014,
+              "cache_write_input_per_million": null,
+              "cache_write_1h_input_per_million": null,
+              "reasoning_output_per_million": 1.32,
+              "batch_discount_fraction": null,
+              "cache_storage_per_million_tokens_hour": null,
+              "long_context_threshold_tokens": null,
+              "long_context_threshold_inclusive": null,
+              "long_context_input_multiplier": null,
+              "long_context_output_multiplier": null,
+              "version": "2026-08-13"
+            }
+          }
+        ],
+        "verified_at": "2026-08-13T00:00:00Z"
+      },
       "tokenizer": {
         "state": "unknown",
         "exact": false
@@ -4320,7 +4381,7 @@
       "cache_profile": {
         "state": "unsupported"
       },
-      "content_digest": "8e94006ccfc4c48cee3829ac1bfe82c3577d2a0258e1796780eda1189485fac6",
+      "content_digest": "bd27ed70bc3b81cc75e36ce4d6ee75cc8908ed5b83138c7ab47482d49fb2a02f",
       "sources": [
         "https://api-docs.deepseek.com/quick_start/pricing",
         "https://api-docs.deepseek.com/guides/kv_cache",
@@ -4340,7 +4401,7 @@
         "cache_read_input_per_million": 0.003625,
         "cache_write_input_per_million": null,
         "cache_write_1h_input_per_million": null,
-        "reasoning_output_per_million": null,
+        "reasoning_output_per_million": 0.87,
         "batch_discount_fraction": null,
         "cache_storage_per_million_tokens_hour": null,
         "long_context_threshold_tokens": null,
@@ -4349,7 +4410,9 @@
         "long_context_output_multiplier": null,
         "version": "2026-08-13"
       },
-      "pricing_semantics": {},
+      "pricing_semantics": {
+        "region_agnostic_pricing": true
+      },
       "capabilities": {
         "adaptive_thinking": "unknown",
         "batch": "unknown",
@@ -4383,10 +4446,69 @@
         "context_window_tokens": 1000000
       },
       "lifecycle": {
-        "status": "reviewed"
+        "status": "routable"
       },
       "aliases": [],
       "price_intervals": [],
+      "recurring_utc_pricing": {
+        "effective_from": "2026-08-16T16:00:00Z",
+        "default_pricing": {
+          "input_per_million": 0.66,
+          "output_per_million": 1.98,
+          "cache_read_input_per_million": 0.022,
+          "cache_write_input_per_million": null,
+          "cache_write_1h_input_per_million": null,
+          "reasoning_output_per_million": 1.98,
+          "batch_discount_fraction": null,
+          "cache_storage_per_million_tokens_hour": null,
+          "long_context_threshold_tokens": null,
+          "long_context_threshold_inclusive": null,
+          "long_context_input_multiplier": null,
+          "long_context_output_multiplier": null,
+          "version": "2026-08-13"
+        },
+        "windows": [
+          {
+            "start": "01:00:00",
+            "end": "04:00:00",
+            "pricing": {
+              "input_per_million": 1.32,
+              "output_per_million": 3.96,
+              "cache_read_input_per_million": 0.044,
+              "cache_write_input_per_million": null,
+              "cache_write_1h_input_per_million": null,
+              "reasoning_output_per_million": 3.96,
+              "batch_discount_fraction": null,
+              "cache_storage_per_million_tokens_hour": null,
+              "long_context_threshold_tokens": null,
+              "long_context_threshold_inclusive": null,
+              "long_context_input_multiplier": null,
+              "long_context_output_multiplier": null,
+              "version": "2026-08-13"
+            }
+          },
+          {
+            "start": "06:00:00",
+            "end": "10:00:00",
+            "pricing": {
+              "input_per_million": 1.32,
+              "output_per_million": 3.96,
+              "cache_read_input_per_million": 0.044,
+              "cache_write_input_per_million": null,
+              "cache_write_1h_input_per_million": null,
+              "reasoning_output_per_million": 3.96,
+              "batch_discount_fraction": null,
+              "cache_storage_per_million_tokens_hour": null,
+              "long_context_threshold_tokens": null,
+              "long_context_threshold_inclusive": null,
+              "long_context_input_multiplier": null,
+              "long_context_output_multiplier": null,
+              "version": "2026-08-13"
+            }
+          }
+        ],
+        "verified_at": "2026-08-13T00:00:00Z"
+      },
       "tokenizer": {
         "state": "unknown",
         "exact": false
@@ -4397,7 +4519,7 @@
       "cache_profile": {
         "state": "unsupported"
       },
-      "content_digest": "ae50bb0f0796e339a366dda329d26609406450d1d542e477e7a4a67f4fe95172",
+      "content_digest": "6a355782df22b41737c43a91e8d63e12b43c0d3c756181e56e81502c613f8dab",
       "sources": [
         "https://api-docs.deepseek.com/quick_start/pricing",
         "https://api-docs.deepseek.com/guides/kv_cache",
@@ -4417,7 +4539,7 @@
         "cache_read_input_per_million": 0.3,
         "cache_write_input_per_million": null,
         "cache_write_1h_input_per_million": null,
-        "reasoning_output_per_million": null,
+        "reasoning_output_per_million": 15,
         "batch_discount_fraction": null,
         "cache_storage_per_million_tokens_hour": null,
         "long_context_threshold_tokens": null,
@@ -4426,16 +4548,18 @@
         "long_context_output_multiplier": null,
         "version": "2026-08-13"
       },
-      "pricing_semantics": {},
+      "pricing_semantics": {
+        "region_agnostic_pricing": true
+      },
       "capabilities": {
         "adaptive_thinking": "unknown",
-        "batch": "unknown",
+        "batch": "unsupported",
         "bedrock_mantle": "unknown",
         "chat_completions": "supported",
         "context_editing": "unknown",
         "converse": "unknown",
         "converse_stream": "unknown",
-        "count_tokens": "unknown",
+        "count_tokens": "supported",
         "embeddings": "unknown",
         "explicit_cache": "unknown",
         "flex": "unknown",
@@ -4446,21 +4570,26 @@
         "message_batches": "unknown",
         "messages_api": "unknown",
         "manual_thinking": "unknown",
-        "prompt_cache": "unknown",
+        "prompt_cache": "supported",
         "prompt_cache_breakpoint": "unknown",
         "prompt_cache_key": "unknown",
         "prompt_cache_retention": "unknown",
         "raw_predict": "unknown",
         "responses_api": "unknown",
         "stream_generate_content": "unknown",
-        "streaming": "unknown",
+        "streaming": "supported",
         "tools": "supported",
         "vision": "supported",
         "json_mode": "supported",
-        "context_window_tokens": 1048576
+        "context_window_tokens": 1048576,
+        "effort_levels": [
+          "low",
+          "high",
+          "max"
+        ]
       },
       "lifecycle": {
-        "status": "reviewed"
+        "status": "routable"
       },
       "aliases": [],
       "price_intervals": [],
@@ -4469,15 +4598,22 @@
         "exact": false
       },
       "count_surface": {
-        "state": "unknown"
+        "state": "supported",
+        "id": "moonshot.tokenizers.estimate_token_count",
+        "projection_version": "moonshot-chat-estimate-count-v1",
+        "accuracy": "provider_estimate",
+        "quota": "unknown"
       },
       "cache_profile": {
-        "state": "unknown"
+        "state": "unsupported"
       },
-      "content_digest": "b8189115e58af41dc0e09df1f003a37dfe60b5aa0590712d889c0692cb758c34",
+      "content_digest": "95ff8acdfae2c6342cbafb550b71682c6c43522ff323f6d796c2faee5f6452b4",
       "sources": [
         "https://platform.kimi.ai/docs/pricing/chat-k3",
-        "https://platform.kimi.ai/docs/guide/kimi-k3-quickstart"
+        "https://platform.kimi.ai/docs/pricing/batch",
+        "https://platform.kimi.ai/docs/guide/kimi-k3-quickstart",
+        "https://platform.kimi.ai/docs/api/chat",
+        "https://platform.kimi.ai/docs/api/estimate-token-count"
       ],
       "verified_at": "2026-08-13T00:00:00Z",
       "capabilities_verified_at": "2026-08-13T00:00:00Z"
@@ -4494,7 +4630,7 @@
         "cache_write_input_per_million": null,
         "cache_write_1h_input_per_million": null,
         "reasoning_output_per_million": null,
-        "batch_discount_fraction": null,
+        "batch_discount_fraction": 0.4,
         "cache_storage_per_million_tokens_hour": null,
         "long_context_threshold_tokens": null,
         "long_context_threshold_inclusive": null,
@@ -4502,16 +4638,18 @@
         "long_context_output_multiplier": null,
         "version": "2026-08-13"
       },
-      "pricing_semantics": {},
+      "pricing_semantics": {
+        "region_agnostic_pricing": true
+      },
       "capabilities": {
         "adaptive_thinking": "unknown",
-        "batch": "unknown",
+        "batch": "supported",
         "bedrock_mantle": "unknown",
         "chat_completions": "supported",
         "context_editing": "unknown",
         "converse": "unknown",
         "converse_stream": "unknown",
-        "count_tokens": "unknown",
+        "count_tokens": "supported",
         "embeddings": "unknown",
         "explicit_cache": "unknown",
         "flex": "unknown",
@@ -4522,21 +4660,21 @@
         "message_batches": "unknown",
         "messages_api": "unknown",
         "manual_thinking": "unknown",
-        "prompt_cache": "unknown",
+        "prompt_cache": "supported",
         "prompt_cache_breakpoint": "unknown",
         "prompt_cache_key": "unknown",
         "prompt_cache_retention": "unknown",
         "raw_predict": "unknown",
         "responses_api": "unknown",
         "stream_generate_content": "unknown",
-        "streaming": "unknown",
+        "streaming": "supported",
         "tools": "supported",
         "vision": "supported",
         "json_mode": "supported",
         "context_window_tokens": 262144
       },
       "lifecycle": {
-        "status": "reviewed"
+        "status": "routable"
       },
       "aliases": [],
       "price_intervals": [],
@@ -4545,14 +4683,188 @@
         "exact": false
       },
       "count_surface": {
-        "state": "unknown"
+        "state": "supported",
+        "id": "moonshot.tokenizers.estimate_token_count",
+        "projection_version": "moonshot-chat-estimate-count-v1",
+        "accuracy": "provider_estimate",
+        "quota": "unknown"
       },
       "cache_profile": {
-        "state": "unknown"
+        "state": "unsupported"
       },
-      "content_digest": "09045b1519708cbe8f92e37f167d11290feabb91d3a731b3df668c5614395a87",
+      "content_digest": "08c31886ceffde09bee81c228d75ede77b7c73db8ed2b73d074e77e35805253e",
       "sources": [
-        "https://platform.kimi.ai/docs/pricing/chat-k27-code"
+        "https://platform.kimi.ai/docs/pricing/chat-k27-code",
+        "https://platform.kimi.ai/docs/pricing/batch",
+        "https://platform.kimi.ai/docs/api/chat",
+        "https://platform.kimi.ai/docs/api/estimate-token-count"
+      ],
+      "verified_at": "2026-08-13T00:00:00Z",
+      "capabilities_verified_at": "2026-08-13T00:00:00Z"
+    },
+    {
+      "provider": "moonshot",
+      "model": "kimi-k2.6",
+      "region": "global",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 0.95,
+        "output_per_million": 4,
+        "cache_read_input_per_million": 0.16,
+        "cache_write_input_per_million": null,
+        "cache_write_1h_input_per_million": null,
+        "reasoning_output_per_million": 4,
+        "batch_discount_fraction": 0.4,
+        "cache_storage_per_million_tokens_hour": null,
+        "long_context_threshold_tokens": null,
+        "long_context_threshold_inclusive": null,
+        "long_context_input_multiplier": null,
+        "long_context_output_multiplier": null,
+        "version": "2026-08-13"
+      },
+      "pricing_semantics": {
+        "region_agnostic_pricing": true
+      },
+      "capabilities": {
+        "adaptive_thinking": "unknown",
+        "batch": "supported",
+        "bedrock_mantle": "unknown",
+        "chat_completions": "supported",
+        "context_editing": "unknown",
+        "converse": "unknown",
+        "converse_stream": "unknown",
+        "count_tokens": "supported",
+        "embeddings": "unknown",
+        "explicit_cache": "unknown",
+        "flex": "unknown",
+        "generate_content": "unknown",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "unknown",
+        "invoke_model": "unknown",
+        "message_batches": "unknown",
+        "messages_api": "unknown",
+        "manual_thinking": "unknown",
+        "prompt_cache": "supported",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "unknown",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "unknown",
+        "responses_api": "unknown",
+        "stream_generate_content": "unknown",
+        "streaming": "supported",
+        "tools": "supported",
+        "vision": "supported",
+        "json_mode": "supported",
+        "context_window_tokens": 262144
+      },
+      "lifecycle": {
+        "status": "routable"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "supported",
+        "id": "moonshot.tokenizers.estimate_token_count",
+        "projection_version": "moonshot-chat-estimate-count-v1",
+        "accuracy": "provider_estimate",
+        "quota": "unknown"
+      },
+      "cache_profile": {
+        "state": "unsupported"
+      },
+      "content_digest": "e7d5c62a72440db7f4a89763516a4d65a334b3c9af36ab7cfae6eae90cf75d4f",
+      "sources": [
+        "https://platform.kimi.ai/docs/pricing/chat-k26",
+        "https://platform.kimi.ai/docs/pricing/batch",
+        "https://platform.kimi.ai/docs/guide/use-kimi-k2-thinking-model",
+        "https://platform.kimi.ai/docs/api/chat",
+        "https://platform.kimi.ai/docs/api/estimate-token-count"
+      ],
+      "verified_at": "2026-08-13T00:00:00Z",
+      "capabilities_verified_at": "2026-08-13T00:00:00Z"
+    },
+    {
+      "provider": "xai",
+      "model": "grok-4.6",
+      "region": "global",
+      "currency": "USD",
+      "pricing": {
+        "input_per_million": 2,
+        "output_per_million": 6,
+        "cache_read_input_per_million": 0.5,
+        "cache_write_input_per_million": null,
+        "cache_write_1h_input_per_million": null,
+        "reasoning_output_per_million": 6,
+        "batch_discount_fraction": null,
+        "cache_storage_per_million_tokens_hour": null,
+        "long_context_threshold_tokens": 200000,
+        "long_context_threshold_inclusive": true,
+        "long_context_input_multiplier": 2,
+        "long_context_output_multiplier": 2,
+        "version": "2026-08-13"
+      },
+      "pricing_semantics": {
+        "priority_service_tier_multiplier": 2,
+        "region_agnostic_pricing": true
+      },
+      "capabilities": {
+        "adaptive_thinking": "unknown",
+        "batch": "unsupported",
+        "bedrock_mantle": "unknown",
+        "chat_completions": "supported",
+        "context_editing": "unknown",
+        "converse": "unknown",
+        "converse_stream": "unknown",
+        "count_tokens": "unsupported",
+        "embeddings": "unknown",
+        "explicit_cache": "unknown",
+        "flex": "unknown",
+        "generate_content": "unknown",
+        "geo_inference_profile": "unknown",
+        "global_inference_profile": "unknown",
+        "invoke_model": "unknown",
+        "message_batches": "unknown",
+        "messages_api": "unknown",
+        "manual_thinking": "unknown",
+        "prompt_cache": "supported",
+        "prompt_cache_breakpoint": "unknown",
+        "prompt_cache_key": "unknown",
+        "prompt_cache_retention": "unknown",
+        "raw_predict": "unknown",
+        "responses_api": "unknown",
+        "stream_generate_content": "unknown",
+        "streaming": "supported",
+        "tools": "supported",
+        "vision": "supported",
+        "json_mode": "supported",
+        "context_window_tokens": 500000
+      },
+      "lifecycle": {
+        "status": "routable"
+      },
+      "aliases": [],
+      "price_intervals": [],
+      "tokenizer": {
+        "state": "unknown",
+        "exact": false
+      },
+      "count_surface": {
+        "state": "unsupported"
+      },
+      "cache_profile": {
+        "state": "unsupported"
+      },
+      "content_digest": "0d734f563ba71f9d386a2048252711a920c240a5627a7e554251735ecce67f9b",
+      "sources": [
+        "https://docs.x.ai/developers/pricing",
+        "https://docs.x.ai/developers/advanced-api-usage/batch-api",
+        "https://docs.x.ai/developers/models/grok-4.6",
+        "https://docs.x.ai/developers/advanced-api-usage/prompt-caching/usage-and-pricing",
+        "https://docs.x.ai/developers/advanced-api-usage/priority-processing"
       ],
       "verified_at": "2026-08-13T00:00:00Z",
       "capabilities_verified_at": "2026-08-13T00:00:00Z"
@@ -4568,25 +4880,28 @@
         "cache_read_input_per_million": 0.3,
         "cache_write_input_per_million": null,
         "cache_write_1h_input_per_million": null,
-        "reasoning_output_per_million": null,
+        "reasoning_output_per_million": 6,
         "batch_discount_fraction": null,
         "cache_storage_per_million_tokens_hour": null,
         "long_context_threshold_tokens": 200000,
-        "long_context_threshold_inclusive": null,
+        "long_context_threshold_inclusive": true,
         "long_context_input_multiplier": 2,
         "long_context_output_multiplier": 2,
         "version": "2026-08-13"
       },
-      "pricing_semantics": {},
+      "pricing_semantics": {
+        "priority_service_tier_multiplier": 2,
+        "region_agnostic_pricing": true
+      },
       "capabilities": {
         "adaptive_thinking": "unknown",
-        "batch": "unknown",
+        "batch": "unsupported",
         "bedrock_mantle": "unknown",
         "chat_completions": "supported",
         "context_editing": "unknown",
         "converse": "unknown",
         "converse_stream": "unknown",
-        "count_tokens": "unknown",
+        "count_tokens": "unsupported",
         "embeddings": "unknown",
         "explicit_cache": "unknown",
         "flex": "unknown",
@@ -4597,21 +4912,21 @@
         "message_batches": "unknown",
         "messages_api": "unknown",
         "manual_thinking": "unknown",
-        "prompt_cache": "unknown",
+        "prompt_cache": "supported",
         "prompt_cache_breakpoint": "unknown",
         "prompt_cache_key": "unknown",
         "prompt_cache_retention": "unknown",
         "raw_predict": "unknown",
         "responses_api": "unknown",
         "stream_generate_content": "unknown",
-        "streaming": "unknown",
+        "streaming": "supported",
         "tools": "supported",
         "vision": "supported",
         "json_mode": "supported",
         "context_window_tokens": 500000
       },
       "lifecycle": {
-        "status": "reviewed"
+        "status": "routable"
       },
       "aliases": [],
       "price_intervals": [],
@@ -4620,15 +4935,18 @@
         "exact": false
       },
       "count_surface": {
-        "state": "unknown"
+        "state": "unsupported"
       },
       "cache_profile": {
-        "state": "unknown"
+        "state": "unsupported"
       },
-      "content_digest": "bafd27c0c739890f26957190c5ba97ddf741e5629f51181ab3d12e7ad234eea4",
+      "content_digest": "894e673f4a1828f1e4eddc114cfe241dc5b4fe69b23276fe5541da435d33bb5e",
       "sources": [
-        "https://docs.x.ai/developers/grok-4-5",
-        "https://docs.x.ai/developers/models/grok-4.5"
+        "https://docs.x.ai/developers/pricing",
+        "https://docs.x.ai/developers/advanced-api-usage/batch-api",
+        "https://docs.x.ai/developers/models/grok-4.5",
+        "https://docs.x.ai/developers/advanced-api-usage/prompt-caching/usage-and-pricing",
+        "https://docs.x.ai/developers/advanced-api-usage/priority-processing"
       ],
       "verified_at": "2026-08-13T00:00:00Z",
       "capabilities_verified_at": "2026-08-13T00:00:00Z"
@@ -4644,25 +4962,28 @@
         "cache_read_input_per_million": 0.2,
         "cache_write_input_per_million": null,
         "cache_write_1h_input_per_million": null,
-        "reasoning_output_per_million": null,
-        "batch_discount_fraction": null,
+        "reasoning_output_per_million": 2.5,
+        "batch_discount_fraction": 0.2,
         "cache_storage_per_million_tokens_hour": null,
         "long_context_threshold_tokens": 200000,
-        "long_context_threshold_inclusive": null,
+        "long_context_threshold_inclusive": true,
         "long_context_input_multiplier": 2,
         "long_context_output_multiplier": 2,
         "version": "2026-08-13"
       },
-      "pricing_semantics": {},
+      "pricing_semantics": {
+        "priority_service_tier_multiplier": 2,
+        "region_agnostic_pricing": true
+      },
       "capabilities": {
         "adaptive_thinking": "unknown",
-        "batch": "unknown",
+        "batch": "supported",
         "bedrock_mantle": "unknown",
         "chat_completions": "supported",
         "context_editing": "unknown",
         "converse": "unknown",
         "converse_stream": "unknown",
-        "count_tokens": "unknown",
+        "count_tokens": "unsupported",
         "embeddings": "unknown",
         "explicit_cache": "unknown",
         "flex": "unknown",
@@ -4673,21 +4994,27 @@
         "message_batches": "unknown",
         "messages_api": "unknown",
         "manual_thinking": "unknown",
-        "prompt_cache": "unknown",
+        "prompt_cache": "supported",
         "prompt_cache_breakpoint": "unknown",
         "prompt_cache_key": "unknown",
         "prompt_cache_retention": "unknown",
         "raw_predict": "unknown",
         "responses_api": "unknown",
         "stream_generate_content": "unknown",
-        "streaming": "unknown",
+        "streaming": "supported",
         "tools": "supported",
         "vision": "supported",
         "json_mode": "supported",
-        "context_window_tokens": 1000000
+        "context_window_tokens": 1000000,
+        "effort_levels": [
+          "none",
+          "low",
+          "medium",
+          "high"
+        ]
       },
       "lifecycle": {
-        "status": "reviewed"
+        "status": "routable"
       },
       "aliases": [],
       "price_intervals": [],
@@ -4696,14 +5023,18 @@
         "exact": false
       },
       "count_surface": {
-        "state": "unknown"
+        "state": "unsupported"
       },
       "cache_profile": {
-        "state": "unknown"
+        "state": "unsupported"
       },
-      "content_digest": "5ff6217ccf24ae6f6db8b6012e882ab8bc1a15bf3f4d1090850687121d6f7547",
+      "content_digest": "bc63f2d6465e694428073e14487f2abd2e5a95abb3e0f7d79367d980eae2c7c2",
       "sources": [
-        "https://docs.x.ai/developers/models/grok-4.3"
+        "https://docs.x.ai/developers/pricing",
+        "https://docs.x.ai/developers/advanced-api-usage/batch-api",
+        "https://docs.x.ai/developers/models/grok-4.3",
+        "https://docs.x.ai/developers/advanced-api-usage/prompt-caching/usage-and-pricing",
+        "https://docs.x.ai/developers/advanced-api-usage/priority-processing"
       ],
       "verified_at": "2026-08-13T00:00:00Z",
       "capabilities_verified_at": "2026-08-13T00:00:00Z"
@@ -4716,7 +5047,7 @@
       "pricing": {
         "input_per_million": 0.5,
         "output_per_million": 1.5,
-        "cache_read_input_per_million": null,
+        "cache_read_input_per_million": 0.05,
         "cache_write_input_per_million": null,
         "cache_write_1h_input_per_million": null,
         "reasoning_output_per_million": null,
@@ -4728,16 +5059,20 @@
         "long_context_output_multiplier": null,
         "version": "2026-08-13"
       },
-      "pricing_semantics": {},
+      "pricing_semantics": {
+        "regional_processing_multiplier": 1.1,
+        "priority_service_tier_multiplier": 1.75,
+        "region_agnostic_pricing": true
+      },
       "capabilities": {
         "adaptive_thinking": "unknown",
-        "batch": "unknown",
+        "batch": "supported",
         "bedrock_mantle": "unknown",
         "chat_completions": "supported",
         "context_editing": "unknown",
         "converse": "unknown",
         "converse_stream": "unknown",
-        "count_tokens": "unknown",
+        "count_tokens": "unsupported",
         "embeddings": "unknown",
         "explicit_cache": "unknown",
         "flex": "unknown",
@@ -4748,21 +5083,21 @@
         "message_batches": "unknown",
         "messages_api": "unknown",
         "manual_thinking": "unknown",
-        "prompt_cache": "unknown",
+        "prompt_cache": "supported",
         "prompt_cache_breakpoint": "unknown",
-        "prompt_cache_key": "unknown",
+        "prompt_cache_key": "supported",
         "prompt_cache_retention": "unknown",
         "raw_predict": "unknown",
         "responses_api": "unknown",
         "stream_generate_content": "unknown",
-        "streaming": "unknown",
+        "streaming": "supported",
         "tools": "supported",
         "vision": "supported",
         "json_mode": "supported",
         "context_window_tokens": 256000
       },
       "lifecycle": {
-        "status": "reviewed"
+        "status": "routable"
       },
       "aliases": [],
       "price_intervals": [],
@@ -4771,28 +5106,31 @@
         "exact": false
       },
       "count_surface": {
-        "state": "unknown"
+        "state": "unsupported"
       },
       "cache_profile": {
-        "state": "unknown"
+        "state": "unsupported"
       },
-      "content_digest": "9c60f286dddfb37621e6ece30c9220bb15fc0de0653c8032e78f258c799d3a28",
+      "content_digest": "a77fbce9a18c274f816b01e0afbc18142b427f9f6de442e6c2c398c4cc9e5453",
       "sources": [
         "https://mistral.ai/pricing/api",
-        "https://docs.mistral.ai/models/mistral-large-3-25-12"
+        "https://docs.mistral.ai/models/mistral-large-3-25-12",
+        "https://docs.mistral.ai/api/endpoint/chat",
+        "https://docs.mistral.ai/studio-api/regional-inference",
+        "https://docs.mistral.ai/inference/priority-tier"
       ],
       "verified_at": "2026-08-13T00:00:00Z",
       "capabilities_verified_at": "2026-08-13T00:00:00Z"
     },
     {
       "provider": "mistral",
-      "model": "mistral-medium-3504",
+      "model": "mistral-medium-3-5",
       "region": "global",
       "currency": "USD",
       "pricing": {
         "input_per_million": 1.5,
         "output_per_million": 7.5,
-        "cache_read_input_per_million": null,
+        "cache_read_input_per_million": 0.15,
         "cache_write_input_per_million": null,
         "cache_write_1h_input_per_million": null,
         "reasoning_output_per_million": null,
@@ -4804,16 +5142,20 @@
         "long_context_output_multiplier": null,
         "version": "2026-08-13"
       },
-      "pricing_semantics": {},
+      "pricing_semantics": {
+        "regional_processing_multiplier": 1.1,
+        "priority_service_tier_multiplier": 1.75,
+        "region_agnostic_pricing": true
+      },
       "capabilities": {
         "adaptive_thinking": "unknown",
-        "batch": "unknown",
+        "batch": "supported",
         "bedrock_mantle": "unknown",
         "chat_completions": "supported",
         "context_editing": "unknown",
         "converse": "unknown",
         "converse_stream": "unknown",
-        "count_tokens": "unknown",
+        "count_tokens": "unsupported",
         "embeddings": "unknown",
         "explicit_cache": "unknown",
         "flex": "unknown",
@@ -4824,21 +5166,25 @@
         "message_batches": "unknown",
         "messages_api": "unknown",
         "manual_thinking": "unknown",
-        "prompt_cache": "unknown",
+        "prompt_cache": "supported",
         "prompt_cache_breakpoint": "unknown",
-        "prompt_cache_key": "unknown",
+        "prompt_cache_key": "supported",
         "prompt_cache_retention": "unknown",
         "raw_predict": "unknown",
         "responses_api": "unknown",
         "stream_generate_content": "unknown",
-        "streaming": "unknown",
+        "streaming": "supported",
         "tools": "supported",
         "vision": "supported",
         "json_mode": "supported",
-        "context_window_tokens": 256000
+        "context_window_tokens": 256000,
+        "effort_levels": [
+          "none",
+          "high"
+        ]
       },
       "lifecycle": {
-        "status": "reviewed"
+        "status": "routable"
       },
       "aliases": [],
       "price_intervals": [],
@@ -4847,15 +5193,19 @@
         "exact": false
       },
       "count_surface": {
-        "state": "unknown"
+        "state": "unsupported"
       },
       "cache_profile": {
-        "state": "unknown"
+        "state": "unsupported"
       },
-      "content_digest": "1ffb26fb072a660c9387a7a1839e1818b61c38911b2cff92117b738893528480",
+      "content_digest": "faf63b7346cd465b6abe01a6ca1c9aacf6cdfef03e4fb44393411e185cbbb6fd",
       "sources": [
         "https://mistral.ai/pricing/api",
-        "https://docs.mistral.ai/models/mistral-medium-3-5-26-04"
+        "https://docs.mistral.ai/models/mistral-medium-3-5-26-04",
+        "https://docs.mistral.ai/api/endpoint/chat",
+        "https://docs.mistral.ai/studio-api/conversations/reasoning",
+        "https://docs.mistral.ai/studio-api/regional-inference",
+        "https://docs.mistral.ai/inference/priority-tier"
       ],
       "verified_at": "2026-08-13T00:00:00Z",
       "capabilities_verified_at": "2026-08-13T00:00:00Z"
@@ -4868,7 +5218,7 @@
       "pricing": {
         "input_per_million": 0.3,
         "output_per_million": 0.9,
-        "cache_read_input_per_million": null,
+        "cache_read_input_per_million": 0.03,
         "cache_write_input_per_million": null,
         "cache_write_1h_input_per_million": null,
         "reasoning_output_per_million": null,
@@ -4880,16 +5230,20 @@
         "long_context_output_multiplier": null,
         "version": "2026-08-13"
       },
-      "pricing_semantics": {},
+      "pricing_semantics": {
+        "regional_processing_multiplier": 1.1,
+        "priority_service_tier_multiplier": 1.75,
+        "region_agnostic_pricing": true
+      },
       "capabilities": {
         "adaptive_thinking": "unknown",
-        "batch": "unknown",
+        "batch": "supported",
         "bedrock_mantle": "unknown",
         "chat_completions": "supported",
         "context_editing": "unknown",
         "converse": "unknown",
         "converse_stream": "unknown",
-        "count_tokens": "unknown",
+        "count_tokens": "unsupported",
         "embeddings": "unknown",
         "explicit_cache": "unknown",
         "flex": "unknown",
@@ -4900,21 +5254,21 @@
         "message_batches": "unknown",
         "messages_api": "unknown",
         "manual_thinking": "unknown",
-        "prompt_cache": "unknown",
+        "prompt_cache": "supported",
         "prompt_cache_breakpoint": "unknown",
-        "prompt_cache_key": "unknown",
+        "prompt_cache_key": "supported",
         "prompt_cache_retention": "unknown",
         "raw_predict": "unknown",
         "responses_api": "unknown",
         "stream_generate_content": "unknown",
-        "streaming": "unknown",
+        "streaming": "supported",
         "tools": "supported",
         "vision": "unsupported",
         "json_mode": "supported",
         "context_window_tokens": 128000
       },
       "lifecycle": {
-        "status": "reviewed"
+        "status": "routable"
       },
       "aliases": [],
       "price_intervals": [],
@@ -4923,15 +5277,18 @@
         "exact": false
       },
       "count_surface": {
-        "state": "unknown"
+        "state": "unsupported"
       },
       "cache_profile": {
-        "state": "unknown"
+        "state": "unsupported"
       },
-      "content_digest": "d72415a379632d3e743ea15290ba452f03d59f24b1647328f5b3cd7771ca5bfd",
+      "content_digest": "bbea9fdb02a85c4516d19e72828553133b0926ffadce3d2041948dd5742123b2",
       "sources": [
         "https://mistral.ai/pricing/api",
-        "https://docs.mistral.ai/models/codestral-25-08"
+        "https://docs.mistral.ai/models/codestral-25-08",
+        "https://docs.mistral.ai/api/endpoint/chat",
+        "https://docs.mistral.ai/studio-api/regional-inference",
+        "https://docs.mistral.ai/inference/priority-tier"
       ],
       "verified_at": "2026-08-13T00:00:00Z",
       "capabilities_verified_at": "2026-08-13T00:00:00Z"
@@ -4948,7 +5305,7 @@
         "cache_write_input_per_million": null,
         "cache_write_1h_input_per_million": null,
         "reasoning_output_per_million": null,
-        "batch_discount_fraction": null,
+        "batch_discount_fraction": 0.5,
         "cache_storage_per_million_tokens_hour": null,
         "long_context_threshold_tokens": null,
         "long_context_threshold_inclusive": null,
@@ -4956,16 +5313,18 @@
         "long_context_output_multiplier": null,
         "version": "2026-08-13"
       },
-      "pricing_semantics": {},
+      "pricing_semantics": {
+        "region_agnostic_pricing": true
+      },
       "capabilities": {
         "adaptive_thinking": "unknown",
-        "batch": "unknown",
+        "batch": "supported",
         "bedrock_mantle": "unknown",
-        "chat_completions": "supported",
+        "chat_completions": "unsupported",
         "context_editing": "unknown",
         "converse": "unknown",
         "converse_stream": "unknown",
-        "count_tokens": "unknown",
+        "count_tokens": "unsupported",
         "embeddings": "unknown",
         "explicit_cache": "unknown",
         "flex": "unknown",
@@ -4983,14 +5342,15 @@
         "raw_predict": "unknown",
         "responses_api": "unknown",
         "stream_generate_content": "unknown",
-        "streaming": "unknown",
+        "streaming": "supported",
         "tools": "supported",
         "vision": "unsupported",
         "json_mode": "unknown",
         "context_window_tokens": 131072
       },
       "lifecycle": {
-        "status": "reviewed"
+        "status": "reviewed",
+        "observed_at": "2026-06-17T00:00:00Z"
       },
       "aliases": [],
       "price_intervals": [],
@@ -4999,14 +5359,16 @@
         "exact": false
       },
       "count_surface": {
-        "state": "unknown"
+        "state": "unsupported"
       },
       "cache_profile": {
-        "state": "unknown"
+        "state": "unsupported"
       },
-      "content_digest": "58936c74b83167230f9d00c3c6d77193d5419c990daa7ded7b57a3c805dd9b27",
+      "content_digest": "d6846cdf40c01b712e3dced69be555626c76fc184f3aebbed819aea5fce21a4e",
       "sources": [
+        "https://console.groq.com/docs/batch",
         "https://console.groq.com/docs/models",
+        "https://console.groq.com/docs/deprecations",
         "https://console.groq.com/docs/tool-use",
         "https://console.groq.com/docs/vision",
         "https://console.groq.com/docs/structured-outputs"
@@ -5026,7 +5388,7 @@
         "cache_write_input_per_million": null,
         "cache_write_1h_input_per_million": null,
         "reasoning_output_per_million": null,
-        "batch_discount_fraction": null,
+        "batch_discount_fraction": 0.5,
         "cache_storage_per_million_tokens_hour": null,
         "long_context_threshold_tokens": null,
         "long_context_threshold_inclusive": null,
@@ -5034,16 +5396,18 @@
         "long_context_output_multiplier": null,
         "version": "2026-08-13"
       },
-      "pricing_semantics": {},
+      "pricing_semantics": {
+        "region_agnostic_pricing": true
+      },
       "capabilities": {
         "adaptive_thinking": "unknown",
-        "batch": "unknown",
+        "batch": "supported",
         "bedrock_mantle": "unknown",
-        "chat_completions": "supported",
+        "chat_completions": "unsupported",
         "context_editing": "unknown",
         "converse": "unknown",
         "converse_stream": "unknown",
-        "count_tokens": "unknown",
+        "count_tokens": "unsupported",
         "embeddings": "unknown",
         "explicit_cache": "unknown",
         "flex": "unknown",
@@ -5061,14 +5425,15 @@
         "raw_predict": "unknown",
         "responses_api": "unknown",
         "stream_generate_content": "unknown",
-        "streaming": "unknown",
+        "streaming": "supported",
         "tools": "supported",
         "vision": "unsupported",
         "json_mode": "unknown",
         "context_window_tokens": 131072
       },
       "lifecycle": {
-        "status": "reviewed"
+        "status": "reviewed",
+        "observed_at": "2026-06-17T00:00:00Z"
       },
       "aliases": [],
       "price_intervals": [],
@@ -5077,14 +5442,16 @@
         "exact": false
       },
       "count_surface": {
-        "state": "unknown"
+        "state": "unsupported"
       },
       "cache_profile": {
-        "state": "unknown"
+        "state": "unsupported"
       },
-      "content_digest": "f5bad5b8d20994592e3087c358b36eb548bc0ae99317ea84ce375f7c013790ee",
+      "content_digest": "cfb6fdb67c63c310fa62dc887da9fc6e9470aa54a381a1648c9e29fafe211258",
       "sources": [
+        "https://console.groq.com/docs/batch",
         "https://console.groq.com/docs/models",
+        "https://console.groq.com/docs/deprecations",
         "https://console.groq.com/docs/tool-use",
         "https://console.groq.com/docs/vision",
         "https://console.groq.com/docs/structured-outputs"
@@ -5103,8 +5470,8 @@
         "cache_read_input_per_million": 0.075,
         "cache_write_input_per_million": null,
         "cache_write_1h_input_per_million": null,
-        "reasoning_output_per_million": null,
-        "batch_discount_fraction": null,
+        "reasoning_output_per_million": 0.6,
+        "batch_discount_fraction": 0.5,
         "cache_storage_per_million_tokens_hour": null,
         "long_context_threshold_tokens": null,
         "long_context_threshold_inclusive": null,
@@ -5112,19 +5479,21 @@
         "long_context_output_multiplier": null,
         "version": "2026-08-13"
       },
-      "pricing_semantics": {},
+      "pricing_semantics": {
+        "region_agnostic_pricing": true
+      },
       "capabilities": {
         "adaptive_thinking": "unknown",
-        "batch": "unknown",
+        "batch": "supported",
         "bedrock_mantle": "unknown",
         "chat_completions": "supported",
         "context_editing": "unknown",
         "converse": "unknown",
         "converse_stream": "unknown",
-        "count_tokens": "unknown",
+        "count_tokens": "unsupported",
         "embeddings": "unknown",
         "explicit_cache": "unknown",
-        "flex": "unknown",
+        "flex": "supported",
         "generate_content": "unknown",
         "geo_inference_profile": "unknown",
         "global_inference_profile": "unknown",
@@ -5132,21 +5501,26 @@
         "message_batches": "unknown",
         "messages_api": "unknown",
         "manual_thinking": "unknown",
-        "prompt_cache": "unknown",
+        "prompt_cache": "supported",
         "prompt_cache_breakpoint": "unknown",
         "prompt_cache_key": "unknown",
         "prompt_cache_retention": "unknown",
         "raw_predict": "unknown",
         "responses_api": "unknown",
         "stream_generate_content": "unknown",
-        "streaming": "unknown",
+        "streaming": "supported",
         "tools": "supported",
         "vision": "unsupported",
         "json_mode": "supported",
-        "context_window_tokens": 131072
+        "context_window_tokens": 131072,
+        "effort_levels": [
+          "low",
+          "medium",
+          "high"
+        ]
       },
       "lifecycle": {
-        "status": "reviewed"
+        "status": "routable"
       },
       "aliases": [],
       "price_intervals": [],
@@ -5155,15 +5529,20 @@
         "exact": false
       },
       "count_surface": {
-        "state": "unknown"
+        "state": "unsupported"
       },
       "cache_profile": {
-        "state": "unknown"
+        "state": "unsupported"
       },
-      "content_digest": "19c08e34139f154a5cd5498933eb05ca1da8c8ec238aa6af27a402812ce4258a",
+      "content_digest": "d80c4c79586ade0f9492bd0973f41cf9c27029cbcf5a96fe66582428d444ff9a",
       "sources": [
+        "https://console.groq.com/docs/batch",
         "https://console.groq.com/docs/models",
+        "https://console.groq.com/docs/model/openai/gpt-oss-120b",
         "https://console.groq.com/docs/prompt-caching",
+        "https://console.groq.com/docs/reasoning",
+        "https://console.groq.com/docs/service-tiers",
+        "https://console.groq.com/docs/flex-processing",
         "https://console.groq.com/docs/tool-use",
         "https://console.groq.com/docs/structured-outputs",
         "https://console.groq.com/docs/vision"
@@ -5179,11 +5558,11 @@
       "pricing": {
         "input_per_million": 0.075,
         "output_per_million": 0.3,
-        "cache_read_input_per_million": 0.0375,
+        "cache_read_input_per_million": 0.037,
         "cache_write_input_per_million": null,
         "cache_write_1h_input_per_million": null,
-        "reasoning_output_per_million": null,
-        "batch_discount_fraction": null,
+        "reasoning_output_per_million": 0.3,
+        "batch_discount_fraction": 0.5,
         "cache_storage_per_million_tokens_hour": null,
         "long_context_threshold_tokens": null,
         "long_context_threshold_inclusive": null,
@@ -5191,19 +5570,21 @@
         "long_context_output_multiplier": null,
         "version": "2026-08-13"
       },
-      "pricing_semantics": {},
+      "pricing_semantics": {
+        "region_agnostic_pricing": true
+      },
       "capabilities": {
         "adaptive_thinking": "unknown",
-        "batch": "unknown",
+        "batch": "supported",
         "bedrock_mantle": "unknown",
         "chat_completions": "supported",
         "context_editing": "unknown",
         "converse": "unknown",
         "converse_stream": "unknown",
-        "count_tokens": "unknown",
+        "count_tokens": "unsupported",
         "embeddings": "unknown",
         "explicit_cache": "unknown",
-        "flex": "unknown",
+        "flex": "supported",
         "generate_content": "unknown",
         "geo_inference_profile": "unknown",
         "global_inference_profile": "unknown",
@@ -5211,21 +5592,26 @@
         "message_batches": "unknown",
         "messages_api": "unknown",
         "manual_thinking": "unknown",
-        "prompt_cache": "unknown",
+        "prompt_cache": "supported",
         "prompt_cache_breakpoint": "unknown",
         "prompt_cache_key": "unknown",
         "prompt_cache_retention": "unknown",
         "raw_predict": "unknown",
         "responses_api": "unknown",
         "stream_generate_content": "unknown",
-        "streaming": "unknown",
+        "streaming": "supported",
         "tools": "supported",
         "vision": "unsupported",
         "json_mode": "supported",
-        "context_window_tokens": 131072
+        "context_window_tokens": 131072,
+        "effort_levels": [
+          "low",
+          "medium",
+          "high"
+        ]
       },
       "lifecycle": {
-        "status": "reviewed"
+        "status": "routable"
       },
       "aliases": [],
       "price_intervals": [],
@@ -5234,15 +5620,20 @@
         "exact": false
       },
       "count_surface": {
-        "state": "unknown"
+        "state": "unsupported"
       },
       "cache_profile": {
-        "state": "unknown"
+        "state": "unsupported"
       },
-      "content_digest": "fe098687c7f1df091a042a4f2e05b8d75f87db5b28068f5d5c02320f12a65205",
+      "content_digest": "c7524231904c86dacf9817a4a5f5b08c240d3725be87e15306ff79b53302c657",
       "sources": [
+        "https://console.groq.com/docs/batch",
         "https://console.groq.com/docs/models",
+        "https://console.groq.com/docs/model/openai/gpt-oss-20b",
         "https://console.groq.com/docs/prompt-caching",
+        "https://console.groq.com/docs/reasoning",
+        "https://console.groq.com/docs/service-tiers",
+        "https://console.groq.com/docs/flex-processing",
         "https://console.groq.com/docs/tool-use",
         "https://console.groq.com/docs/structured-outputs",
         "https://console.groq.com/docs/vision"

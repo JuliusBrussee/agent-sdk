@@ -1,0 +1,14 @@
+✗ build failed: your budget is in dollars but the model has no price
+
+  agent.ts:4     model: "acme-lab-preview"
+  agent.ts:9     budget: { maxUsd: 0.05 }
+
+  acme-lab-preview is not in the public price catalog, so a dollar
+  budget cannot be enforced against it. Guessing a price would make the
+  cap fiction, so the build fails instead.
+
+  Fix: one of —
+    · use a token budget: `budget: { maxTokens: 200_000 }`
+    · switch to a model the public price catalog covers
+
+  An unpriced model never spends against an imaginary $0 rate.

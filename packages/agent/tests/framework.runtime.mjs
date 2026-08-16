@@ -643,6 +643,60 @@ test("run reuses upstream Pi loop and reports local estimates", async () => {
   assert.equal(faux.state.callCount, 1);
 });
 
+test("run() prints and writes the receipt only when printReceipt opts in", async () => {
+  const root = await mkdtemp(resolve(tmpdir(), "cave-receipt-print-"));
+  const originalWrite = process.stdout.write.bind(process.stdout);
+  const captured = [];
+  const capture = (chunk) => {
+    captured.push(String(chunk));
+    return true;
+  };
+  try {
+    // Default: no flag → no stdout receipt, no .caveman/runs write. stdout
+    // may be a protocol channel (MCP) a receipt would corrupt.
+    const silent = fauxProvider();
+    silent.setResponses([fauxAssistantMessage("silent by default.")]);
+    process.stdout.write = capture;
+    await run(definition(), "Can I refund?", {
+      ensureRuntime: false,
+      model: silent.getModel(),
+      streamFn: silent.provider.streamSimple.bind(silent.provider),
+      rootDir: root,
+    });
+    process.stdout.write = originalWrite;
+    assert.equal(captured.join("").includes("run complete"), false);
+    await assert.rejects(stat(resolve(root, ".caveman/runs")), { code: "ENOENT" });
+
+    // Opt-in: the receipt prints and its JSON lands under rootDir.
+    const printed = fauxProvider();
+    printed.setResponses([fauxAssistantMessage("printed on opt-in.")]);
+    captured.length = 0;
+    process.stdout.write = capture;
+    const result = await run(definition(), "Can I refund?", {
+      ensureRuntime: false,
+      model: printed.getModel(),
+      streamFn: printed.provider.streamSimple.bind(printed.provider),
+      rootDir: root,
+      printReceipt: true,
+    });
+    process.stdout.write = originalWrite;
+    const output = captured.join("");
+    assert.match(output, /run complete · 1 turn ·/);
+    assert.match(output, /full receipt   \.caveman\/runs\//);
+    const runs = await readdir(resolve(root, ".caveman/runs"));
+    assert.equal(runs.length, 1);
+    const written = JSON.parse(await readFile(
+      resolve(root, ".caveman/runs", runs[0], "receipt.json"),
+      "utf8",
+    ));
+    assert.equal(written.schema, "caveman.agent.run-receipt.v1");
+    assert.equal(written.totalEstimatedUsd, result.receipt.totalEstimatedUsd);
+  } finally {
+    process.stdout.write = originalWrite;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("run labels its price basis so a $0 cost is never read as free", async () => {
   const unpricedFaux = fauxProvider();
   unpricedFaux.setResponses([fauxAssistantMessage("no catalog price for this model")]);

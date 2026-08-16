@@ -68,9 +68,13 @@ async function buildLock({
   adapterVersion = "0.1.0",
   upstreamVersion = "0.83.0",
   reasoning = "low",
+  model = "anthropic/claude-haiku-4-5",
 } = {}) {
   const plan = baselinePlan();
   plan.reasoning = reasoning;
+  plan.model = model;
+  const [provider, ...modelParts] = model.split("/");
+  const modelID = modelParts.join("/");
   const result = await compile({
     agent: agent({ id: "adapter", instructions: "test", model: auto() }),
     contextIR: { schemaVersion: 1, segments: [] },
@@ -93,8 +97,8 @@ async function buildLock({
     harnessId,
     runner: async () => ({
       terminal: true,
-      provider: "anthropic",
-      model: "claude-haiku-4-5",
+      provider,
+      model: modelID,
       usage_basis: "provider_reported",
       price_basis: "public_catalog",
       catalog_cost_usd: 0.001,
@@ -333,6 +337,55 @@ test("evidence adapter rejects mismatched model and caller-priced cost", async (
     })).run(request),
     /cave_harness_incomplete_evidence/,
   );
+});
+
+test("harness evidence rejects a recurring price-window crossing", async () => {
+  const build = await buildLock({ model: "deepseek/deepseek-v4-flash" });
+  const accountingAt = new Date("2026-08-17T00:59:59Z");
+  const priced = catalogCost({
+    provider: "deepseek",
+    model: "deepseek-v4-flash",
+    inputTokens: 10,
+    outputTokens: 2,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    reasoningTokens: 0,
+  }, accountingAt);
+  const RealDate = Date;
+  const instants = ["2026-08-17T00:59:59Z", "2026-08-17T01:00:00Z"];
+  class BoundaryDate extends RealDate {
+    constructor(...args) {
+      if (args.length > 0) {
+        super(...args);
+        return;
+      }
+      super(instants.shift() ?? "2026-08-17T01:00:00Z");
+    }
+  }
+  globalThis.Date = BoundaryDate;
+  try {
+    await assert.rejects(createPiAdapter(adapterIdentity(), async () => ({
+      terminal: true,
+      text: "ok",
+      provider: "deepseek",
+      model: "deepseek-v4-flash",
+      inputTokens: 10,
+      outputTokens: 2,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      reasoningTokens: 0,
+      totalTokens: 12,
+      costUsd: priced.usd,
+      usageBasis: "provider_reported",
+      priceBasis: "public_catalog",
+      evaluatedTransformIDs: [],
+      appliedTransformIDs: [],
+      recoveryResolved: true,
+      latencyMs: 1,
+    })).run(adapterRequest(build)), /cave_harness_incomplete_evidence/);
+  } finally {
+    globalThis.Date = RealDate;
+  }
 });
 
 function adapterRequest(build, overrides = {}) {

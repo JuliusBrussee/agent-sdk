@@ -265,6 +265,39 @@ test("Caveman-shaped trace cost is recomputed from pinned catalog", () => {
   assert.equal(unknown.cost_usd, 0);
 });
 
+test("scheduled Caveman trace requires one explicit unchanged accounting window", () => {
+  const value = runResult("scheduled-trace", {
+    provider: "deepseek",
+    model: "deepseek-v4-flash",
+    inputTokens: 100,
+    outputTokens: 10,
+    costUsd: 999,
+  });
+  const options = {
+    split: "profile",
+    caseId: "scheduled-case",
+    lineageId: "scheduled-family",
+    inputSha256: hex("f"),
+  };
+  const missing = normalizeTrajectory(value, options);
+  assert.equal(missing.price_basis, "unpriced");
+  assert.equal(missing.cost_usd, 0);
+  const stable = normalizeTrajectory(value, {
+    ...options,
+    accountingStartedAt: new Date("2026-08-17T01:00:00Z"),
+    accountingFinishedAt: new Date("2026-08-17T03:59:59Z"),
+  });
+  assert.equal(stable.price_basis, "public_catalog");
+  assert.equal(stable.cost_usd, 0.0000572);
+  const crossing = normalizeTrajectory(value, {
+    ...options,
+    accountingStartedAt: new Date("2026-08-17T00:59:59Z"),
+    accountingFinishedAt: new Date("2026-08-17T01:00:00Z"),
+  });
+  assert.equal(crossing.price_basis, "unpriced");
+  assert.equal(crossing.cost_usd, 0);
+});
+
 test("OpenInference numeric usage attributes remain content-blind", () => {
   const imported = normalizeTrajectory({
     traceId: "openinference-trace",

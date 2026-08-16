@@ -1,14 +1,25 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 import { spawn } from "node:child_process";
+
+const packageRoot = resolve(import.meta.dirname, "..");
+const templateRoot = resolve(packageRoot, "templates/support-bot");
+
+async function walkFiles(root) {
+  const entries = await readdir(root, { recursive: true, withFileTypes: true });
+  return entries
+    .filter((entry) => entry.isFile())
+    .map((entry) => relative(root, join(entry.parentPath, entry.name)))
+    .sort();
+}
 
 async function invoke(args, env = {}) {
   return new Promise((done) => {
     const child = spawn(process.execPath, ["dist/index.js", ...args], {
-      cwd: resolve(import.meta.dirname, ".."),
+      cwd: packageRoot,
       env: { PATH: process.env.PATH, ...env },
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -24,8 +35,7 @@ async function invoke(args, env = {}) {
   });
 }
 
-test("package lifecycle builds executable initializer before packing", async () => {
-  const packageRoot = resolve(import.meta.dirname, "..");
+test("package lifecycle builds executable initializer and ships the template", async () => {
   const pkg = JSON.parse(await readFile(resolve(packageRoot, "package.json"), "utf8"));
   assert.equal(pkg.scripts.prepack, "npm run build");
   assert.deepEqual(pkg.repository, {
@@ -35,6 +45,7 @@ test("package lifecycle builds executable initializer before packing", async () 
   });
   assert.equal(pkg.homepage, "https://caveman.so/products/caveman-agent");
   assert.equal(pkg.bugs.url, "https://github.com/JuliusBrussee/caveman-agent-sdk/issues");
+  assert.equal(pkg.files.includes("templates"), true, "template must ship in the npm tarball");
   assert.equal(
     (await readFile(resolve(packageRoot, pkg.bin["create-caveman-agent"]), "utf8")).split("\n", 1)[0],
     "#!/usr/bin/env node",
@@ -50,160 +61,94 @@ test("initializer exposes help without credentials or filesystem writes", async 
   }
 });
 
-test("initializer writes one required agent source and deterministic provider choice", async () => {
+test("initializer copies the full template tree byte-for-byte with deterministic provider choice", async () => {
   const root = await mkdtemp(`${tmpdir()}/create-caveman-agent-`);
   const target = resolve(root, "support-agent");
   try {
-    const result = await invoke([target, "--provider", "openai", "--no-install"], {
+    // anthropic is the provider the template's model line already carries, so
+    // its rewrite is the identity and every non-mutated file must be
+    // byte-equal. The file SET is the recursive template walk, not a
+    // hand-list, so a new template file cannot silently skip coverage.
+    const result = await invoke([target, "--provider", "anthropic", "--no-install"], {
       OPENAI_API_KEY: "secret-never-print",
     });
-    assert.equal(result.code, 0);
+    assert.equal(result.code, 0, result.stderr);
     assert.doesNotMatch(`${result.stdout}${result.stderr}`, /secret-never-print/);
-    const agentSource = await readFile(resolve(target, "src/agent.ts"), "utf8");
-    assert.match(agentSource, /agent\(/);
-    assert.doesNotMatch(agentSource, /\btool\(|tools:/);
-    assert.deepEqual((await stat(resolve(target, "src/agent.ts"))).isFile(), true);
-    assert.equal(JSON.parse(await readFile(resolve(target, ".caveman/provider.json"), "utf8")).model, "openai/gpt-5.4-mini");
-    const packageJSON = JSON.parse(await readFile(resolve(target, "package.json"), "utf8"));
-    assert.equal(packageJSON.scripts.doctor, "caveman-agent doctor");
-    assert.equal(packageJSON.scripts.dev, "caveman-agent dev src/agent.ts");
-    assert.equal(packageJSON.scripts.run, "node --experimental-strip-types src/run.ts");
-    assert.equal(packageJSON.scripts.typecheck, "tsc --noEmit");
-    assert.equal(packageJSON.dependencies["@caveman-ai/agent"], "^0.2.0");
-    assert.equal(packageJSON.devDependencies.typescript, "5.9.3");
-    const tsconfig = JSON.parse(await readFile(resolve(target, "tsconfig.json"), "utf8"));
-    assert.equal(tsconfig.compilerOptions.strict, true);
-    assert.equal(tsconfig.compilerOptions.allowImportingTsExtensions, true);
-    assert.deepEqual(tsconfig.include, ["src/**/*.ts", "evals/**/*.ts", "caveman.config.ts"]);
-    const buildEvals = await readFile(resolve(target, "evals/build.eval.ts"), "utf8");
-    assert.match(buildEvals, /const APPROVED = false/);
-    for (const split of ["profile", "development", "holdout"]) {
-      assert.match(buildEvals, new RegExp(`split: "${split}"`));
+    const templateFiles = await walkFiles(templateRoot);
+    assert.deepEqual(
+      await walkFiles(target),
+      [...templateFiles, ".caveman/provider.json", ".gitignore"].sort(),
+      "target must be exactly the template walk plus the two generated files",
+    );
+    for (const path of templateFiles) {
+      if (path === "package.json") continue; // name field mutated, compared below
+      assert.equal(
+        await readFile(resolve(target, path), "utf8"),
+        await readFile(resolve(templateRoot, path), "utf8"),
+        `${path} must match the template byte-for-byte`,
+      );
     }
-    assert.equal((buildEvals.match(/lineageId:/g) ?? []).length, 5);
-    assert.equal((buildEvals.match(/split: "development"/g) ?? []).length, 2);
-    assert.equal((buildEvals.match(/split: "holdout"/g) ?? []).length, 2);
-    assert.doesNotMatch(buildEvals, /tool_called/);
+    const packageJSON = JSON.parse(await readFile(resolve(target, "package.json"), "utf8"));
+    assert.equal(packageJSON.name, "support-agent");
+    const templateJSON = JSON.parse(await readFile(resolve(templateRoot, "package.json"), "utf8"));
+    assert.deepEqual(packageJSON, { ...templateJSON, name: "support-agent" });
+    assert.equal(packageJSON.scripts.doctor, "caveman-agent doctor");
+    assert.equal(packageJSON.scripts.ticket, "node --experimental-strip-types run.ts");
+    assert.deepEqual(
+      JSON.parse(await readFile(resolve(target, ".caveman/provider.json"), "utf8")),
+      { provider: "anthropic", model: "anthropic/claude-sonnet-5" },
+    );
     assert.equal(
-      await readFile(resolve(target, "src/run.ts"), "utf8"),
-      `import { run } from "@caveman-ai/agent";
-import { fileURLToPath } from "node:url";
-import definition from "./agent.ts";
-
-const rootDir = fileURLToPath(new URL("..", import.meta.url));
-
-// The economic dial, written out so it is visible on day one rather than
-// discovered later. Every figure is an estimated public-catalog list-price
-// subtotal, never an invoice.
-const result = await run(definition, "Reply with exactly: ready", {
-  rootDir,
-  entryPath: "src/agent.ts",
-  budget: {
-    // The runtime reserves each call's worst-case spend, then clamps output or
-    // stops when remaining headroom cannot fund it. Provider-reported usage can
-    // still exceed a reservation; capBreached/overspent record that overage and
-    // stop future spend.
-    maxUsd: 0.5,
-    // What happens as reserve headroom approaches the cap. "compact" (the
-    // default) rewrites context while the same cap can fund useful work after;
-    // "stop" skips straight to clamping the output and stopping.
-    onExhausted: "compact",
-  },
+      await readFile(resolve(target, ".gitignore"), "utf8"),
+      "node_modules/\n.caveman/traces/\n.caveman/agent-dir-entry.mjs\n.caveman/workload-profile.json\n.env*\n",
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
-// A run that hits its cap returns partial work with a reason, never a throw.
-console.log(result.stopReason, result.text);
-console.log(\`estimated list-price subtotal: $\${result.receipt.totalEstimatedUsd}\`);
-`,
-    );
-    assert.equal(
-      await readFile(resolve(target, "README.md"), "utf8"),
-      `# support-agent
+test("the generator rewrites the template model line per selected provider", async () => {
+  const expected = {
+    anthropic: "anthropic/claude-sonnet-5",
+    openai: "openai/gpt-5.4-mini",
+    google: "google/gemini-2.5-flash",
+  };
+  for (const [provider, model] of Object.entries(expected)) {
+    const root = await mkdtemp(`${tmpdir()}/create-caveman-agent-`);
+    const target = resolve(root, `agent-${provider}`);
+    try {
+      const result = await invoke([target, "--provider", provider, "--no-install"]);
+      assert.equal(result.code, 0, result.stderr);
+      const agentTs = await readFile(resolve(target, "agent.ts"), "utf8");
+      assert.equal(agentTs.includes(`  model: "${model}",`), true, `${provider} model line`);
+      // Exactly one model line, and no stale provider's model left behind.
+      assert.equal(agentTs.match(/^\s*model: "/gm).length, 1);
+      assert.deepEqual(
+        JSON.parse(await readFile(resolve(target, ".caveman/provider.json"), "utf8")),
+        { provider, model },
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  }
+});
 
-Set OPENAI_API_KEY in your shell. Never commit provider credentials.
-
-\`\`\`bash
-npm install
-npm run doctor
-npm run dev
-npm run run
-npm run typecheck
-\`\`\`
-
-If doctor reports missing signed runtime artifacts, run \`caveman setup --install\`,
-then rerun doctor.
-
-\`src/run.ts\` shows the budget dial. A run declares one denomination
-(\`maxUsd\` or \`maxTokens\`). The runtime reserves each call's worst-case spend,
-then clamps output or stops when remaining headroom cannot fund it. Provider-
-reported usage can still exceed a reservation; the receipt records that overage
-as \`capBreached\` and \`overspent\`, then the runtime stops future spend. When the
-cap binds, \`budget.onExhausted\` decides what happens: \`"compact"\` compresses
-the context before the clamp/stop rungs, while \`"stop"\` skips compaction. Budget
-exhaustion returns partial work plus a \`stopReason\` and receipt — never a throw.
-
-Build evals are intentionally unapproved. After confirming expected behavior,
-change \`APPROVED = false\` to \`APPROVED = true\` in \`evals/build.eval.ts\`, then:
-
-\`\`\`bash
-npm run build
-npm run check
-\`\`\`
-
-\`npm run build\` needs no prior traces: it runs profile evals, selects across two
-independent development task families, then opens two untouched holdout families.
-At least two families per validation split are required for the conservative
-retention bound. If content-blind RunResult,
-OpenTelemetry, or OpenInference rows exist under \`.caveman/traces/\`, same command
-uses them as profile evidence and skips profile-eval spend. It writes one runnable
-\`.caveman/agent.lock.json\`, plus workload profile and build report. No Caveman
-account is required for local compile or compression.
-
-Local results are inferred. Verified savings remain $0 until active real
-traffic passes existing Caveman rollout and ledger gates.
-`,
-    );
-
-    const mockPackage = resolve(target, "node_modules/@caveman-ai/agent");
-    await mkdir(mockPackage, { recursive: true });
-    await writeFile(resolve(mockPackage, "package.json"), JSON.stringify({
-      name: "@caveman-ai/agent",
-      type: "module",
-      exports: "./index.js",
-    }));
-    await writeFile(resolve(mockPackage, "index.js"), [
-      'import { writeFileSync } from "node:fs";',
-      'export const auto = () => "model";',
-      'export const agent = (value) => value;',
-      'export async function run(_definition, prompt, options) {',
-      '  writeFileSync(process.env.CAVE_STARTER_CAPTURE, JSON.stringify({ prompt, options }));',
-      '  return { stopReason: "completed", text: "ready", receipt: { totalEstimatedUsd: 0 } };',
-      '}',
-      '',
-    ].join("\n"));
-    const capture = resolve(root, "run-capture.json");
-    const run = await new Promise((done) => {
-      const child = spawn(process.execPath, ["--experimental-strip-types", "src/run.ts"], {
-        cwd: target,
-        env: { ...process.env, CAVE_STARTER_CAPTURE: capture },
-        stdio: ["ignore", "pipe", "pipe"],
-      });
-      const stdout = [];
-      const stderr = [];
-      child.stdout.on("data", (chunk) => stdout.push(chunk));
-      child.stderr.on("data", (chunk) => stderr.push(chunk));
-      child.once("close", (code) => done({
-        code,
-        stdout: Buffer.concat(stdout).toString("utf8"),
-        stderr: Buffer.concat(stderr).toString("utf8"),
-      }));
-    });
-    assert.equal(run.code, 0, run.stderr);
-    assert.match(run.stdout, /completed ready/);
-    const invocation = JSON.parse(await readFile(capture, "utf8"));
-    assert.equal(invocation.prompt, "Reply with exactly: ready");
-    assert.equal(await realpath(invocation.options.rootDir), await realpath(target));
-    assert.equal(invocation.options.entryPath, "src/agent.ts");
+test("an ETARGET on the unpublished SDK is named, rolled back, and suggests --no-install", async () => {
+  const root = await mkdtemp(`${tmpdir()}/create-caveman-agent-`);
+  const target = resolve(root, "etarget-agent");
+  const fakeNpm = resolve(root, "fake-npm-etarget.mjs");
+  await writeFile(fakeNpm, [
+    'process.stderr.write("npm error code ETARGET\\n");',
+    'process.stderr.write("npm error notarget No matching version found for @caveman-ai/agent@^0.2.0.\\n");',
+    "process.exit(1);",
+    "",
+  ].join("\n"));
+  try {
+    const result = await invoke(["--provider", "anthropic", target], { npm_execpath: fakeNpm });
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /has not been published to npm yet/);
+    assert.match(result.stderr, /--no-install/);
+    await assert.rejects(stat(target), { code: "ENOENT" });
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -261,9 +206,91 @@ test("initializer installs dependencies by default and leaves two-command first-
     }
     assert.equal(typeof install.env.PATH, "string");
     assert.doesNotMatch(result.stdout, /^npm install$/m);
-    assert.match(result.stdout, /^npm run dev$/m);
+    assert.match(result.stdout, /^npm run ticket -- tickets\/refund-request\.md$/m);
   } finally {
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+// F8 first-run states: the scaffold's run.ts fails with a named next step,
+// never a stack trace. A stub @caveman-ai/agent package stands in for the
+// unpublished SDK so the states before and after the framework boundary are
+// both exercised without an install or a provider key.
+async function scaffoldWithStubSDK(root) {
+  const target = resolve(root, "first-run-agent");
+  const created = await invoke([target, "--provider", "anthropic", "--no-install"]);
+  assert.equal(created.code, 0, created.stderr);
+  const stub = resolve(target, "node_modules/@caveman-ai/agent");
+  await (await import("node:fs/promises")).mkdir(stub, { recursive: true });
+  await writeFile(resolve(stub, "package.json"), JSON.stringify({
+    name: "@caveman-ai/agent",
+    type: "module",
+    exports: { ".": "./index.js" },
+  }));
+  await writeFile(resolve(stub, "index.js"), [
+    "export const loadAgentDir = async () => {",
+    "  throw new Error(\"cave_stub_framework_error: stub reached\");",
+    "};",
+    "export const run = async () => { throw new Error(\"unreachable\"); };",
+    "",
+  ].join("\n"));
+  return target;
+}
+
+async function runTicket(target, args) {
+  return new Promise((done) => {
+    const child = spawn(process.execPath, ["--experimental-strip-types", "run.ts", ...args], {
+      cwd: target,
+      env: { PATH: process.env.PATH },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const stdout = [];
+    const stderr = [];
+    child.stdout.on("data", (chunk) => stdout.push(chunk));
+    child.stderr.on("data", (chunk) => stderr.push(chunk));
+    child.once("close", (code) => done({
+      code,
+      stdout: Buffer.concat(stdout).toString("utf8"),
+      stderr: Buffer.concat(stderr).toString("utf8"),
+    }));
+  });
+}
+
+test("run.ts first-run failures name a next step instead of a stack trace", async () => {
+  const root = await mkdtemp(`${tmpdir()}/create-caveman-agent-`);
+  try {
+    const target = await scaffoldWithStubSDK(root);
+
+    const noArgs = await runTicket(target, []);
+    assert.equal(noArgs.code, 1);
+    assert.match(noArgs.stderr, /usage: npm run ticket -- tickets\/<name>\.md/);
+
+    const missing = await runTicket(target, ["tickets/nope.md"]);
+    assert.equal(missing.code, 1);
+    assert.match(missing.stderr, /ticket file not found: tickets\/nope\.md/);
+    assert.match(missing.stderr, /tickets\/refund-request\.md/);
+    assert.doesNotMatch(missing.stderr, /at readFileSync/);
+
+    // A framework error surfaces as its own message plus the doctor pointer —
+    // one line each, no stack frames.
+    const framework = await runTicket(target, ["tickets/refund-request.md"]);
+    assert.equal(framework.code, 1);
+    assert.match(framework.stderr, /cave_stub_framework_error: stub reached/);
+    assert.match(framework.stderr, /npm run doctor/);
+    assert.doesNotMatch(framework.stderr, /^\s+at /m);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("the template's eval fixtures are lockable: literal URLs, no computed source dependency", async () => {
+  const evalSource = await readFile(resolve(templateRoot, "evals/support.eval.ts"), "utf8");
+  // The source graph rejects `new URL(`…${…}…`, import.meta.url)` as a
+  // computed dependency, which would fail doctor/build on the scaffold's own
+  // golden path (found by the Phase-5 dry cold walk).
+  assert.doesNotMatch(evalSource, /new URL\(`/);
+  for (const name of ["refund-request", "order-status", "angry-escalation"]) {
+    assert.match(evalSource, new RegExp(`new URL\\("\\.\\./tickets/${name}\\.md", import\\.meta\\.url\\)`));
   }
 });
 

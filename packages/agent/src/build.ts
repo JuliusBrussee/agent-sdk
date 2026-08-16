@@ -1,6 +1,6 @@
 import { mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
-import { catalogCost, catalogSearchCeiling } from "./catalog.js";
+import { catalogCost, catalogPriceFingerprint, catalogSearchCeiling } from "./catalog.js";
 import type { AgentDefinition } from "./index.js";
 import { graphUsesHostSandbox } from "./definition-graph.js";
 import type { ContextIR } from "./context-ir.js";
@@ -394,6 +394,9 @@ type Completed = {
 
 export async function compile(input: CompileInput): Promise<CompileResult> {
   input = { ...input, config: defineBuild(input.config) };
+  // One explicit admission instant prices the static search reservation. Actual
+  // multi-call spend remains the runner's per-request settled catalog evidence.
+  const planningAccountingAt = new Date();
   // An unsandboxed run cannot produce a lock. Host mode runs tool
   // closures in the host process, so its evidence shows no containment and is
   // refused here rather than downgraded to a soft status. The whole definition
@@ -450,6 +453,7 @@ export async function compile(input: CompileInput): Promise<CompileResult> {
     ENGINE_TRANSFORM_CAPABILITIES,
     observedDynamicKinds,
     policy,
+    planningAccountingAt,
   );
   // Caller candidates are untrusted compiler input. Snapshot, validate, and
   // recompute their catalog ceiling/policy before any runner can mutate or use
@@ -463,6 +467,7 @@ export async function compile(input: CompileInput): Promise<CompileResult> {
       contextIR: input.contextIR,
       observedDynamicKinds,
     },
+    planningAccountingAt,
   );
   if (candidates.length === 0) throw new Error("caveman build: generated no candidate plans");
   const runnable = candidates.filter((candidate) => !candidate.static_rejection);
@@ -507,6 +512,7 @@ export async function compile(input: CompileInput): Promise<CompileResult> {
             Number.EPSILON,
             roundUsd(input.config.maxSearchCostUsd - actualCost),
           );
+          const runStartedAt = new Date();
           const reported = await withDeadline(
             (signal) => input.runner({
               plan: candidate.plan,
@@ -517,7 +523,7 @@ export async function compile(input: CompileInput): Promise<CompileResult> {
             }),
             input.runnerTimeoutMs ?? 300_000,
           );
-          value = repriceRunEvidence(reported);
+          value = repriceRunEvidence(reported, runStartedAt, new Date());
         } catch (error) {
           return {
             estimated_ceiling_usd: estimatedCeiling,
@@ -566,7 +572,7 @@ export async function compile(input: CompileInput): Promise<CompileResult> {
       reason: providerModelDrift
         ? "provider/model identity drift against candidate plan"
         : unknownGraderType !== undefined
-          ? `unknown grader type "${unknownGraderType}": not in the supported grader taxonomy`
+          ? `unknown grader type "${unknownGraderType}": not in the supported grader taxonomy (public/evals)`
           : "usage, terminal, grader, recovery, privacy, or sandbox evidence missing",
     };
   }
@@ -1264,6 +1270,7 @@ export function generateCandidatePlans(
   transformCapabilities: readonly TransformCapability[] = ENGINE_TRANSFORM_CAPABILITIES,
   observedDynamicKinds: ReadonlySet<ContextKind> = new Set(),
   policy?: CandidatePolicy,
+  accountingAt: Date = new Date(),
 ): CandidatePlan[] {
   const candidates: CandidatePlan[] = [{
     plan: baseline,
@@ -1417,7 +1424,9 @@ export function generateCandidatePlans(
   // disallowed model or a forbidden safety class is rejected, and every runnable
   // candidate carries its real public-catalog search ceiling. When no policy is
   // supplied the candidates keep their generation-time placeholder costs.
-  return policy === undefined ? deduplicated : applyCandidatePolicy(deduplicated, policy);
+  return policy === undefined
+    ? deduplicated
+    : applyCandidatePolicy(deduplicated, policy, accountingAt);
 }
 
 function outputBudgetFrontier(baseline: number): number[] {
@@ -1456,6 +1465,7 @@ export function prepareCandidatePlans(
     readonly contextIR: ContextIR;
     readonly observedDynamicKinds: ReadonlySet<ContextKind>;
   },
+  accountingAt: Date = new Date(),
 ): CandidatePlan[] {
   if (!Array.isArray(candidates) || candidates.length === 0 ||
       !isRecord(baseline) || !validPlanShape(baseline)) {
@@ -1519,12 +1529,13 @@ export function prepareCandidatePlans(
   if (!snapshots.some((candidate) => stableStringify(candidate.plan) === baselineCanonical)) {
     throw new Error("cave_candidate_baseline_missing");
   }
-  return freezeBuildValue(applyCandidatePolicy(snapshots, policy));
+  return freezeBuildValue(applyCandidatePolicy(snapshots, policy, accountingAt));
 }
 
 function applyCandidatePolicy(
   candidates: readonly CandidatePlan[],
   policy: CandidatePolicy,
+  accountingAt: Date,
 ): CandidatePlan[] {
   return candidates.map((candidate) => {
     if (candidate.static_rejection !== undefined) return candidate;
@@ -1542,6 +1553,7 @@ function applyCandidatePolicy(
       budgets.instructions + budgets.tools + budgets.memory + budgets.history +
         budgets.results_artifacts + budgets.retry_cascade_reserve,
       budgets.output + budgets.reasoning,
+      accountingAt,
     );
     if (ceiling === undefined) {
       return { ...candidate, static_rejection: "unpriced_model" as const };
@@ -1681,24 +1693,39 @@ function cacheGatePass(
   return true;
 }
 
-function repriceRunEvidence(value: unknown): RunEvidence {
+function repriceRunEvidence(value: unknown, startedAt: Date, finishedAt: Date): RunEvidence {
   const source = isRecord(value) ? value : {};
   const usageComplete = typeof source.provider === "string" && source.provider.length > 0 &&
     typeof source.model === "string" && source.model.length > 0 &&
     [source.input_tokens, source.output_tokens, source.cache_read_tokens,
       source.cache_write_tokens, source.reasoning_tokens].every((item) =>
       typeof item === "number" && Number.isSafeInteger(item) && item >= 0) &&
-    Number(source.output_tokens) >= Number(source.reasoning_tokens);
-  const priced = usageComplete
-    ? catalogCost({
-      provider: String(source.provider),
-      model: String(source.model),
-      inputTokens: Number(source.input_tokens),
-      outputTokens: Number(source.output_tokens),
-      cacheReadTokens: Number(source.cache_read_tokens),
-      cacheWriteTokens: Number(source.cache_write_tokens),
-      reasoningTokens: Number(source.reasoning_tokens),
-    })
+    Number(source.output_tokens) >= Number(source.reasoning_tokens) &&
+    Number(source.input_tokens) + Number(source.output_tokens) +
+      Number(source.cache_read_tokens) + Number(source.cache_write_tokens) > 0;
+  const usage = {
+    provider: String(source.provider),
+    model: String(source.model),
+    inputTokens: Number(source.input_tokens),
+    outputTokens: Number(source.output_tokens),
+    cacheReadTokens: Number(source.cache_read_tokens),
+    cacheWriteTokens: Number(source.cache_write_tokens),
+    reasoningTokens: Number(source.reasoning_tokens),
+  };
+  const atStart = usageComplete ? catalogCost(usage, startedAt) : { priced: false, usd: 0 };
+  const atFinish = usageComplete ? catalogCost(usage, finishedAt) : { priced: false, usd: 0 };
+  const rateFingerprintAtStart = usageComplete
+    ? catalogPriceFingerprint(String(source.provider), String(source.model), startedAt)
+    : undefined;
+  const rateFingerprintAtFinish = usageComplete
+    ? catalogPriceFingerprint(String(source.provider), String(source.model), finishedAt)
+    : undefined;
+  // The compiler owns these timestamps. A caller cannot forge cost, and a run
+  // spanning a recurring price transition is rejected rather than aggregate-
+  // priced at either side of the boundary.
+  const priced = atStart.priced && atFinish.priced && atStart.usd === atFinish.usd &&
+    rateFingerprintAtStart !== undefined && rateFingerprintAtStart === rateFingerprintAtFinish
+    ? atStart
     : { priced: false, usd: 0 };
   return freezeBuildValue({
     ...source,
@@ -1764,14 +1791,16 @@ function completeEvidence(
   const actualGraderTypes = evidence.graders.map((grader) => grader.type);
   const providerVisible = evidence.input_tokens + evidence.cache_read_tokens +
     evidence.cache_write_tokens;
+  const disjointTotal = providerVisible + evidence.output_tokens;
   return providerModelMatchesPlan(evidence, plan) &&
     stableStringify(actualGraderTypes) === stableStringify(expectedGraderTypes) &&
+    disjointTotal > 0 && Number.isSafeInteger(disjointTotal) &&
     evidence.output_tokens >= evidence.reasoning_tokens &&
     Number.isSafeInteger(providerVisible) &&
     evidence.provider_visible_tokens === providerVisible;
 }
 
-// Full Agent SDK grader taxonomy. packages/evals currently exposes the
+// The full public/evals grader taxonomy. public/evals currently exposes the
 // discriminated union but not a runtime registry, so this list is pinned by a
 // source-parity regression test. Unknown values still fail closed.
 const KNOWN_GRADER_TYPES: ReadonlySet<string> = new Set([

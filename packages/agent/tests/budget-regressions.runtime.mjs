@@ -671,6 +671,112 @@ test("M1: an unprovable credential regime refuses a dollar budget unless asserte
   assert.equal(asserted.receipt.denomination, "usd");
 });
 
+// ---------------------------------------------------------------------------
+// F8 — first-run states: the denomination refusal is unchanged, but its
+// message must name the one-line fix for the state the machine is actually
+// in, not just the wire code. Message shaping only; every rejection below is
+// the same rejection the M1 tests pin.
+// ---------------------------------------------------------------------------
+
+test("F8: the subscription refusal names the fix in plain words", async () => {
+  const model = pricedFauxModel();
+  const subscription = {
+    getModel: () => model,
+    streamSimple: () => undefined,
+    checkAuth: async () => ({ type: "oauth", source: "OAuth" }),
+  };
+  await assert.rejects(
+    run(pollingAgent("f8-oauth-message"), "go", {
+      ensureRuntime: false,
+      model,
+      models: subscription,
+      cave: "off",
+      budget: { maxUsd: 1 },
+    }),
+    (error) => {
+      assert.match(error.message, /cave_budget_denomination_unavailable/);
+      assert.match(error.message, /subscription, which is not billed per token/);
+      assert.match(error.message, /budget\.maxTokens/);
+      return true;
+    },
+  );
+});
+
+test("F8: a missing provider credential names the exact env var to set", async () => {
+  const model = pricedFauxModel();
+  const unknown = {
+    getModel: () => model,
+    streamSimple: () => undefined,
+  };
+  const saved = process.env.ANTHROPIC_API_KEY;
+  delete process.env.ANTHROPIC_API_KEY;
+  try {
+    await assert.rejects(
+      run(pollingAgent("f8-no-key-message"), "go", {
+        ensureRuntime: false,
+        model,
+        models: unknown,
+        cave: "off",
+        budget: { maxUsd: 1 },
+      }),
+      (error) => {
+        assert.match(error.message, /cave_budget_denomination_unavailable/);
+        assert.match(error.message, /no ANTHROPIC_API_KEY in this shell — set it, then re-run/);
+        return true;
+      },
+    );
+  } finally {
+    if (saved !== undefined) process.env.ANTHROPIC_API_KEY = saved;
+  }
+});
+
+test("F8: an unprovable credential that EXISTS names the explicit assertion instead", async () => {
+  const model = pricedFauxModel();
+  const unknown = {
+    getModel: () => model,
+    streamSimple: () => undefined,
+  };
+  const saved = process.env.ANTHROPIC_API_KEY;
+  process.env.ANTHROPIC_API_KEY = "present-but-unprovable";
+  try {
+    await assert.rejects(
+      run(pollingAgent("f8-unprovable-message"), "go", {
+        ensureRuntime: false,
+        model,
+        models: unknown,
+        cave: "off",
+        budget: { maxUsd: 1 },
+      }),
+      (error) => {
+        assert.match(error.message, /cave_budget_denomination_unavailable/);
+        assert.match(error.message, /cannot be proven to be a metered API key/);
+        assert.match(error.message, /assumeMeteredCredential/);
+        return true;
+      },
+    );
+  } finally {
+    if (saved === undefined) delete process.env.ANTHROPIC_API_KEY;
+    else process.env.ANTHROPIC_API_KEY = saved;
+  }
+});
+
+test("F8: a USD budget on an unpriced model names the model and the next step", async () => {
+  const model = pricedFauxModel({ id: "acme-lab-preview" });
+  await assert.rejects(
+    run(pollingAgent("f8-unpriced-message"), "go", {
+      ensureRuntime: false,
+      model,
+      budget: { maxUsd: 1 },
+    }),
+    (error) => {
+      assert.match(error.message, /cave_budget_denomination_unavailable/);
+      assert.match(error.message, /anthropic\/acme-lab-preview is not in the public catalog/);
+      assert.match(error.message, /budget\.maxTokens, or pick a cataloged model/);
+      return true;
+    },
+  );
+});
+
 test("M1: assumeMeteredCredential cannot override a PROVEN subscription", async () => {
   const model = pricedFauxModel();
   const subscription = {

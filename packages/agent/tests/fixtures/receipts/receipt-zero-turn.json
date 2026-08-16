@@ -1,0 +1,23 @@
+{
+  "schema": "caveman.agent.receipt-print-fixture.v1",
+  "runId": "fixture-zero-turn",
+  "agentId": "support-bot",
+  "basis": "estimated_list_price_subtotal",
+  "claimBasis": "inferred",
+  "stopReason": "complete",
+  "denomination": "none",
+  "capBreached": false,
+  "overspent": 0,
+  "totalEstimatedUsd": 0,
+  "totalTokens": 0,
+  "unpriced": false,
+  "calls": [],
+  "tools": [],
+  "subagents": [],
+  "tranches": [],
+  "breakers": [],
+  "compactions": [],
+  "mode": "observe-only",
+  "durationMs": 300,
+  "receiptPath": ".caveman/runs/2026-08-14T15-11-02/receipt.json"
+}

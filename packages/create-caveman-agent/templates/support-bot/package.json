@@ -1,0 +1,20 @@
+{
+  "name": "northbeam-support-bot",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.19.0" },
+  "scripts": {
+    "doctor": "caveman-agent doctor",
+    "dev": "caveman-agent dev",
+    "ticket": "node --experimental-strip-types run.ts",
+    "build": "caveman-agent build caveman.config.ts",
+    "check": "caveman-agent check caveman.config.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@caveman-ai/agent": "^0.2.0"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3"
+  }
+}

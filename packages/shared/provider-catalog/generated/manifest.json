@@ -1,63 +1,63 @@
 {
   "schema_version": "provider-catalog.manifest.v1",
-  "catalog_semantic_sha256": "65a4d8176815411ff16e931560c9b1095eebb7928262b05828b3a9c34d945cad",
-  "price_provenance_sha256": "cc3ccdd32c9850a2ce7551582d52cad6199c9d3c25421b5ee893a82e12eaf35a",
-  "source_sha256": "7e5835fda729133fba6533186b6cfc9bd58103310ae2f41e504253a0945e7f9a",
-  "entry_count": 63,
+  "catalog_semantic_sha256": "f9f74e012f52474ed3f0d4fdc40feef766cb035dd61eec1d97282946385942bb",
+  "price_provenance_sha256": "3712b1307ed08b02a1bb2c6ec4df1c3af14a6a3b619cba8b34f513f4bcc00035",
+  "source_sha256": "44f273c90cd7ab4707888fdf7ac5aea21d668e2204ef8a66683644e9151e1ce8",
+  "entry_count": 65,
   "snapshots": [
     {
       "path": "public/shared/provider-catalog/catalog/2026-06-02.yaml",
       "source_sha256": "2bbed767738daeb4d17c73352bb00ff7759edab4bcdfc3961efc626666ca61b4",
-      "semantic_sha256": "561d298cab8484fd2a958585899dc87e8ab8d49f0fb62df45eacc6dafd8ef3e2",
+      "semantic_sha256": "dfa3c5dc3dba32c6f8ce867e0e14daff1ef67bfedeeb6944b27b63a9ff9811ec",
       "entry_count": 6
     },
     {
       "path": "public/shared/provider-catalog/catalog/2026-06-14.yaml",
       "source_sha256": "7317d5437f1b6888c73eff5dd41873b32d086934bdd303e63f19ae4b64a51926",
-      "semantic_sha256": "d891bb83aa8b934b5fad958e9e190b01e5fd610134445af4de4ed8e6d5083b10",
+      "semantic_sha256": "f6623725500e5971e5ea0d5b6d3ca8fb6c7aa9956859254a37e48e7506c9a3d3",
       "entry_count": 13
     },
     {
       "path": "public/shared/provider-catalog/catalog/2026-06-18.yaml",
       "source_sha256": "82f055d67ffe8f1e9a71703cd282fac5ae5da64bed9a4b67428f06f14ae55b57",
-      "semantic_sha256": "838e94dd2ec891b0ad0a1fa5cb353e4354ce05afd75bc2b94263365356cf31fb",
+      "semantic_sha256": "783431cefcd5fdda288fb81da979efe71a7cdce7be212e13f82d644aa38baef1",
       "entry_count": 17
     },
     {
       "path": "public/shared/provider-catalog/catalog/2026-07-10.yaml",
       "source_sha256": "61401763e1667c3aa2c1a58a6b93af378d29c9d5800a9bc2705b97f8b107a9e0",
-      "semantic_sha256": "496735a6fe1d7c56baea44b339806833da3600cb1b4f2a9bbdeb3b3e4a421b80",
+      "semantic_sha256": "c9e8a1d0ab93de7b56c666e4478348bc680e46ff1440251bdc14672aa0ca1aaa",
       "entry_count": 17
     },
     {
       "path": "public/shared/provider-catalog/catalog/2026-07-23.yaml",
       "source_sha256": "708fab73a10a1e0020f88b5dcb00f51e30a2016276dd3d0fc2fef80f57f1e654",
-      "semantic_sha256": "05f5efdb3c295b515cf1736bc96c36bcea210f2b29ab6d56e883a36c807e45f3",
+      "semantic_sha256": "7dbc21877fe244cb45ae43ad1b1ca3e72a44eb19b88530fdeb1f170a3d80e155",
       "entry_count": 41
     },
     {
       "path": "public/shared/provider-catalog/catalog/2026-08-05.yaml",
       "source_sha256": "4918db62d66e1dccd8e35b4f6ab16df484342454bed9a70186f0822e072c79ac",
-      "semantic_sha256": "9a0c063e95ef9b66fdfdebad357975cc648ba40d7178709a8818218913e7694d",
+      "semantic_sha256": "e42e46683efc0306690325a74b9b6028f4bb26da56ef73022d8d0656fbdb5ab2",
       "entry_count": 42
     },
     {
       "path": "public/shared/provider-catalog/catalog/2026-08-07.yaml",
       "source_sha256": "7c88df3c54d7fe75b3817f346790d4a9893cf795d65ecb16260ca8c8acff6f33",
-      "semantic_sha256": "48fe3547fe8982e4c9e86dc070b55826564a0ee242794fb859f1c959bf0daf84",
+      "semantic_sha256": "8be283912b0210a579974ba8b2b6da84c5a4a3362f8e13b30bcdde24ea513d6d",
       "entry_count": 43
     },
     {
       "path": "public/shared/provider-catalog/catalog/2026-08-10.yaml",
       "source_sha256": "2f7be1807bdffc39acb9bda0b6e601863b1826f43b4e8d4d75d7bc687da8b44d",
-      "semantic_sha256": "989e7a052745500d8d603d35fae94c6c8b108b7b525047e2405ad8ba784c8a95",
+      "semantic_sha256": "0080ae4212babe9d507d21026ef6c261ce6019fae079f177d9c00908a9891129",
       "entry_count": 50
     },
     {
       "path": "public/shared/provider-catalog/catalog/2026-08-13.yaml",
-      "source_sha256": "4e47b34db180542c9805de97016fc6fbb9979e48011df2ca1b723b2225ddce8d",
-      "semantic_sha256": "45fefec52c292fc1bff4d5c934f347fcdfe5156fdbe1d8ca433e0e40414f9f9b",
-      "entry_count": 63
+      "source_sha256": "31aa8a562451983cf11782306f63eeda7740f9771316240005c017da3d9fbbab",
+      "semantic_sha256": "22a6c113d3718ed579469bc47a99ac37b8e3cf148220c72cf005f45a4e13c88f",
+      "entry_count": 65
     }
   ]
 }

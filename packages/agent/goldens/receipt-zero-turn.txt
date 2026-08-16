@@ -1,0 +1,6 @@
+run complete · 0 turns · 0.3s
+
+  mode           observe-only — engine adds compression + recovery
+  no model calls were made — nothing to price, nothing to estimate.
+
+  full receipt   .caveman/runs/2026-08-14T15-11-02/receipt.json

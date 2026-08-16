@@ -452,6 +452,100 @@ test("compiler recomputes candidate ceiling and run cost from catalog token buck
   assert.equal(result.lock.evidence.catalog_cost_usd_per_task, 0.02);
 });
 
+test("compiler rejects forged public-catalog zero and recomputes authoritative cost", async () => {
+  const baseline = plan("baseline");
+  const result = await compile(baseInput({
+    baselinePlan: baseline,
+    candidates: [{ plan: baseline, estimated_cost_usd_per_run: 0 }],
+    runner: async () => ({
+      ...evidence({ cost: 0.02 }),
+      price_basis: "public_catalog",
+      catalog_cost_usd: 0,
+    }),
+  }));
+  assert.equal(result.status, "locked");
+  assert.equal(result.actual_cost_usd, 0.2);
+  assert.equal(result.baseline_catalog_cost_usd_per_task, 0.02);
+  assert.equal(result.lock.evidence.catalog_cost_usd_per_task, 0.02);
+});
+
+test("zero-token evidence cannot hide a recurring price-window crossing", async () => {
+  const RealDate = Date;
+  const instants = [
+    "2026-08-17T00:59:59Z", // planning admission
+    "2026-08-17T00:59:59Z", // runner start (off-peak)
+    "2026-08-17T01:00:00Z", // runner finish (peak)
+  ];
+  class BoundaryDate extends RealDate {
+    constructor(...args) {
+      if (args.length > 0) {
+        super(...args);
+        return;
+      }
+      super(instants.shift() ?? "2026-08-17T01:00:00Z");
+    }
+  }
+  globalThis.Date = BoundaryDate;
+  try {
+    const baseline = plan("baseline", "deepseek/deepseek-v4-flash");
+    const result = await compile(baseInput({
+      baselinePlan: baseline,
+      candidates: [{ plan: baseline, estimated_cost_usd_per_run: 0 }],
+      evals: [fixture()],
+      seeds: [1],
+      runner: async () => ({
+        ...evidence({ cost: 0 }),
+        provider: "deepseek",
+        model: "deepseek-v4-flash",
+        input_tokens: 0,
+        output_tokens: 0,
+        provider_visible_tokens: 0,
+      }),
+    }));
+    assert.equal(result.status, "incomplete_evidence");
+    assert.equal(result.actual_cost_usd, 0);
+    assert.equal(result.lock, undefined);
+  } finally {
+    globalThis.Date = RealDate;
+  }
+});
+
+test("stable recurring price window rejects all-zero provider usage", async () => {
+  const RealDate = Date;
+  class StableWindowDate extends RealDate {
+    constructor(...args) {
+      if (args.length > 0) {
+        super(...args);
+        return;
+      }
+      super("2026-08-17T02:00:00Z");
+    }
+  }
+  globalThis.Date = StableWindowDate;
+  try {
+    const baseline = plan("baseline", "deepseek/deepseek-v4-flash");
+    const result = await compile(baseInput({
+      baselinePlan: baseline,
+      candidates: [{ plan: baseline, estimated_cost_usd_per_run: 0 }],
+      evals: [fixture()],
+      seeds: [1],
+      runner: async () => ({
+        ...evidence({ cost: 0 }),
+        provider: "deepseek",
+        model: "deepseek-v4-flash",
+        input_tokens: 0,
+        output_tokens: 0,
+        provider_visible_tokens: 0,
+      }),
+    }));
+    assert.equal(result.status, "incomplete_evidence");
+    assert.equal(result.actual_cost_usd, 0);
+    assert.equal(result.lock, undefined);
+  } finally {
+    globalThis.Date = RealDate;
+  }
+});
+
 test("compiler rejects provider or model identity drift against candidate plan", async () => {
   const baseline = plan("baseline");
   for (const identity of [
@@ -924,8 +1018,8 @@ test("generateCandidatePlans enforces catalog pricing and policy when a policy i
   assert.ok(noPolicy.every((candidate) => candidate.static_rejection === undefined));
 });
 
-test("knownGrader recognizes the full packages/evals taxonomy and rejects the rest", async () => {
-  // packages/evals exposes the discriminated union but no runtime registry. Pin
+test("knownGrader recognizes the full public/evals taxonomy and rejects the rest", async () => {
+  // public/evals exposes the discriminated union but no runtime registry. Pin
   // parity to that union so a taxonomy edit forces this fail-closed mirror to
   // move in the same change.
   const sourceEvals = new URL("../../evals/src/index.ts", import.meta.url);
@@ -936,7 +1030,7 @@ test("knownGrader recognizes the full packages/evals taxonomy and rejects the re
   const evalsTypes = [...new Set([...block[1].matchAll(/type:\s*"([a-z0-9_]+)"/g)]
     .map((match) => match[1]))].sort();
   assert.equal(evalsTypes.length, 27);
-  // Every type packages/evals supports is known here...
+  // Every type public/evals supports is known here...
   for (const type of evalsTypes) {
     assert.equal(knownGrader(type), true, `knownGrader should accept ${type}`);
   }

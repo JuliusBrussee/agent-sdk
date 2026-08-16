@@ -1,0 +1,20 @@
+✗ build failed: your frozen prefix is too small for the provider to cache
+
+  frozen prefix      ≈612 tokens (local estimate)
+  provider minimum  1,024 tokens (claude-sonnet-5)
+
+  The provider only caches prefixes at or above its minimum length.
+  Below it, every run reads your instructions cold, and the warm-read
+  economics this build exists to lock never start — the lock would be
+  a promise about a cache that will never exist.
+
+  Fix: one of —
+    · move more of the agent's genuinely static prose into
+      instructions.md or skills/ descriptions (never padding — if the
+      agent doesn't need it, it shouldn't be there)
+    · pick a model with a lower cache minimum
+    · skip the lock: `npm run dev` and `npm run ticket` work fine
+      uncached, and a prefix this small is also cheap to read cold
+
+  This check runs before the eval gate, so it fires even while your
+  evals are unapproved.

@@ -2,7 +2,6 @@ import { constants } from "node:fs";
 import { open, realpath } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
 import { Value } from "typebox/value";
-import { catalogCost } from "./catalog.js";
 import { sha256, stableStringify, type ContextIR } from "./context-ir.js";
 import type { AgentDefinition } from "./index.js";
 import type { CavePlan, CompileInput, RunEvidence } from "./build.js";
@@ -79,7 +78,9 @@ export async function runNativePiFixture(input: {
         sandboxProfile: await loadEvalSandboxProfile(input.rootDir, input.fixture),
       } : {}),
     });
-    const priced = catalogCost(result);
+    const priced = result.usageBasis === "provider_reported" && result.priceBasis === "public_catalog"
+      ? { priced: true, usd: result.costUsd }
+      : { priced: false, usd: 0 };
     const successfulToolCalls = result.receipt.tools
       .filter((tool) => tool.calls > tool.errors)
       .map((tool) => tool.name);
@@ -241,8 +242,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-function grade(grader: QualityGrader, text: string, toolCalls: string[]): boolean {
+export function grade(grader: QualityGrader, text: string, toolCalls: string[]): boolean {
   if (grader.type === "contains") return grader.fragments.every((fragment) => text.includes(fragment));
+  // Grades the negative: fails when any listed fragment IS present.
+  if (grader.type === "not_contains") return grader.fragments.every((fragment) => !text.includes(fragment));
   if (grader.type === "tool_called") return grader.tools.every((tool) => toolCalls.includes(tool));
   if (grader.type === "exact_match") return text === grader.expected;
   if (grader.type === "json_schema") {

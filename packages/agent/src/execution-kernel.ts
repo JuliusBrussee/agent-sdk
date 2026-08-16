@@ -134,6 +134,8 @@ export function validateProviderUsage(
     expected?: { provider: string; model: string };
     reportedCostUsd?: number;
     requirePriced?: boolean;
+    /** Trusted start time of the provider request whose usage is being priced. */
+    accountingAt?: Date;
   } = {},
 ): ValidatedProviderUsage {
   if (typeof evidence.provider !== "string" || evidence.provider.length === 0 ||
@@ -167,7 +169,7 @@ export function validateProviderUsage(
     cacheReadTokens: evidence.cacheReadTokens,
     cacheWriteTokens: evidence.cacheWriteTokens,
     reasoningTokens: evidence.reasoningTokens,
-  });
+  }, options.accountingAt);
   if (!priced.priced && options.requirePriced === true) {
     throw new Error("cave_provider_usage_unpriced");
   }

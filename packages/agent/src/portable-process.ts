@@ -12,12 +12,10 @@ function envValue(env: NodeJS.ProcessEnv, name: string): string | undefined {
 export function resolveWindowsCommand(command: string, env: NodeJS.ProcessEnv): string | undefined {
   if (isAbsolute(command) || /[\\/]/.test(command)) return existsSync(command) ? command : undefined;
   const pathExt = envValue(env, "PATHEXT") ?? ".COM;.EXE;.BAT;.CMD";
-  // Extensionless commands resolve only through PATHEXT, matching Windows
-  // semantics; a bare name next to a .CMD shim may be a non-executable Unix shim.
   const names = extname(command)
     ? [command]
-    : pathExt.split(";").map((extension) =>
-      `${command}${extension.startsWith(".") ? extension : `.${extension}`}`);
+    : [command, ...pathExt.split(";").map((extension) =>
+      `${command}${extension.startsWith(".") ? extension : `.${extension}`}`)];
   for (const directory of (envValue(env, "PATH") ?? "").split(";")) {
     if (!directory) continue;
     for (const name of names) {

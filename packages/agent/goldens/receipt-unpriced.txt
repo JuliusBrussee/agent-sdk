@@ -1,0 +1,11 @@
+run complete · 2 turns · 3.1s
+
+  model          acme-lab-preview (2 calls)
+  mode           observe-only — engine adds compression + recovery
+  input          6,204 tok · 0 read warm (provider-reported)
+  output         188 tok
+  cost           unpriced — acme-lab-preview is not in the public catalog,
+                 so no dollar figure is shown rather than a guessed one
+  budget         token cap: 6,392 spent of 200,000 · 96% remains
+
+  full receipt   .caveman/runs/2026-08-14T15-09-46/receipt.json

@@ -1,0 +1,13 @@
+run complete · 2 turns · 5.1s
+
+  model          claude-sonnet-5 (2 calls)
+  mode           observe-only — engine adds compression + recovery
+  input          13,190 tok · 12,800 read warm (provider-reported)
+  output         140 tok
+  cost           $0.0107   list-price subtotal, not an invoice
+  budget         $0.0107 spent of $0.05 · 78% remains
+  resumed        attempt 2 · prior attempts: 2 calls, $0.0059 — included in the totals above
+                 1 call was in flight at a crash — the provider
+                 may have billed it; that usage is unknown and counted nowhere
+
+  full receipt   .caveman/runs/2026-08-15T09-30-02/receipt.json
