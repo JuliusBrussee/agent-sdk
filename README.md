@@ -7,9 +7,9 @@
 </p>
 
 <p align="center">
-  Every agent framework gives your agent tools, memory, and subagents. So does this one.<br>
-  Then it does the thing none of them do: <strong>it hands you the bill.</strong><br>
-  Every run. Every call. Every crash. Priced, capped, journaled, and proven on a holdout.
+  A TypeScript agent framework where the agent is a folder of markdown,<br>
+  every run ends with a priced receipt, budgets are enforced before the call,<br>
+  and <code>npm run build</code> compiles the agent cheaper — proven on a holdout.
 </p>
 
 <p align="center">
@@ -21,43 +21,70 @@
 </p>
 
 <p align="center">
-  <a href="#the-receipt">The receipt</a> ·
-  <a href="#budgets-that-refuse-to-lie">Budgets</a> ·
-  <a href="#crash-it-the-meter-survives">Durable runs</a> ·
-  <a href="#the-compiler">The compiler</a> ·
-  <a href="#everything-else-you-expect">Features</a> ·
+  <a href="#the-folder-is-the-agent">The folder</a> ·
+  <a href="#every-run-ends-with-a-receipt">The receipt</a> ·
+  <a href="#budgets">Budgets</a> ·
+  <a href="#crash-and-resume">Durable runs</a> ·
+  <a href="#the-build">The build</a> ·
   <a href="#start">Start</a> ·
   <a href="#the-honesty-boundary">Honesty</a>
 </p>
 
 ---
 
-## Ten lines. Whole agent.
+## The folder is the agent
+
+```text
+support-bot/
+├── instructions.md          # who the agent is — plain markdown
+├── agent.ts                 # model, budget, config — behavior only
+├── skills/
+│   ├── refund-policy.md     # frontmatter description + body
+│   └── shipping-claims.md
+├── tools/
+│   └── lookup_order.ts      # default export is a tool()
+├── subagents/               # each subdir is another agent dir
+└── evals/
+    └── support.eval.ts      # gates the build (below)
+```
 
 ```ts
-import { agent, auto } from "@caveman-ai/agent";
+import { loadAgentDir } from "@caveman-ai/agent";
 
-export default agent({
+const support = await loadAgentDir("./support-bot");
+```
+
+Prose lives in markdown, behavior lives in one small TypeScript file, and
+`loadAgentDir` lowers the whole directory into an ordinary agent definition.
+Skills work the way context should: each `skills/*.md` puts its one-line
+description into the frozen, cacheable prompt prefix, and the body stays on
+disk until the model asks for it through the `cave_skill` tool. Loading a body
+never moves the prefix. Editing `refund-policy.md` is the whole deployment.
+
+`npm create @caveman-ai/agent@latest` scaffolds exactly this folder — a
+production-shaped support bot with real policy skills, a sandboxed order-lookup
+tool, and evals wired in.
+
+Prefer plain code? Same thing, no directory:
+
+```ts
+import { agent, auto, run } from "@caveman-ai/agent";
+
+const support = agent({
   id: "support",
   instructions: "Answer from policy. Never invent policy.",
   model: auto(),
 });
-```
-
-```ts
-import support from "./agent.js";
-import { run } from "@caveman-ai/agent";
 
 const result = await run(support, "Can I get a refund?");
 console.log(result.text);
 console.log(result.contextBill);
 ```
 
-Nothing but Node and a provider key. No account, no gateway, no telemetry
-phone-home. It runs direct to your provider and ends with the thing every other
-framework forgot to build.
+Either way it runs on nothing but Node and a provider key. Direct to your
+provider, no account, no phone-home.
 
-## The receipt
+## Every run ends with a receipt
 
 ```text
 run complete · 4 turns · 8.2s
@@ -73,25 +100,23 @@ run complete · 4 turns · 8.2s
   full receipt   .caveman/runs/2026-08-14T15-02-11/receipt.json
 ```
 
-Read that again. Which models ran, how many calls each, warm-read tokens as the
-**provider** reported them, cost at public catalog list prices, what the same
-run would have cost cold, and how much budget is left. Root agent, subagents,
-retries — every model call lands in one ledger. A run that fails after spending
-still throws with the partial receipt attached, because losing the breakdown at
-the exact moment money burned is how every other framework does it.
+Which models ran, how many calls each, warm-read tokens as the provider
+reported them, cost at public catalog list prices, budget remaining. Subagent
+and retry calls land in the same ledger as the root. A run that fails after
+spending throws with the partial receipt attached.
 
-And here's the part that should make you trust the rest of this page: **that
-receipt is a golden file.** The test suite renders the real receipt and fails
-if the output drifts by a byte. The marketing copy is under test.
+That block is a golden file. `npm test` renders the real receipt and fails if
+the output drifts by a byte, so the quotes in this README stay true or the
+build goes red.
 
-## Budgets that refuse to lie
+## Budgets
 
-`maxCostUsd: 0.05` means the run cannot spend more than five cents. Not "we'll
-check afterwards" — every call reserves its catalog worst-case price *before*
-the request and settles the measured cost after. Cap exhausted? The run ends
-before the next call, receipt intact.
+`maxCostUsd: 0.05` reserves each call's catalog worst-case price before the
+request and settles the measured cost after it. When the cap runs out, the run
+ends before the next call, receipt intact.
 
-The smart part is what happens when a cap is impossible to enforce:
+A model the catalog can't price can't be capped, and the framework refuses to
+pretend otherwise:
 
 ```text
 ✗ build failed: your budget is in dollars but the model has no price
@@ -106,17 +131,12 @@ The smart part is what happens when a cap is impossible to enforce:
   An unpriced model never spends against an imaginary $0 rate.
 ```
 
-Most frameworks would price the unknown model at zero and call the budget
-"enforced." This one refuses the run. Fail-closed is a feature you don't
-appreciate until the day it saves you, and then you never use anything else.
+## Crash and resume
 
-## Crash it. The meter survives.
-
-Turn on durable mode and every model call journals its **intent** to disk,
-fsynced, *before* the request goes out. Kill the process mid-run — power cord,
-OOM, ctrl-C, doesn't matter. Resume with the same `runId` and the run picks up
-at the last clean boundary with the meter preloaded: money already spent is
-never re-reserved and never forgotten.
+With durable mode on, every model call fsyncs its intent to a JSONL journal
+before the request leaves the machine. Kill the process wherever you like;
+resume with the same `runId` and the run continues from the last clean boundary
+with the meter preloaded — spent money is never re-reserved and never dropped.
 
 ```text
 run complete · 2 turns · 5.1s
@@ -128,29 +148,23 @@ run complete · 2 turns · 5.1s
                  may have billed it; that usage is unknown and counted nowhere
 ```
 
-Look at those last two lines. A call was mid-flight when the process died, so
-its cost is genuinely unknowable — and the receipt **says so**, instead of
-quietly guessing. This is what accounting looks like when it's built by people
-who expect to be audited. No Temporal cluster, no Postgres, no workflow server:
-one JSONL journal next to your agent.
+A call that was mid-flight at the crash has a genuinely unknowable cost, so the
+receipt labels it unknown instead of guessing. No workflow server, no Postgres;
+the journal is a file next to your agent.
 
-## The compiler
-
-This is the headline act. Your agent is not just code that runs — it's code
-that **builds**, and the build makes it cheaper:
+## The build
 
 ```bash
 npm run build
 ```
 
-One command: profile the workload with your approved evals, search cheaper
-plans on a development set — model selection, reasoning effort, reversible
-context routes with derived recovery, output budgets — freeze the winner, then
-prove it on a **holdout set the search never touched**. Train/test split for
-your agent's cost. If traces already exist under `.caveman/traces/`, the build
-imports them and skips the profiling spend entirely.
+Profiles the workload with your approved evals, searches cheaper plans on a
+development set — model selection, reasoning effort, reversible context routes
+with derived recovery, output budgets — freezes the winner, then proves it on a
+holdout set the search never touched. Existing traces under `.caveman/traces/`
+are imported instead of re-spending on profiling.
 
-A plan that can't prove itself doesn't lock:
+A plan that fails its evals never locks:
 
 ```text
 ✗ build failed: both development evals fail on the cheapest candidate plan
@@ -166,23 +180,20 @@ A plan that can't prove itself doesn't lock:
   make it on purpose.
 ```
 
-The output is an immutable Cave Build: a lockfile, a content-blind workload
-profile, and a build report with the holdout evidence and search cost. Cheaper,
-with proof attached — or no lock at all.
+A successful build writes an immutable Cave Build: lockfile, content-blind
+workload profile, and a build report carrying the holdout evidence and what the
+search itself cost.
 
-## Everything else you expect
-
-Because a framework that only did accounting would be a spreadsheet.
+## Also in the box
 
 | | |
 |---|---|
 | **Tools & subagents** | Typed tools, subagent trees, every descendant call metered into the root receipt. |
-| **Sandboxed execution** | Restricted-tool policy with a written [threat model](./packages/agent/SANDBOX_THREAT_MODEL.md), not a vibe. |
-| **Directory conventions** | `loadAgentDir`: a folder of markdown + tools *is* an agent. Skills ship descriptions in the frozen prefix; bodies load on demand. |
-| **Cache planning** | Provider cache breakpoints planned statically, parity-checked against Go fixtures. Hints only — model-visible bytes never change. |
+| **Sandboxed execution** | Restricted-tool policy with a written [threat model](./packages/agent/SANDBOX_THREAT_MODEL.md). |
+| **Cache planning** | Provider cache breakpoints planned statically, parity-checked against Go fixtures. Hints only; model-visible bytes never change. |
 | **Streaming** | Typed run/context/completion/error events; aborting the iterator aborts in-flight provider, tool, and subagent work. |
-| **Adapters** | Exact-pinned: Pi, Claude Agent SDK, Vercel AI SDK, Eve, Mastra. Migrate in, keep your receipts. |
-| **Zero-dep initializer** | `create-agent` scaffolds a production-shaped support bot with evals that gate the build — the two-minute proof. |
+| **Adapters** | Exact-pinned: Pi, Claude Agent SDK, Vercel AI SDK, Eve, Mastra. |
+| **Zero-dep initializer** | `create-agent` scaffolds the support bot above, evals included. |
 
 ## Start
 
@@ -193,7 +204,7 @@ npm run doctor    # checks your key, tells you the one-line fix if it's missing
 npm run dev
 ```
 
-Or straight into an existing project:
+Or into an existing project:
 
 ```bash
 npm install @caveman-ai/agent
@@ -229,17 +240,11 @@ suite, and the example agent. macOS restricted-tool tests require working
 
 ## The honesty boundary
 
-The reason to believe any number above: this SDK is built under rules that make
-fake numbers a correctness bug.
-
-- Costs are **list-price subtotals** at the public catalog, never invoices.
-- Local execution and replay evidence stay **`inferred`** — the SDK does not
-  publish a savings percentage, and `verifiedSavingsUsd` stays `0` until real
-  traffic passes Caveman Cloud rollout and ledger gates.
-- Unknown price, model, or runtime state **fails closed** or returns an honest
-  zero. Nothing is ever guessed.
-
-Most frameworks would call this section a limitation. It's the product.
+Costs are list-price subtotals at the public catalog, never invoices. Local
+execution and replay evidence stay `inferred`; the SDK publishes no savings
+percentage, and `verifiedSavingsUsd` stays `0` until real traffic passes
+Caveman Cloud rollout and ledger gates. Unknown price, model, or runtime state
+fails closed or returns an honest zero.
 
 ## License
 
