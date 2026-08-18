@@ -3,13 +3,13 @@
 </p>
 
 <p align="center">
-  <strong>other framework build agent. this one build agent with receipt.</strong>
+  <strong>other framework write agent. this one compile agent with receipt even in other framework.</strong>
 </p>
 
 <p align="center">
   A TypeScript agent framework where the agent is a folder of markdown,<br>
   every run ends with a priced receipt, budgets are enforced before the call,<br>
-  and <code>npm run build</code> compiles the agent cheaper — proven on a holdout.
+  and <code>npm run build</code> compiles the agent cheaper — proven on a holdout. Made to also integrate into your existing agent frameworks.
 </p>
 
 <p align="center">
