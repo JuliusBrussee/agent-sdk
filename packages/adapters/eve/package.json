@@ -1,0 +1,31 @@
+{
+  "name": "@caveman-ai/adapter-eve",
+  "version": "0.1.0",
+  "description": "Caveman adapter for Eve ClientSession.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JuliusBrussee/agent-sdk.git",
+    "directory": "packages/adapters/eve"
+  },
+  "type": "module",
+  "main": "src/index.js",
+  "types": "src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "import": "./src/index.js"
+    },
+    "./manifest": "./src/manifest.js"
+  },
+  "files": ["src", "README.md"],
+  "dependencies": {
+    "@caveman-ai/adapter-kit": "0.1.0"
+  },
+  "peerDependencies": {
+    "@caveman-ai/agent": "0.2.0",
+    "eve": "0.29.2"
+  },
+  "engines": { "node": ">=24.0.0" },
+  "publishConfig": { "access": "public" }
+}

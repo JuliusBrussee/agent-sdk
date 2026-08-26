@@ -1,0 +1,48 @@
+{
+  "name": "@pebble-agent/protocol",
+  "version": "0.1.0",
+  "description": "PEBBLE wire and storage contract (v1, FROZEN): turn events, session entries, JSONL-RPC framing, ACP mapping. Zero runtime dependencies.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JuliusBrussee/agent-sdk.git",
+    "directory": "packages/pebble-protocol"
+  },
+  "keywords": [
+    "pebble",
+    "agent",
+    "protocol",
+    "jsonl",
+    "acp",
+    "events"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "fixtures",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "lint": "tsc --noEmit && tsc --project tsconfig.test.json",
+    "test": "node --test 'tests/*.test.ts'"
+  },
+  "engines": {
+    "node": ">=22.19.0",
+    "bun": ">=1.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "typescript": "5.9.3"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

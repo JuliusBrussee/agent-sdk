@@ -1,0 +1,1 @@
+{"v":1,"seq":1,"ts":"2026-08-25T09:30:01.556Z","sessionId":"sess_01J9Z8Q4VHN7X2","kind":"route.decided","model":"claude-opus-4-6","reason":"cache prefix matches open session; cold start avoided","signals":["cache-prefix-match","budget-headroom"]}

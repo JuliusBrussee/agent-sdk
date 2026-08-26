@@ -1,0 +1,25 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "baseUrl": ".",
+    "types": ["node"],
+    "typeRoots": [
+      "node_modules/@types",
+      "packages/agent/node_modules/@types"
+    ],
+    "paths": {
+      "@caveman-ai/adapter-kit": ["packages/adapter-kit/src/index.d.ts"],
+      "@caveman-ai/agent": ["packages/agent/src/index.ts"],
+      "@caveman-ai/agent/adapters": ["packages/agent/src/adapters.ts"],
+      "@caveman-ai/agent/claude": ["packages/agent/src/claude.ts"],
+      "@caveman-ai/agent/code": ["packages/agent/src/code.ts"],
+      "@caveman-ai/agent/compiler": ["packages/agent/src/compiler.ts"]
+    }
+  },
+  "include": [
+    "packages/adapter-kit/src/**/*.d.ts",
+    "packages/adapters/*/src/**/*.d.ts",
+    "packages/coding-agent/src/**/*.d.ts"
+  ]
+}

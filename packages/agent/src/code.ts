@@ -1,0 +1,1785 @@
+/**
+ * `@caveman-ai/agent/code` — the Caveman coding agent.
+ *
+ * A coding agent whose tools run on the real host (`sandbox: "host"`) and whose
+ * live-zone context is compressed reversibly by default. Optimized mode is the
+ * default: the session starts the local Cave runtime when it can and runs with a
+ * recoverable-only efficiency plan over history and tool results. Observe-only is
+ * the loud fallback, announced with a banner and shown in the session status for
+ * every turn after it.
+ *
+ * Public accounting is deliberately simple: context reductions are local token
+ * estimates, spend is a public-catalog price estimate, and local execution makes
+ * no provider savings claim.
+ * - Live coding sessions are never lock-eligible; `compile` refuses host mode
+ *   so nothing a session does can become a Cave Build.
+ */
+import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
+import { readFile, realpath, stat, writeFile } from "node:fs/promises";
+import { createInterface } from "node:readline/promises";
+import { basename, dirname, isAbsolute, relative, resolve } from "node:path";
+import type { Readable, Writable } from "node:stream";
+import type { TurnEvent } from "@pebble-agent/protocol";
+import type { Api, CacheRetention, Model, Models } from "@earendil-works/pi-ai";
+import { builtinModels } from "@earendil-works/pi-ai/providers/all";
+import type { CavePlan } from "./build.js";
+import type { RunBudget, RunReceipt } from "./budget.js";
+import type { RunBreakers } from "./breakers.js";
+import {
+  CODING_CACHE_INPUT_TOKEN_HIT_TARGET,
+  analyzeProviderCachePerformance,
+} from "./cache-planner/performance.js";
+import { agent, type AgentDefinition } from "./definition.js";
+import { output, schema, tool, type ToolDefinition } from "./primitives.js";
+import { hostShellInvocation, killProcessTree, portableInvocation } from "./portable-process.js";
+import {
+  createConversation,
+  AgentRunController,
+  proveSegmentRecovery,
+  rejectInternalRunOptions,
+  resolveCaveRoute,
+  resolveGatewayURL,
+  runAgentInternal,
+  streamAgentInternalOptions,
+  type AgentRunQueueState,
+  type CavemanRunEvent,
+  type ConversationState,
+  type ModelCallRouter,
+  type ResolvedCaveRoute,
+  type RunOptions,
+  type RunResult,
+  type SegmentRecoveryProof,
+  type TransformTrace,
+} from "./runtime.js";
+import { PebbleEventEncoder } from "./pebble-stream.js";
+
+export { AgentRunController };
+
+/**
+ * The only transforms a default coding plan may route. Every one of them is
+ * CCR-recoverable (`recovery: exact_ccr`) and the runtime proves the round trip
+ * byte-for-byte before a compressed body is allowed near the provider. `toon` is
+ * excluded on purpose: it is forced-only structured re-encoding, never a default.
+ */
+export const RECOVERABLE_CODING_TRANSFORMS: readonly string[] = Object.freeze([
+  "caveman.engine.code.v1",
+  "caveman.engine.diff.v1",
+  "caveman.engine.json.v1",
+  "caveman.engine.log.v1",
+  "caveman.engine.search-result.v1",
+  "caveman.engine.terminal.v1",
+  "caveman.engine.text.v1",
+]);
+
+/** Tool results in a coding session are command, file, and search output. */
+const TOOL_RESULT_TRANSFORM = "caveman.engine.terminal.v1";
+/** Conversation history is prose plus quoted snippets. */
+const HISTORY_TRANSFORM = "caveman.engine.text.v1";
+
+/**
+ * Raw output caps, applied by each tool **before** any transform runs, so a
+ * runaway `cat` cannot blow the context even with the engine absent. They also
+ * sit under the runtime's 32 KiB inline tool-result ceiling, which is what keeps
+ * observe-only sessions working on a machine with no engine at all.
+ */
+export const CODING_TOOL_OUTPUT_CAPS = Object.freeze({
+  read_file: 24_000,
+  grep: 16_000,
+  bash: 24_000,
+  write_file: 2_000,
+  edit_file: 2_000,
+  read_tool_output: 24_000,
+});
+
+/** Cost-control defaults for coding runs. No retry policy: retries require a declared budget. */
+export const CODING_RUN_BREAKERS: RunBreakers = Object.freeze({
+  repeatedToolCalls: 3,
+  repeatedToolCallWindowTurns: 8,
+  noProgressTurns: 3,
+  maxToolCallsPerTurn: 8,
+});
+
+const GREP_MAX_MATCHES = 200;
+const BASH_TIMEOUT_MS = 120_000;
+const READ_TIMEOUT_MS = 30_000;
+const PROCESS_CAPTURE_MAX_BYTES = 4 * 1024 * 1024;
+const STORED_TOOL_OUTPUT_MAX_BYTES = 8 * 1024 * 1024;
+const STORED_TOOL_OUTPUT_TOTAL_BYTES = 16 * 1024 * 1024;
+
+/** Model calls per turn = 1 + ceil(retry_cascade_reserve / 256) = 64. */
+const RETRY_CASCADE_RESERVE = 16_128;
+const OUTPUT_MAX_TOKENS = 8_000;
+
+export const OBSERVE_ONLY_BANNER = [
+  "cave: OBSERVE-ONLY — the Caveman engine/gateway is not available here.",
+  "  Context transforms and gateway telemetry are OFF. Provider usage and local context estimates remain available.",
+  "  Turn optimized mode on: npm i -g @caveman-ai/cli && caveman start",
+].join("\n");
+
+const FULL_TOOL_INSTRUCTIONS = [
+  "- read_file reads a file (optionally a line range) from the workspace.",
+  "- grep searches the workspace with ripgrep, falling back to grep.",
+  "- bash runs one shell command in the workspace and returns its combined output.",
+  "- write_file creates a file, or overwrites one only when overwrite is true.",
+  "- edit_file replaces an exact string in a file. Match enough surrounding text",
+  "  to make the target unique, or pass replace_all.",
+  "- read_tool_output pages or literal-searches captured output by opaque handle.",
+].join("\n");
+
+const PEBBLE_V1_TOOL_INSTRUCTIONS = [
+  "- read_file reads a file (optionally a line range) from the workspace.",
+  "- bash runs one shell command in the workspace and returns its combined output.",
+  "- write_file creates a file, or overwrites one only when overwrite is true.",
+  "- edit_file replaces an exact string in a file. Match enough surrounding text",
+  "  to make the target unique, or pass replace_all.",
+].join("\n");
+
+function codingInstructions(toolSet: CodingToolSet): string {
+  const toolInstructions = toolSet === "pebble-v1"
+    ? PEBBLE_V1_TOOL_INSTRUCTIONS
+    : FULL_TOOL_INSTRUCTIONS;
+  const cappedOutputInstructions = toolSet === "pebble-v1"
+    ? "Tool output is capped before it reaches you. Narrow the request or command when output is truncated."
+    : [
+        "Tool output is capped before it reaches you. Shell output keeps its tail so test",
+        "failures survive truncation. When a result gives a handle, page or search that",
+        "captured output instead of repeating the command. Otherwise narrow the request.",
+      ].join("\n");
+  return [
+    "You are a coding agent working inside one workspace directory.",
+    "",
+    "Work like an engineer: read before you edit, prefer the smallest change that",
+    "solves the task, and verify with a command when a command can verify it.",
+    "",
+    "Tools:",
+    toolInstructions,
+    "",
+    cappedOutputInstructions,
+    "",
+    "Older turns and older tool results may arrive wrapped in <cave-compressed>",
+    "markers. Those are reversible: call cave_retrieve with the recovery_handle in",
+    "the marker to get the exact original bytes back. Retrieve before guessing.",
+    "",
+    "Say what you changed and why. Do not claim a command passed unless you ran it.",
+  ].join("\n");
+}
+
+export type CodingToolSet = "full" | "pebble-v1";
+
+export interface CodingAgentOptions {
+  /** Workspace root. Tools refuse to read or write outside it. */
+  workspace?: string;
+  /** `provider/model`. Defaults to `CAVE_MODEL`, else the one configured provider. */
+  model?: string;
+  /** Agent id; also the recovery namespace and default workflow name. */
+  id?: string;
+  /** Extra instruction text appended to the built-in coding instructions. */
+  instructions?: string;
+  /** Per-tool raw output caps in bytes, before any transform. */
+  outputCaps?: Partial<typeof CODING_TOOL_OUTPUT_CAPS>;
+  /** Provider-visible coding tools. Generic SDK default remains the full six-tool surface. */
+  toolSet?: CodingToolSet;
+}
+
+export interface CodingAgent {
+  readonly definition: AgentDefinition;
+  /** The default efficiency plan: recoverable routes over the live zone. */
+  readonly plan: CavePlan;
+  readonly workspace: string;
+  readonly modelID: string;
+  /** Largest raw tool outputs seen this process, kept for the recovery proof. */
+  readonly samples: ToolOutputSample[];
+}
+
+export interface ToolOutputSample {
+  readonly label: string;
+  readonly text: string;
+}
+
+const MAX_SAMPLES = 4;
+
+type StoredToolOutput = {
+  readonly label: string;
+  readonly bytes: Buffer;
+  readonly complete: boolean;
+};
+
+/**
+ * Active-agent, in-memory result store. Handles never cross agent instances or
+ * process restarts. Oldest entries are evicted before the store crosses its
+ * fixed memory ceiling.
+ */
+class ToolOutputStore {
+  private readonly entries = new Map<string, StoredToolOutput>();
+  private bytes = 0;
+
+  put(label: string, text: string, complete: boolean): string | undefined {
+    const encoded = Buffer.from(text, "utf8");
+    if (encoded.byteLength > STORED_TOOL_OUTPUT_MAX_BYTES) return undefined;
+    while (this.bytes + encoded.byteLength > STORED_TOOL_OUTPUT_TOTAL_BYTES) {
+      const oldest = this.entries.entries().next().value as
+        | [string, StoredToolOutput]
+        | undefined;
+      if (oldest === undefined) break;
+      this.entries.delete(oldest[0]);
+      this.bytes -= oldest[1].bytes.byteLength;
+    }
+    const handle = `tool_${randomUUID().replaceAll("-", "")}`;
+    this.entries.set(handle, { label, bytes: encoded, complete });
+    this.bytes += encoded.byteLength;
+    return handle;
+  }
+
+  get(handle: string): StoredToolOutput | undefined {
+    return this.entries.get(handle);
+  }
+}
+
+/**
+ * The default efficiency plan for an interactive coding session.
+ *
+ * One route per dynamic segment kind, because the runtime refuses an ambiguous
+ * dynamic route (two routes matching one runtime segment collapse to
+ * `dynamic_route_ambiguous` and the segment passes through untouched). Budgets
+ * are sized for a long interactive session rather than a fixture run; they are
+ * ceilings that fail the turn honestly rather than silently truncating context.
+ */
+export function defaultCodingPlan(modelID: string, namespace: string): CavePlan {
+  return {
+    schema_version: 1,
+    plan_id: "caveman-code.default.recoverable-live-zone",
+    model: modelID,
+    reasoning: "none",
+    segment_routes: [
+      { segment_kind: "tool_result", transform_id: TOOL_RESULT_TRANSFORM, fallback: "original" },
+      { segment_kind: "history", transform_id: HISTORY_TRANSFORM, fallback: "original" },
+    ],
+    budgets: {
+      instructions: 64_000,
+      tools: 32_000,
+      memory: 8_000,
+      history: 4_000_000,
+      results_artifacts: 4_000_000,
+      reasoning: 64_000,
+      output: 512_000,
+      retry_cascade_reserve: RETRY_CASCADE_RESERVE,
+    },
+    recovery: { namespace, tools: ["cave_retrieve"] },
+    fallbacks: { unknown: "original", transform_error: "original", not_smaller: "original" },
+  };
+}
+
+export function createCodingAgent(options: CodingAgentOptions = {}): CodingAgent {
+  const workspace = resolve(options.workspace ?? process.cwd());
+  const id = options.id ?? "caveman-code";
+  const modelID = resolveCodingModelID(options.model);
+  const toolSet = options.toolSet ?? "full";
+  if (toolSet !== "full" && toolSet !== "pebble-v1") throw new Error(`coding_tool_set_invalid:${toolSet}`);
+  const caps = { ...CODING_TOOL_OUTPUT_CAPS, ...options.outputCaps };
+  const samples: ToolOutputSample[] = [];
+  const record = (label: string, text: string) => {
+    samples.push({ label, text });
+    samples.sort((left, right) => right.text.length - left.text.length);
+    samples.length = Math.min(samples.length, MAX_SAMPLES);
+  };
+  const definition = agent({
+    id,
+    instructions: options.instructions === undefined
+      ? codingInstructions(toolSet)
+      : `${codingInstructions(toolSet)}\n\n${options.instructions}`,
+    model: modelID,
+    reasoning: "off",
+    sandbox: "host",
+    output: output({ maxTokens: OUTPUT_MAX_TOKENS }),
+    tools: codingTools(workspace, caps, record, toolSet),
+  });
+  return Object.freeze({
+    definition,
+    plan: defaultCodingPlan(modelID, id),
+    workspace,
+    modelID,
+    samples,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Tools — host-sandbox closures. Effects are declared honestly: host mode
+// changes enforcement, not declaration.
+// ---------------------------------------------------------------------------
+
+function codingTools(
+  workspace: string,
+  caps: typeof CODING_TOOL_OUTPUT_CAPS,
+  record: (label: string, text: string) => void,
+  toolSet: CodingToolSet,
+): ToolDefinition[] {
+  const storedOutputs = new ToolOutputStore();
+  // The workspace is canonicalized once, then every candidate path is
+  // canonicalized against it, so containment compares real locations rather
+  // than strings. Resolved lazily because the directory need not exist yet when
+  // the agent is built.
+  let canonicalWorkspace: Promise<string> | undefined;
+  const workspaceRoot = () => (canonicalWorkspace ??= realpath(workspace));
+  const contained = async (candidate: string) =>
+    containedPath(await workspaceRoot(), candidate);
+
+  const readFileTool = tool({
+    name: "read_file",
+    description:
+      "Read a UTF-8 file from the workspace. Optional offset/limit read a line range. " +
+      `Output is capped at ${caps.read_file} bytes.`,
+    input: schema.object({
+      path: schema.string(),
+      offset: schema.optional(schema.integer()),
+      limit: schema.optional(schema.integer()),
+    }),
+    effect: "read",
+    result: "inline",
+    timeoutMs: READ_TIMEOUT_MS,
+    async execute(input) {
+      const target = await contained(input.path);
+      const info = await stat(target);
+      if (!info.isFile()) throw new Error(`caveman-code: not a file: ${input.path}`);
+      const content = await readFile(target, "utf8");
+      const lines = content.split("\n");
+      const offset = Math.max(1, input.offset ?? 1);
+      const limit = input.limit === undefined ? lines.length : Math.max(1, input.limit);
+      const selected = lines.slice(offset - 1, offset - 1 + limit);
+      const numbered = selected
+        .map((line, index) => `${offset + index}\t${line}`)
+        .join("\n");
+      const text = capToolOutput({
+        text: numbered,
+        maxBytes: caps.read_file,
+        direction: "head",
+        ...(toolSet === "full" ? { store: storedOutputs } : {}),
+        label: `read_file:${input.path}`,
+        complete: true,
+      });
+      record(`read_file:${input.path}`, text);
+      return text;
+    },
+  });
+
+  const grepTool = tool({
+    name: "grep",
+    description:
+      "Search the workspace for a regular expression with ripgrep (grep fallback). " +
+      `Returns at most ${GREP_MAX_MATCHES} matches, capped at ${caps.grep} bytes.`,
+    input: schema.object({
+      pattern: schema.string(),
+      path: schema.optional(schema.string()),
+      glob: schema.optional(schema.string()),
+    }),
+    effect: "read",
+    result: "inline",
+    timeoutMs: READ_TIMEOUT_MS,
+    async execute(input, signal) {
+      const root = await workspaceRoot();
+      const scope = input.path === undefined ? root : await contained(input.path);
+      const relativeScope = scope === root ? "." : relative(root, scope);
+      const ripgrep = [
+        "--line-number", "--no-heading", "--color", "never",
+        "--max-count", String(GREP_MAX_MATCHES),
+        ...(input.glob === undefined ? [] : ["--glob", input.glob]),
+        "--regexp", input.pattern, "--", relativeScope,
+      ];
+      let run = await runProcess("rg", ripgrep, root, READ_TIMEOUT_MS, signal);
+      if (run.spawnFailed) {
+        run = await runProcess("grep", [
+          "-rnI", "-m", String(GREP_MAX_MATCHES), "-E", "-e", input.pattern, "--", relativeScope,
+        ], root, READ_TIMEOUT_MS, signal);
+      }
+      if (run.spawnFailed) throw new Error("caveman-code: neither rg nor grep is available");
+      const body = run.output.trim() === "" ? "no matches" : firstLines(run.output, GREP_MAX_MATCHES);
+      const text = capToolOutput({
+        text: body,
+        maxBytes: caps.grep,
+        direction: "head",
+        ...(toolSet === "full" ? { store: storedOutputs } : {}),
+        label: `grep:${input.pattern}`,
+        complete: run.captureComplete,
+      });
+      record(`grep:${input.pattern}`, text);
+      return text;
+    },
+  });
+
+  const bashTool = tool({
+    name: "bash",
+    description:
+      "Run one shell command in the workspace and return its combined stdout and stderr. " +
+      `Times out after ${BASH_TIMEOUT_MS} ms; output is capped at ${caps.bash} bytes.`,
+    input: schema.object({
+      command: schema.string(),
+      timeoutMs: schema.optional(schema.integer()),
+    }),
+    effect: "external",
+    result: "inline",
+    timeoutMs: BASH_TIMEOUT_MS,
+    async execute(input, signal) {
+      const timeoutMs = Math.min(input.timeoutMs ?? BASH_TIMEOUT_MS, BASH_TIMEOUT_MS);
+      const shell = hostShellInvocation(input.command, process.platform, buildCodingProcessEnv());
+      const run = await runProcess(
+        shell.command,
+        shell.args,
+        await workspaceRoot(),
+        timeoutMs,
+        signal,
+      );
+      if (run.spawnFailed) throw new Error("caveman-code: host command shell is not available");
+      const status = `exit ${run.timedOut ? `timeout after ${timeoutMs}ms` : run.code}`;
+      const output = run.output.trim() === "" ? "(no output)" : run.output;
+      const text = `${status}\n${capToolOutput({
+        text: output,
+        maxBytes: Math.max(1, caps.bash - Buffer.byteLength(`${status}\n`, "utf8")),
+        direction: "tail",
+        ...(toolSet === "full" ? { store: storedOutputs } : {}),
+        label: `bash:${input.command.slice(0, 60)}`,
+        complete: run.captureComplete,
+      })}`;
+      record(`bash:${input.command.slice(0, 60)}`, text);
+      return text;
+    },
+  });
+
+  const writeTool = tool({
+    name: "write_file",
+    description:
+      "Create a UTF-8 file in the workspace. Refuses an existing path unless overwrite is true. " +
+      "Parent directory must already exist.",
+    input: schema.object({
+      path: schema.string(),
+      content: schema.string(),
+      overwrite: schema.optional(schema.boolean()),
+    }),
+    effect: "write",
+    result: "inline",
+    timeoutMs: READ_TIMEOUT_MS,
+    async execute(input) {
+      const target = await contained(input.path);
+      await writeFile(target, input.content, {
+        encoding: "utf8",
+        flag: input.overwrite === true ? "w" : "wx",
+      });
+      return capOutput(
+        `wrote ${input.path}: ${Buffer.byteLength(input.content, "utf8")} bytes`,
+        caps.write_file,
+      );
+    },
+  });
+
+  const editTool = tool({
+    name: "edit_file",
+    description:
+      "Replace an exact string in a workspace file. The old string must appear exactly " +
+      "once unless replace_all is set. Writes to disk.",
+    input: schema.object({
+      path: schema.string(),
+      old_string: schema.string(),
+      new_string: schema.string(),
+      replace_all: schema.optional(schema.boolean()),
+    }),
+    effect: "write",
+    result: "inline",
+    timeoutMs: READ_TIMEOUT_MS,
+    async execute(input) {
+      if (input.old_string === input.new_string) {
+        throw new Error("caveman-code: old_string and new_string are identical");
+      }
+      const target = await contained(input.path);
+      const content = await readFile(target, "utf8");
+      const occurrences = content.split(input.old_string).length - 1;
+      if (occurrences === 0) {
+        throw new Error(`caveman-code: old_string not found in ${input.path}`);
+      }
+      if (occurrences > 1 && input.replace_all !== true) {
+        throw new Error(
+          `caveman-code: old_string appears ${occurrences} times in ${input.path}; ` +
+          "add surrounding context or pass replace_all",
+        );
+      }
+      // split/join UNCONDITIONALLY. String.prototype.replace
+      // interprets `$&`, `$\``, `$'`, `$$`, `$1`… in the REPLACEMENT even for a
+      // string pattern, so a new_string containing any of them would silently
+      // corrupt the file. The non-replace_all branch is guaranteed exactly one
+      // occurrence above, so joining replaces precisely that one.
+      const updated = content.split(input.old_string).join(input.new_string);
+      await writeFile(target, updated, "utf8");
+      const replaced = input.replace_all === true ? occurrences : 1;
+      return capOutput(
+        `edited ${input.path}: ${replaced} replacement${replaced === 1 ? "" : "s"}`,
+        caps.edit_file,
+      );
+    },
+  });
+
+  const readToolOutput = tool({
+    name: "read_tool_output",
+    description:
+      "Read captured output from this active agent by opaque handle. Uses zero-based byte offset " +
+      "and bounded byte limit, or finds a literal query without rerunning the original tool.",
+    input: schema.object({
+      handle: schema.string(),
+      offset: schema.optional(schema.integer()),
+      limit: schema.optional(schema.integer()),
+      query: schema.optional(schema.string()),
+    }),
+    effect: "read",
+    result: "inline",
+    timeoutMs: READ_TIMEOUT_MS,
+    async execute(input) {
+      const stored = storedOutputs.get(input.handle);
+      if (stored === undefined) {
+        throw new Error("caveman-code: tool output handle is unknown or evicted");
+      }
+      const offset = input.offset ?? 0;
+      const requestedLimit = input.limit ?? Math.min(8_000, caps.read_tool_output - 512);
+      if (!Number.isSafeInteger(offset) || offset < 0) {
+        throw new Error("caveman-code: read_tool_output offset must be a non-negative integer");
+      }
+      if (!Number.isSafeInteger(requestedLimit) || requestedLimit <= 0) {
+        throw new Error("caveman-code: read_tool_output limit must be a positive integer");
+      }
+      const limit = Math.min(requestedLimit, Math.max(1, caps.read_tool_output - 512));
+      let start = Math.min(offset, stored.bytes.byteLength);
+      if (input.query !== undefined) {
+        if (input.query.length === 0) {
+          throw new Error("caveman-code: read_tool_output query must not be empty");
+        }
+        const found = stored.bytes.indexOf(Buffer.from(input.query, "utf8"), start);
+        if (found < 0) {
+          return `no literal match in ${stored.label} at or after byte ${start}`;
+        }
+        start = found;
+      }
+      const end = Math.min(stored.bytes.byteLength, start + limit);
+      const page = stored.bytes.subarray(start, end).toString("utf8");
+      const status = stored.complete ? "complete capture" : "partial capture; later process output was unavailable";
+      return capOutput(
+        [
+          `${stored.label} · bytes ${start}-${end} of ${stored.bytes.byteLength} · ${status}`,
+          page,
+          ...(end < stored.bytes.byteLength ? [`[next offset: ${end}]`] : []),
+        ].join("\n"),
+        caps.read_tool_output,
+      );
+    },
+  });
+
+  return toolSet === "pebble-v1"
+    ? [readFileTool, bashTool, writeTool, editTool]
+    : [readFileTool, grepTool, bashTool, writeTool, editTool, readToolOutput];
+}
+
+/**
+ * Resolve a caller path against the canonical workspace and refuse anything
+ * that lands outside it.
+ *
+ * A lexical prefix check is not containment: a symlink inside the workspace
+ * pointing anywhere on the filesystem passes it. Both sides are canonicalized
+ * first, matching how `stageSandboxSourceGraph` decides the same question.
+ */
+async function containedPath(canonicalWorkspace: string, candidate: string): Promise<string> {
+  const full = await canonicalizePath(resolve(canonicalWorkspace, candidate));
+  if (escapesRoot(relative(canonicalWorkspace, full))) {
+    throw new Error(`caveman-code: path escapes the workspace: ${candidate}`);
+  }
+  return full;
+}
+
+function escapesRoot(path: string): boolean {
+  return path === ".." || path.startsWith("../") || path.startsWith("..\\") || isAbsolute(path);
+}
+
+/**
+ * `realpath` for a path whose leaf may not exist yet (a file `edit_file` is
+ * about to create): canonicalize the deepest existing ancestor and re-attach
+ * the missing tail, so every symlink on the existing part is still resolved.
+ */
+async function canonicalizePath(target: string): Promise<string> {
+  const missing: string[] = [];
+  let current = target;
+  for (;;) {
+    try {
+      const canonical = await realpath(current);
+      return missing.length === 0 ? canonical : resolve(canonical, ...missing);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      const parent = dirname(current);
+      if (parent === current) throw error;
+      missing.unshift(basename(current));
+      current = parent;
+    }
+  }
+}
+
+export function capOutput(text: string, maxBytes: number): string {
+  const encoded = new TextEncoder().encode(text);
+  if (encoded.byteLength <= maxBytes) return text;
+  const kept = new TextDecoder().decode(encoded.slice(0, maxBytes));
+  return `${kept}\n[caveman-code: output capped at ${maxBytes} of ${encoded.byteLength} bytes; narrow the request]`;
+}
+
+function capToolOutput(input: {
+  text: string;
+  maxBytes: number;
+  direction: "head" | "tail";
+  store?: ToolOutputStore;
+  label: string;
+  complete: boolean;
+}): string {
+  const encoded = Buffer.from(input.text, "utf8");
+  if (encoded.byteLength <= input.maxBytes && input.complete) return input.text;
+  const handle = input.store?.put(input.label, input.text, input.complete);
+  const source = input.complete ? "captured bytes" : "captured bytes; later process output unavailable";
+  const recovery = input.store === undefined
+    ? "recovery paging is not exposed; narrow original request"
+    : handle === undefined
+      ? "result too large for recovery store; narrow original request"
+    : `use read_tool_output with handle ${handle}`;
+  const marker = `\n[caveman-code: output capped from ${encoded.byteLength} ${source}; ${recovery}]`;
+  const previewBytes = Math.max(0, input.maxBytes - Buffer.byteLength(marker, "utf8"));
+  const preview = input.direction === "head"
+    ? encoded.subarray(0, previewBytes)
+    : encoded.subarray(Math.max(0, encoded.byteLength - previewBytes));
+  return `${preview.toString("utf8")}${marker}`;
+}
+
+function firstLines(text: string, limit: number): string {
+  const lines = text.split("\n");
+  if (lines.length <= limit) return text;
+  return `${lines.slice(0, limit).join("\n")}\n[caveman-code: matches limited to first ${limit}; narrow pattern or path]`;
+}
+
+type ProcessRun = {
+  output: string;
+  code: number | null;
+  timedOut: boolean;
+  spawnFailed: boolean;
+  captureComplete: boolean;
+};
+
+/**
+ * How long the run waits after the command itself exits for its pipes to close.
+ * `close` normally follows `exit` immediately; the wait only matters when a
+ * background descendant still holds the inherited stdout, and it bounds that
+ * case instead of hanging on it.
+ */
+const EXIT_FLUSH_GRACE_MS = 100;
+
+/**
+ * Baseline environment for the coding agent's host subprocesses.
+ *
+ * NOT a spread of `process.env`: a model-driven `bash`/`grep`/`rg` must not
+ * inherit the framework's own account and provider credentials
+ * (`CAVE_API_KEY`, `ANTHROPIC_API_KEY`, …) and exfiltrate them. Only a fixed
+ * shell/locale baseline passes through.
+ *
+ * This is a credential boundary, NOT a sandbox: `bash` is **uncontained by
+ * design** — it runs arbitrary host commands with the user's own privileges.
+ * The env allow-list only removes the framework-managed secrets from what those
+ * commands can read; it does not, and is not meant to, contain what they do.
+ */
+function buildCodingProcessEnv(): NodeJS.ProcessEnv {
+  const allow = [
+    "PATH", "HOME", "USER", "LOGNAME", "SHELL", "LANG", "LC_ALL", "LC_CTYPE",
+    "TZ", "TERM", "TMPDIR", "PWD", "ComSpec", "PATHEXT", "SystemRoot", "TEMP",
+    "TMP", "USERPROFILE", "APPDATA", "LOCALAPPDATA",
+  ];
+  const env: NodeJS.ProcessEnv = {};
+  for (const key of allow) {
+    const value = process.env[key];
+    if (value !== undefined) env[key] = value;
+  }
+  return env;
+}
+
+function runProcess(
+  command: string,
+  args: readonly string[],
+  cwd: string,
+  timeoutMs: number,
+  signal?: AbortSignal,
+): Promise<ProcessRun> {
+  return new Promise((accept) => {
+    // Its own process group: `cmd &` puts children there too, so the timeout can
+    // kill the whole tree rather than just the shell that spawned it.
+    const env = buildCodingProcessEnv();
+    let invocation;
+    try {
+      invocation = portableInvocation(command, args, { env });
+    } catch {
+      accept({ output: "", code: null, timedOut: false, spawnFailed: true, captureComplete: true });
+      return;
+    }
+    const child = spawn(invocation.command, [...invocation.args], {
+      cwd,
+      env,
+      stdio: ["ignore", "pipe", "pipe"],
+      detached: process.platform !== "win32",
+    });
+    const chunks: Buffer[] = [];
+    let bytes = 0;
+    let captureComplete = true;
+    let timedOut = false;
+    let settled = false;
+    let exitCode: number | null = null;
+    const collect = (chunk: Buffer) => {
+      // Hard ceiling well above every tool cap so a runaway process cannot grow
+      // this process's memory before capOutput ever sees the text.
+      const remaining = PROCESS_CAPTURE_MAX_BYTES - bytes;
+      if (remaining <= 0) {
+        captureComplete = false;
+        return;
+      }
+      if (chunk.byteLength > remaining) captureComplete = false;
+      const kept = chunk.subarray(0, remaining);
+      bytes += kept.byteLength;
+      chunks.push(kept);
+    };
+    child.stdout.on("data", collect);
+    child.stderr.on("data", collect);
+    const killTree = () => killProcessTree(child);
+    const timer = setTimeout(() => {
+      timedOut = true;
+      killTree();
+    }, timeoutMs);
+    const abort = () => killTree();
+    signal?.addEventListener("abort", abort, { once: true });
+    const settle = (run: ProcessRun) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", abort);
+      accept(run);
+    };
+    const finish = () => {
+      // Whatever still holds these pipes is not this run's business: reading is
+      // over, and a live handle would keep the whole process alive waiting on a
+      // background command the user deliberately detached.
+      child.stdout.destroy();
+      child.stderr.destroy();
+      settle({
+        output: Buffer.concat(chunks).toString("utf8"),
+        code: exitCode,
+        timedOut,
+        spawnFailed: false,
+        captureComplete,
+      });
+    };
+    child.once("error", () => settle({
+      output: "",
+      code: null,
+      timedOut,
+      spawnFailed: true,
+      captureComplete: true,
+    }));
+    child.once("close", (code) => {
+      exitCode = code;
+      finish();
+    });
+    // `close` waits for stdio EOF, which a surviving background descendant never
+    // gives. `exit` is the command's own answer, so the run settles on it with
+    // whatever output arrived rather than waiting on a process it does not own.
+    child.once("exit", (code) => {
+      exitCode = code;
+      setTimeout(finish, EXIT_FLUSH_GRACE_MS).unref();
+    });
+  });
+}
+
+function resolveCodingModelID(explicit: string | undefined): string {
+  const requested = explicit ?? process.env.CAVE_MODEL;
+  if (requested !== undefined && requested !== "") {
+    const slash = requested.indexOf("/");
+    if (slash <= 0 || slash === requested.length - 1) {
+      throw new Error("caveman-code: model must use provider/model format");
+    }
+    return requested;
+  }
+  const configured: string[] = [];
+  if (process.env.ANTHROPIC_API_KEY) configured.push("anthropic/claude-sonnet-4-6");
+  if (process.env.OPENAI_API_KEY) configured.push("openai/gpt-5.5");
+  if (process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY) {
+    configured.push("google/gemini-2.5-pro");
+  }
+  if (configured.length !== 1) {
+    throw new Error(
+      configured.length === 0
+        ? "caveman-code: no supported provider credential found; set ANTHROPIC_API_KEY, OPENAI_API_KEY, or GEMINI_API_KEY"
+        : "caveman-code: multiple provider credentials found; set CAVE_MODEL to pick one",
+    );
+  }
+  return configured[0]!;
+}
+
+/**
+ * Clone model records for one provider onto an explicit API base URL while
+ * retaining Pi's provider-owned auth and wire implementation. This is an
+ * endpoint override, not gateway routing: callers remain in direct-provider
+ * mode and every same-provider model selected later receives the same base.
+ */
+export function codingModelsAtProviderBaseURL(
+  modelID: string,
+  rawBaseURL: string,
+  source: Models = builtinModels(),
+): Models {
+  const slash = modelID.indexOf("/");
+  if (slash < 1 || slash === modelID.length - 1) {
+    throw new Error("coding_provider_base_url_model_invalid");
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(rawBaseURL);
+  } catch {
+    throw new Error("coding_provider_base_url_invalid");
+  }
+  if ((parsed.protocol !== "http:" && parsed.protocol !== "https:") ||
+      parsed.username !== "" || parsed.password !== "") {
+    throw new Error("coding_provider_base_url_invalid");
+  }
+  const provider = modelID.slice(0, slash);
+  const baseURL = parsed.toString().replace(/\/$/u, "");
+  const rewrite = (model: Model<Api> | undefined): Model<Api> | undefined =>
+    model?.provider === provider ? { ...model, baseUrl: baseURL } : model;
+  return new Proxy(source, {
+    get(target, property) {
+      if (property === "getModel") {
+        return (selectedProvider: string, id: string) =>
+          rewrite(target.getModel(selectedProvider, id));
+      }
+      if (property === "getModels") {
+        return (selectedProvider?: string) =>
+          target.getModels(selectedProvider).map((model) => rewrite(model)!);
+      }
+      if (property === "getAvailable") {
+        return async (selectedProvider?: string) =>
+          (await target.getAvailable(selectedProvider)).map((model) => rewrite(model)!);
+      }
+      const value = Reflect.get(target, property, target) as unknown;
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+}
+
+export type CodingTaskPriceBasis = "provider_invoice" | "public_catalog" | "unpriced";
+
+/** One paid attempt in a matched coding-harness evaluation. */
+export interface CodingTaskAttemptEvidence {
+  taskId: string;
+  attemptId: string;
+  provider: string;
+  model: string;
+  /** Completion must come from the task's external verifier, never agent self-report. */
+  completed: boolean;
+  completionBasis: "external_verifier" | "missing";
+  /** Spend for this attempt. Failed attempts remain in the numerator. */
+  costUsd: number | null;
+  priceBasis: CodingTaskPriceBasis;
+  /** Provider-counted total tokens for this attempt. */
+  tokens: number | null;
+  usageBasis: "provider_reported" | "unavailable";
+}
+
+export interface CodingTaskEconomics {
+  status: "complete" | "incomplete_evidence" | "no_completed_tasks";
+  attempted: number;
+  completed: number;
+  completionRate: number | null;
+  totalCostUsd: number | null;
+  costPerCompletedTaskUsd: number | null;
+  priceBasis: Exclude<CodingTaskPriceBasis, "unpriced"> | null;
+  totalTokens: number | null;
+  tokensPerCompletedTask: number | null;
+  usageBasis: "provider_reported" | null;
+  provider: string | null;
+  model: string | null;
+  issues: readonly string[];
+}
+
+/**
+ * Honest harness metric: all attempt spend divided by externally verified
+ * completions. Unknown or mixed evidence produces null, never a favorable zero.
+ */
+export function summarizeCodingTaskAttempts(
+  attempts: readonly CodingTaskAttemptEvidence[],
+): CodingTaskEconomics {
+  const issues = new Set<string>();
+  if (attempts.length === 0) issues.add("no_attempts");
+  const identities = new Set<string>();
+  const attemptIDs = new Set<string>();
+  const pricedBases = new Set<Exclude<CodingTaskPriceBasis, "unpriced">>();
+  let completionEvidenceComplete = true;
+  let costEvidenceComplete = true;
+  let usageEvidenceComplete = true;
+  let completed = 0;
+  let totalCostUsd = 0;
+  let totalTokens = 0;
+
+  for (const attempt of attempts) {
+    if (attempt.taskId.trim() === "" || attempt.attemptId.trim() === "") {
+      issues.add("attempt_identity_missing");
+    }
+    const attemptKey = `${attempt.taskId}\0${attempt.attemptId}`;
+    if (attemptIDs.has(attemptKey)) issues.add("attempt_identity_duplicate");
+    attemptIDs.add(attemptKey);
+    if (attempt.provider.trim() === "" || attempt.model.trim() === "") {
+      issues.add("runtime_identity_missing");
+    } else {
+      identities.add(`${attempt.provider}\0${attempt.model}`);
+    }
+    if (attempt.completionBasis !== "external_verifier") {
+      completionEvidenceComplete = false;
+      issues.add("completion_evidence_missing");
+    } else if (attempt.completed) {
+      completed += 1;
+    }
+    if (attempt.costUsd === null || !Number.isFinite(attempt.costUsd) || attempt.costUsd < 0 ||
+        attempt.priceBasis === "unpriced") {
+      costEvidenceComplete = false;
+      issues.add("cost_evidence_missing");
+    } else {
+      totalCostUsd += attempt.costUsd;
+      pricedBases.add(attempt.priceBasis);
+    }
+    if (attempt.tokens === null || !Number.isSafeInteger(attempt.tokens) || attempt.tokens < 0 ||
+        attempt.usageBasis !== "provider_reported") {
+      usageEvidenceComplete = false;
+      issues.add("usage_evidence_missing");
+    } else {
+      totalTokens += attempt.tokens;
+    }
+  }
+  if (identities.size > 1) issues.add("runtime_identity_drift");
+  if (!Number.isFinite(totalCostUsd)) {
+    costEvidenceComplete = false;
+    issues.add("cost_evidence_missing");
+  }
+  if (!Number.isSafeInteger(totalTokens)) {
+    usageEvidenceComplete = false;
+    issues.add("usage_evidence_missing");
+  }
+  if (pricedBases.size > 1) {
+    costEvidenceComplete = false;
+    issues.add("price_basis_mixed");
+  }
+  const denominatorKnown = completionEvidenceComplete && identities.size === 1 && attempts.length > 0 &&
+    !issues.has("attempt_identity_missing") && !issues.has("attempt_identity_duplicate") &&
+    !issues.has("runtime_identity_missing") && !issues.has("runtime_identity_drift");
+  const metricAvailable = denominatorKnown && completed > 0;
+  const roundedCost = costEvidenceComplete ? roundTaskMetric(totalCostUsd) : null;
+  const roundedTokens = usageEvidenceComplete ? totalTokens : null;
+  const status = issues.size > 0
+    ? "incomplete_evidence"
+    : completed === 0 ? "no_completed_tasks" : "complete";
+  const identity = identities.size === 1 ? [...identities][0]!.split("\0") : [];
+  return Object.freeze({
+    status,
+    attempted: attempts.length,
+    completed,
+    completionRate: denominatorKnown ? completed / attempts.length : null,
+    totalCostUsd: roundedCost,
+    costPerCompletedTaskUsd: metricAvailable && roundedCost !== null
+      ? roundTaskMetric(totalCostUsd / completed)
+      : null,
+    priceBasis: costEvidenceComplete && pricedBases.size === 1 ? [...pricedBases][0]! : null,
+    totalTokens: roundedTokens,
+    tokensPerCompletedTask: metricAvailable && roundedTokens !== null
+      ? roundTaskMetric(totalTokens / completed)
+      : null,
+    usageBasis: usageEvidenceComplete ? "provider_reported" : null,
+    provider: identity[0] ?? null,
+    model: identity[1] ?? null,
+    issues: Object.freeze([...issues].sort()),
+  });
+}
+
+function roundTaskMetric(value: number): number {
+  return Number(value.toFixed(12));
+}
+
+// ---------------------------------------------------------------------------
+// Session
+// ---------------------------------------------------------------------------
+
+export type SessionMode = "optimized" | "observe-only";
+
+export interface CodingSessionOptions {
+  conversation?: ConversationState;
+  cave?: "auto" | "off";
+  gatewayURL?: string;
+  engineBin?: string;
+  workflow?: string;
+  /** Defaults to long: coding sessions commonly outlive providers' short cache TTL. */
+  cacheRetention?: CacheRetention;
+  /** Best-effort local spend cap in USD at public catalog list prices. */
+  maxCostUsd?: number;
+  /** Hard per-turn task budget. Mutually exclusive with maxCostUsd. */
+  budget?: RunBudget;
+  /** Same-provider selector invoked at every root working model-call boundary. */
+  modelRouter?: ModelCallRouter;
+  /** Per-turn loop/no-progress/fan-out policy. Defaults to CODING_RUN_BREAKERS. */
+  breakers?: RunBreakers;
+  /** Receives every notice, including the observe-only banner. */
+  onNotice?: (line: string) => void;
+  /** Test seam: passed through to the gateway readiness probe. */
+  fetch?: typeof globalThis.fetch;
+  ensureRuntime?: boolean;
+}
+
+export interface TurnBill {
+  turn: number;
+  mode: SessionMode;
+  provider: string;
+  model: string;
+  /** Per-kind context tokens for this run, from `RunResult.contextBill`. */
+  contextBill: Record<string, number>;
+  /** Sum of `transformTrace[].beforeTokens` over applied transforms. */
+  transformedTokensBefore: number;
+  /** Sum of `transformTrace[].afterTokens` over applied transforms. */
+  transformedTokensAfter: number;
+  /** before − after. A local token estimate, never a dollar figure. */
+  tokensSavedInferred: number;
+  /** The basis of before/after/saved. Never blended across bases. */
+  tokensBasis: TransformTrace["tokensBasis"];
+  transformIDs: string[];
+  transformFailures: string[];
+  recoveryResolved: boolean;
+  usageBasis: RunResult["usageBasis"];
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  /** Provider-reported cached share of all input tokens; null without complete usage. */
+  cacheInputTokenHitRatio: number | null;
+  cacheHitTarget: number;
+  cacheHitTargetMet: boolean | null;
+  costUsd: number;
+  priceBasis: RunResult["priceBasis"];
+  latencyMs: number;
+}
+
+export interface TurnRecord {
+  input: string;
+  text: string;
+  toolCalls: string[];
+  bill: TurnBill;
+  /** True when this turn is the one that took the session to observe-only. */
+  degraded: boolean;
+  /** Canonical economic receipt returned by the same runtime result. */
+  receipt: RunReceipt;
+}
+
+export interface FailedStreamingTurn {
+  readonly failed: true;
+  readonly receipt: RunReceipt;
+}
+
+export type StreamingCodingTurnResult = TurnRecord | FailedStreamingTurn;
+
+export interface CodingSession {
+  readonly agent: CodingAgent;
+  readonly conversation: ConversationState;
+  readonly options: CodingSessionOptions;
+  readonly gatewayURL: string;
+  /**
+   * The route resolved once, at session start. Every turn is handed this
+   * instead of re-probing, so a session makes exactly one runtime-ensure
+   * attempt however many turns it runs.
+   */
+  readonly route: ResolvedCaveRoute;
+  mode: SessionMode;
+  /** Every notice emitted, banner included. The loud fallback leaves a record. */
+  readonly notices: string[];
+  readonly turns: TurnRecord[];
+  proofShown: boolean;
+}
+
+/**
+ * Start a session in the best mode this machine can actually deliver.
+ *
+ * With `cave: "auto"` this probes the local Cave runtime and starts it when it
+ * is installed but not running, so a machine with the engine present is
+ * optimized from the first turn. When the probe fails, the session degrades to
+ * observe-only **loudly**: the banner is emitted through `onNotice` and recorded
+ * on the session, and every turn afterwards reports `observe-only`.
+ *
+ * The probe happens **once**. Its answer is kept on the session and handed to
+ * every turn, so a machine with no runtime pays one failed start attempt for the
+ * whole session rather than one per turn.
+ */
+export async function startCodingSession(
+  codingAgent: CodingAgent,
+  options: CodingSessionOptions = {},
+): Promise<CodingSession> {
+  const gatewayURL = resolveGatewayURL(options.gatewayURL);
+  const route = await resolveCaveRoute(gatewayURL, {
+    ...(options.cave === undefined ? {} : { cave: options.cave }),
+    ...(options.ensureRuntime === undefined ? {} : { ensureRuntime: options.ensureRuntime }),
+    ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
+    billingProofRequired: options.maxCostUsd !== undefined || options.budget?.maxUsd !== undefined,
+  }, false);
+  const session: CodingSession = {
+    agent: codingAgent,
+    conversation: options.conversation ?? createConversation(),
+    options,
+    gatewayURL,
+    route,
+    mode: "optimized",
+    notices: [],
+    turns: [],
+    proofShown: false,
+  };
+  if (!route.useGateway) degrade(session);
+  return session;
+}
+
+/**
+ * The route a turn actually runs on. Session mode governs: once a session has
+ * degraded, degradation is sticky, so a stored route that still says "gateway"
+ * never resurrects an observe-only session.
+ */
+function turnRoute(session: CodingSession): ResolvedCaveRoute {
+  return session.mode === "optimized" ? session.route : { useGateway: false };
+}
+
+function degrade(session: CodingSession): void {
+  if (session.mode === "observe-only") return;
+  session.mode = "observe-only";
+  session.notices.push(OBSERVE_ONLY_BANNER);
+  session.options.onNotice?.(OBSERVE_ONLY_BANNER);
+}
+
+/**
+ * A run that carries a plan refuses to degrade silently — it throws
+ * `cave_gateway_required_for_locked_plan` instead. That specific failure, and
+ * only that failure, earns one retry without the plan.
+ *
+ * A session answers the routing question once and pins it, so a turn is never
+ * the thing that discovers an absent gateway; this classification is what turns
+ * that refusal into a sticky session degradation wherever it still comes from.
+ */
+export function classifyTurnFailure(error: unknown): "degrade_to_observe_only" | "fatal" {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes("cave_gateway_required_for_locked_plan")
+    ? "degrade_to_observe_only"
+    : "fatal";
+}
+
+export async function runCodingTurn(
+  session: CodingSession,
+  input: string,
+  overrides: RunOptions = {},
+): Promise<TurnRecord> {
+  // `overrides` is caller input reaching an internal run path, so it faces the
+  // same guard the public entry points apply — before the session's own plan and
+  // route are merged in, which are the very fields the guard forbids a caller
+  // from forging.
+  rejectInternalRunOptions(overrides);
+  const base: RunOptions & { caveRoute: ResolvedCaveRoute } = {
+    rootDir: session.agent.workspace,
+    conversation: session.conversation,
+    workflow: session.options.workflow ?? session.agent.definition.id,
+    gatewayURL: session.gatewayURL,
+    ...(session.options.cave === undefined ? {} : { cave: session.options.cave }),
+    ...(session.options.engineBin === undefined ? {} : { engineBin: session.options.engineBin }),
+    cacheRetention: session.options.cacheRetention ?? "long",
+    ...(session.options.maxCostUsd === undefined ? {} : { maxCostUsd: session.options.maxCostUsd }),
+    ...(session.options.budget === undefined ? {} : { budget: session.options.budget }),
+    ...(session.options.modelRouter === undefined ? {} : { modelRouter: session.options.modelRouter }),
+    breakers: session.options.breakers ?? CODING_RUN_BREAKERS,
+    ...(session.options.fetch === undefined ? {} : { fetch: session.options.fetch }),
+    ...(session.options.ensureRuntime === undefined
+      ? {}
+      : { ensureRuntime: session.options.ensureRuntime }),
+    ...overrides,
+    // Last, so the session's route wins over anything an override says about
+    // routing: the session probed once and its mode governs from then on.
+    caveRoute: turnRoute(session),
+  };
+  const startedOptimized = session.mode === "optimized";
+  let result: RunResult;
+  if (startedOptimized) {
+    try {
+      result = await runAgentInternal(session.agent.definition, input, {
+        ...base,
+        candidatePlan: session.agent.plan,
+      });
+    } catch (error) {
+      if (classifyTurnFailure(error) === "fatal") throw error;
+      degrade(session);
+      result = await runAgentInternal(session.agent.definition, input, {
+        ...base,
+        caveRoute: turnRoute(session),
+      });
+    }
+  } else {
+    result = await runAgentInternal(session.agent.definition, input, base);
+  }
+  // The run itself is the authority on whether the gateway optimized this
+  // traffic: a reachable gateway that does not proxy this model's provider
+  // still comes back observe-only, and that degrades the session exactly like a
+  // missing runtime does.
+  if (result.mode === "observe-only") degrade(session);
+  return recordCodingTurn(session, input, result, startedOptimized);
+}
+
+function recordCodingTurn(
+  session: CodingSession,
+  input: string,
+  result: RunResult,
+  startedOptimized: boolean,
+): TurnRecord {
+  const record: TurnRecord = {
+    input,
+    text: result.text,
+    toolCalls: result.toolCalls,
+    bill: turnBill(session.turns.length + 1, result),
+    degraded: startedOptimized && session.mode === "observe-only",
+    receipt: result.receipt,
+  };
+  session.turns.push(record);
+  return record;
+}
+
+type CodingStreamSignal =
+  | { type: "runtime"; attempt: number; event: CavemanRunEvent }
+  | { type: "runtime.done"; attempt: number }
+  | { type: "runtime.error"; attempt: number; error: unknown }
+  | { type: "queue"; state: AgentRunQueueState };
+
+/** One sequence owner per session, retained without changing public session shape. */
+const pebbleEncoders = new WeakMap<CodingSession, PebbleEventEncoder>();
+
+function pebbleEncoder(session: CodingSession): PebbleEventEncoder {
+  const existing = pebbleEncoders.get(session);
+  if (existing !== undefined) return existing;
+  const created = new PebbleEventEncoder(session.conversation.sessionId);
+  pebbleEncoders.set(session, created);
+  return created;
+}
+
+export interface StreamingCodingTurnOptions {
+  /** Caller overrides face the same internal-option rejection as runCodingTurn. */
+  overrides?: RunOptions;
+  /** Shared kernel queue/control handle. A fresh handle is created when omitted. */
+  controller?: AgentRunController;
+}
+
+/**
+ * Stream one coding turn as frozen Pebble v1 events.
+ *
+ * Pi deltas and tool rows pass through live. Provider usage is emitted once per
+ * assistant message. A gateway-plan refusal is retried observe-only without
+ * painting a transient error; terminal errors appear exactly once after retry.
+ */
+export async function* streamCodingTurn(
+  session: CodingSession,
+  input: string,
+  options: StreamingCodingTurnOptions = {},
+): AsyncGenerator<TurnEvent, StreamingCodingTurnResult | undefined> {
+  const overrides = options.overrides ?? {};
+  rejectInternalRunOptions(overrides);
+  const controller = options.controller ?? new AgentRunController();
+  const encoder = pebbleEncoder(session);
+  const signals: CodingStreamSignal[] = [];
+  let wake: (() => void) | undefined;
+  let activeIterator: AsyncIterator<CavemanRunEvent> | undefined;
+  const push = (signal: CodingStreamSignal): void => {
+    signals.push(signal);
+    wake?.();
+    wake = undefined;
+  };
+  const unsubscribe = controller.subscribe((state) => push({ type: "queue", state }));
+  let lastQueue = "";
+  const startedOptimized = session.mode === "optimized";
+  let attempt = 0;
+  const durable = overrides.durable !== undefined;
+
+  yield encoder.event({ kind: "turn.start" });
+
+  try {
+    for (;;) {
+      const base: RunOptions & { caveRoute: ResolvedCaveRoute } = {
+        rootDir: session.agent.workspace,
+        // Durable execution owns and restores its own conversation journal.
+        // Attaching the live session conversation would make crash resume
+        // ambiguous, so one task uses exactly one state owner.
+        ...(durable ? {} : { conversation: session.conversation }),
+        workflow: session.options.workflow ?? session.agent.definition.id,
+        gatewayURL: session.gatewayURL,
+        ...(session.options.cave === undefined ? {} : { cave: session.options.cave }),
+        ...(session.options.engineBin === undefined ? {} : { engineBin: session.options.engineBin }),
+        cacheRetention: session.options.cacheRetention ?? "long",
+        ...(session.options.maxCostUsd === undefined ? {} : { maxCostUsd: session.options.maxCostUsd }),
+        ...(session.options.budget === undefined ? {} : { budget: session.options.budget }),
+        ...(session.options.modelRouter === undefined ? {} : { modelRouter: session.options.modelRouter }),
+        breakers: session.options.breakers ?? CODING_RUN_BREAKERS,
+        ...(session.options.fetch === undefined ? {} : { fetch: session.options.fetch }),
+        ...(session.options.ensureRuntime === undefined
+          ? {}
+          : { ensureRuntime: session.options.ensureRuntime }),
+        ...overrides,
+        caveRoute: turnRoute(session),
+        controller,
+      };
+      const runtime = streamAgentInternalOptions(session.agent.definition, input, {
+        ...base,
+        ...(session.mode === "optimized" && attempt === 0 && !durable
+          ? { candidatePlan: session.agent.plan }
+          : {}),
+      });
+      const iterator = runtime[Symbol.asyncIterator]();
+      activeIterator = iterator;
+      const currentAttempt = attempt;
+      void (async () => {
+        try {
+          for (;;) {
+            const next = await iterator.next();
+            if (next.done) break;
+            push({ type: "runtime", attempt: currentAttempt, event: next.value });
+          }
+          push({ type: "runtime.done", attempt: currentAttempt });
+        } catch (error) {
+          push({ type: "runtime.error", attempt: currentAttempt, error });
+        }
+      })();
+
+      let retry = false;
+      for (;;) {
+        if (signals.length === 0) {
+          await new Promise<void>((resolve) => {
+            wake = resolve;
+          });
+        }
+        const signal = signals.shift()!;
+        if (signal.type === "queue") {
+          const key = `${signal.state.queued}:${signal.state.heldAfterInterrupt}`;
+          if (key !== lastQueue) {
+            lastQueue = key;
+            yield encoder.event({
+              kind: "queue.changed",
+              queued: signal.state.queued,
+              heldAfterInterrupt: signal.state.heldAfterInterrupt,
+            });
+          }
+          continue;
+        }
+        if (signal.attempt !== currentAttempt) continue;
+        if (signal.type === "runtime.error") {
+          const message = signal.error instanceof Error
+            ? signal.error.message
+            : String(signal.error);
+          yield encoder.event({ kind: "error", message, retryable: false });
+          yield encoder.event({ kind: "turn.end", stopReason: "error" });
+          return undefined;
+        }
+        if (signal.type === "runtime.done") {
+          // A well-formed runtime always yields run_end or run_error first.
+          yield encoder.event({
+            kind: "error",
+            message: "cave_pebble_runtime_ended_without_terminal_event",
+            retryable: false,
+          });
+          yield encoder.event({ kind: "turn.end", stopReason: "error" });
+          return undefined;
+        }
+        const event = signal.event;
+        if (event.type === "pi") {
+          for (const translated of encoder.pi(event.event)) yield translated;
+          continue;
+        }
+        if (event.type === "model_route") {
+          yield encoder.event({
+            kind: "route.decided",
+            model: event.decision.model,
+            reason: event.decision.reason,
+            signals: [...event.decision.signals],
+          });
+          continue;
+        }
+        if (event.type === "run_error") {
+          if (attempt === 0 && startedOptimized &&
+              classifyTurnFailure(event.message) === "degrade_to_observe_only") {
+            degrade(session);
+            retry = true;
+            attempt++;
+            break;
+          }
+          for (const translated of encoder.terminal(event)) yield translated;
+          return { failed: true, receipt: event.receipt };
+        }
+        if (event.type !== "run_end") continue;
+        if (event.result.mode === "observe-only") degrade(session);
+        for (const translated of encoder.terminal(event)) yield translated;
+        return recordCodingTurn(session, input, event.result, startedOptimized);
+      }
+      if (!retry) return undefined;
+    }
+  } finally {
+    unsubscribe();
+    await activeIterator?.return?.();
+  }
+}
+
+function turnBill(turn: number, result: RunResult): TurnBill {
+  const applied = result.transformTrace.filter((item) => item.outcome === "applied");
+  // A token delta is only meaningful within one basis; refuse to blend
+  // byte-derived and engine-counted figures into a single reduction.
+  const bases = new Set(applied.map((item) => item.tokensBasis));
+  if (bases.size > 1) throw new Error("cave_transform_trace_basis_mixed");
+  const tokensBasis: TransformTrace["tokensBasis"] = applied[0]?.tokensBasis ?? "byte_derived";
+  const before = applied.reduce((sum, item) => sum + item.beforeTokens, 0);
+  const after = applied.reduce((sum, item) => sum + item.afterTokens, 0);
+  const cache = analyzeProviderCachePerformance([{
+    usageBasis: result.usageBasis,
+    inputTokens: result.inputTokens,
+    cacheReadTokens: result.cacheReadTokens,
+    cacheWriteTokens: result.cacheWriteTokens,
+  }]);
+  return {
+    turn,
+    mode: result.mode,
+    provider: result.provider,
+    model: result.model,
+    contextBill: result.contextBill,
+    transformedTokensBefore: before,
+    transformedTokensAfter: after,
+    // The reduction is the delta of what was ACTUALLY SENT, so a barely-
+    // compressible turn whose wrapper cost more than it saved reports zero
+    // rather than a phantom positive; the raw before/after stay exposed.
+    tokensSavedInferred: Math.max(0, before - after),
+    tokensBasis,
+    transformIDs: result.transformIDs,
+    transformFailures: result.transformFailures,
+    recoveryResolved: result.recoveryResolved,
+    usageBasis: result.usageBasis,
+    inputTokens: result.inputTokens,
+    outputTokens: result.outputTokens,
+    cacheReadTokens: result.cacheReadTokens,
+    cacheWriteTokens: result.cacheWriteTokens,
+    cacheInputTokenHitRatio: cache.cacheInputTokenHitRatio,
+    cacheHitTarget: cache.target,
+    cacheHitTargetMet: cache.targetMet,
+    costUsd: result.costUsd,
+    priceBasis: result.priceBasis,
+    latencyMs: result.latencyMs,
+  };
+}
+
+export interface SessionBill {
+  turns: number;
+  mode: SessionMode;
+  transformedTokensBefore: number;
+  transformedTokensAfter: number;
+  tokensSavedInferred: number;
+  /** The basis of the summed reduction. Never blended across bases. */
+  tokensBasis: TransformTrace["tokensBasis"];
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  /** Provider-reported cached share across all session input, including cold seeds. */
+  cacheInputTokenHitRatio: number | null;
+  cacheHitTarget: number;
+  cacheHitTargetMet: boolean | null;
+  costUsd: number;
+  priceBasis: RunResult["priceBasis"];
+  usageBasis: RunResult["usageBasis"];
+  transformIDs: string[];
+  transformFailures: string[];
+}
+
+export function sessionBill(session: CodingSession): SessionBill {
+  const bills = session.turns.map((item) => item.bill);
+  const sum = (pick: (bill: TurnBill) => number) =>
+    bills.reduce((total, bill) => total + pick(bill), 0);
+  const transformIDs = [...new Set(bills.flatMap((bill) => bill.transformIDs))].sort();
+  const failures = [...new Set(bills.flatMap((bill) => bill.transformFailures))].sort();
+  // Refuse to sum a reduction across mixed token bases.
+  const bases = new Set(bills.map((bill) => bill.tokensBasis));
+  if (bases.size > 1) throw new Error("cave_transform_trace_basis_mixed");
+  const tokensBasis: TransformTrace["tokensBasis"] = bills[0]?.tokensBasis ?? "byte_derived";
+  const cache = analyzeProviderCachePerformance(bills.map((bill) => ({
+    usageBasis: bill.usageBasis,
+    inputTokens: bill.inputTokens,
+    cacheReadTokens: bill.cacheReadTokens,
+    cacheWriteTokens: bill.cacheWriteTokens,
+  })), CODING_CACHE_INPUT_TOKEN_HIT_TARGET);
+  return {
+    turns: bills.length,
+    mode: session.mode,
+    transformedTokensBefore: sum((bill) => bill.transformedTokensBefore),
+    transformedTokensAfter: sum((bill) => bill.transformedTokensAfter),
+    tokensSavedInferred: sum((bill) => bill.tokensSavedInferred),
+    tokensBasis,
+    inputTokens: sum((bill) => bill.inputTokens),
+    outputTokens: sum((bill) => bill.outputTokens),
+    cacheReadTokens: sum((bill) => bill.cacheReadTokens),
+    cacheWriteTokens: sum((bill) => bill.cacheWriteTokens),
+    cacheInputTokenHitRatio: cache.cacheInputTokenHitRatio,
+    cacheHitTarget: cache.target,
+    cacheHitTargetMet: cache.targetMet,
+    costUsd: sum((bill) => bill.costUsd),
+    // A session with no turns has no basis to report. `every` on an empty list
+    // is true, which would have labelled a zero nobody measured as a catalog
+    // price from provider-reported usage; the honest zero says the basis is
+    // absent instead.
+    priceBasis: bills.length > 0 && bills.every((bill) => bill.priceBasis === "public_catalog")
+      ? "public_catalog"
+      : "unpriced",
+    usageBasis: bills.length > 0 && bills.every((bill) => bill.usageBasis === "provider_reported")
+      ? "provider_reported"
+      : "unavailable",
+    transformIDs,
+    transformFailures: failures,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Printing. Context reductions are local token estimates; spend is shown
+// separately at public catalog prices.
+// ---------------------------------------------------------------------------
+
+function count(value: number): string {
+  return value.toLocaleString("en-US");
+}
+
+function cacheHitLine(
+  ratio: number | null,
+  target: number,
+  targetMet: boolean | null,
+): string {
+  if (ratio === null || targetMet === null) {
+    return "  cache input-token hit ratio: unavailable — complete provider usage required";
+  }
+  return `  cache input-token hit ratio: ${(ratio * 100).toFixed(2)}% ·` +
+    ` target ${(target * 100).toFixed(2)}% ${targetMet ? "met" : "missed"}` +
+    " — provider-reported; cold seeds included";
+}
+
+export function formatTurnBill(bill: TurnBill, sessionSaved: number): string[] {
+  const lines = [
+    `turn ${bill.turn} · ${bill.mode} · ${bill.provider}/${bill.model} · ${count(bill.latencyMs)} ms`,
+  ];
+  if (bill.mode === "observe-only") {
+    lines.push("  context transforms: off (observe-only) — provider usage and local context estimates remain available");
+  } else if (bill.transformIDs.length === 0) {
+    lines.push("  context transforms: none applied this turn (nothing was smaller compressed)");
+  } else {
+    lines.push(`  context transforms: ${bill.transformIDs.join(", ")}`);
+    lines.push(
+      `  transformed context: ${count(bill.transformedTokensBefore)} tokens before` +
+      ` → ${count(bill.transformedTokensAfter)} after`,
+    );
+  }
+  lines.push(
+    `  tokens saved: ${count(bill.tokensSavedInferred)} this turn ·` +
+    ` ${count(sessionSaved)} this session — local estimate, token counts only`,
+  );
+  lines.push(
+    `  provider usage (${bill.usageBasis}): in ${count(bill.inputTokens)} ·` +
+    ` out ${count(bill.outputTokens)} · cache read ${count(bill.cacheReadTokens)} ·` +
+    ` cache write ${count(bill.cacheWriteTokens)}`,
+  );
+  lines.push(cacheHitLine(
+    bill.cacheInputTokenHitRatio,
+    bill.cacheHitTarget,
+    bill.cacheHitTargetMet,
+  ));
+  lines.push(
+    `  spend: ${bill.costUsd.toFixed(6)} USD measured at public catalog list prices` +
+    ` (${bill.priceBasis})`,
+  );
+  if (bill.transformFailures.length > 0) {
+    lines.push(`  transform fell back to original: ${bill.transformFailures.join(", ")}`);
+  }
+  return lines;
+}
+
+export function formatSessionBill(bill: SessionBill): string[] {
+  // Nothing ran, so nothing is reported: printing basis-labelled zeros would
+  // claim a measurement — a catalog price, provider-reported usage — for calls
+  // that never happened.
+  if (bill.turns === 0) {
+    return [
+      `session · 0 turns · ${bill.mode}`,
+      "  no provider calls this session — nothing measured, nothing claimed",
+    ];
+  }
+  return [
+    `session · ${bill.turns} turn${bill.turns === 1 ? "" : "s"} · ${bill.mode}`,
+    bill.transformIDs.length === 0
+      ? "  context transforms: none applied"
+      : `  context transforms: ${bill.transformIDs.join(", ")}`,
+    `  transformed context: ${count(bill.transformedTokensBefore)} tokens before` +
+    ` → ${count(bill.transformedTokensAfter)} after`,
+    `  tokens saved: ${count(bill.tokensSavedInferred)} — local estimate,` +
+    " token counts only; no provider savings claim",
+    `  provider usage (${bill.usageBasis}): in ${count(bill.inputTokens)} ·` +
+    ` out ${count(bill.outputTokens)} · cache read ${count(bill.cacheReadTokens)} ·` +
+    ` cache write ${count(bill.cacheWriteTokens)}`,
+    cacheHitLine(
+      bill.cacheInputTokenHitRatio,
+      bill.cacheHitTarget,
+      bill.cacheHitTargetMet,
+    ),
+    `  spend: ${bill.costUsd.toFixed(6)} USD measured at public catalog list prices` +
+    ` (${bill.priceBasis})`,
+  ];
+}
+
+// ---------------------------------------------------------------------------
+// Recovery proof
+// ---------------------------------------------------------------------------
+
+export interface CodingRecoveryProof extends SegmentRecoveryProof {
+  segment: string;
+}
+
+/**
+ * Take the largest raw tool output this session produced, push it through the
+ * same engine compress/retrieve pair the plan and `cave_retrieve` use, and
+ * compare bytes. This is the reversibility proof, not a savings claim.
+ */
+export async function proveRecovery(session: CodingSession): Promise<CodingRecoveryProof> {
+  const sample = session.agent.samples[0];
+  if (!sample) throw new Error("caveman-code: no tool output recorded yet to prove recovery on");
+  const proof = await proveSegmentRecovery({
+    body: new TextEncoder().encode(sample.text),
+    transformID: TOOL_RESULT_TRANSFORM,
+    ...(session.options.engineBin === undefined ? {} : { engineBin: session.options.engineBin }),
+  });
+  return { ...proof, segment: sample.label };
+}
+
+export function formatRecoveryProof(proof: CodingRecoveryProof): string {
+  if (proof.outcome === "recovered") {
+    return `recovery proof: ${proof.segment} round-trip OK (sha256 match ${proof.originalSHA256.slice(0, 12)})`;
+  }
+  if (proof.outcome === "not_smaller") {
+    return `recovery proof: ${proof.segment} not compressed — the engine kept the original bytes, nothing to recover`;
+  }
+  return `recovery proof: ${proof.segment} FAILED (sha256 mismatch) — the plan falls back to the original body`;
+}
+
+// ---------------------------------------------------------------------------
+// Interactive loop
+// ---------------------------------------------------------------------------
+
+const HELP = [
+  "/tokens          session token bill so far",
+  "/prove-recovery  compress one recorded tool output and recover it byte-exactly",
+  "/mode            show whether this session is optimized or observe-only",
+  "/help            this list",
+  "/exit            end the session and print the final bill",
+].join("\n");
+
+export interface CodingSessionRunOptions extends CodingSessionOptions {
+  agent?: CodingAgent;
+  agentOptions?: CodingAgentOptions;
+  input?: Readable;
+  output?: Writable;
+  notice?: Writable;
+  /** Test and demo seam: per-turn run option overrides, e.g. a faux model. */
+  runOverrides?: RunOptions;
+}
+
+/** Interactive coding session over stdin/stdout. Returns the final bill. */
+export async function runCodingSession(
+  options: CodingSessionRunOptions = {},
+): Promise<SessionBill> {
+  // Fail before a session (and its runtime probe) is started rather than on the
+  // first turn: forged build identity, plan, or routing is never a live option.
+  if (options.runOverrides !== undefined) rejectInternalRunOptions(options.runOverrides);
+  const out = options.output ?? process.stdout;
+  const notice = options.notice ?? process.stderr;
+  const write = (value: string) => out.write(`${value}\n`);
+  const codingAgent = options.agent ?? createCodingAgent(options.agentOptions ?? {});
+  const sessionOptions: CodingSessionOptions = {
+    ...(options.conversation === undefined ? {} : { conversation: options.conversation }),
+    ...(options.cave === undefined ? {} : { cave: options.cave }),
+    ...(options.gatewayURL === undefined ? {} : { gatewayURL: options.gatewayURL }),
+    ...(options.engineBin === undefined ? {} : { engineBin: options.engineBin }),
+    ...(options.cacheRetention === undefined ? {} : { cacheRetention: options.cacheRetention }),
+    ...(options.workflow === undefined ? {} : { workflow: options.workflow }),
+    ...(options.maxCostUsd === undefined ? {} : { maxCostUsd: options.maxCostUsd }),
+    ...(options.budget === undefined ? {} : { budget: options.budget }),
+    ...(options.modelRouter === undefined ? {} : { modelRouter: options.modelRouter }),
+    ...(options.breakers === undefined ? {} : { breakers: options.breakers }),
+    ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
+    ...(options.ensureRuntime === undefined ? {} : { ensureRuntime: options.ensureRuntime }),
+    onNotice: (line) => {
+      notice.write(`${line}\n`);
+      options.onNotice?.(line);
+    },
+  };
+  const session = await startCodingSession(codingAgent, sessionOptions);
+  write(`caveman-code · ${codingAgent.modelID} · workspace ${codingAgent.workspace}`);
+  write(`mode: ${session.mode}${session.mode === "optimized"
+    ? " — reversible context transforms on (history + tool results)"
+    : ""}`);
+  write(HELP);
+  const rl = createInterface({
+    input: options.input ?? process.stdin,
+    output: out,
+  });
+  // The async iterator applies backpressure per line, so a piped script and an
+  // interactive terminal behave the same and end-of-input ends the session.
+  const prompt = () => out.write(`\nagent [${session.mode}] > `);
+  try {
+    prompt();
+    for await (const raw of rl) {
+      const line = raw.trim();
+      if (line === "/exit" || line === "/quit") break;
+      if (line === "") {
+        prompt();
+        continue;
+      }
+      if (line === "/help") {
+        write(HELP);
+      } else if (line === "/mode") {
+        write(`mode: ${session.mode}`);
+      } else if (line === "/tokens") {
+        for (const value of formatSessionBill(sessionBill(session))) write(value);
+      } else if (line === "/prove-recovery") {
+        await showProof(session, write);
+      } else {
+        try {
+          const turn = await runCodingTurn(session, line, options.runOverrides ?? {});
+          write("");
+          write(turn.text);
+          write("");
+          const saved = sessionBill(session).tokensSavedInferred;
+          for (const value of formatTurnBill(turn.bill, saved)) write(value);
+          if (!session.proofShown && turn.bill.transformIDs.length > 0) {
+            await showProof(session, write);
+          }
+        } catch (error) {
+          write(`error: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+      prompt();
+    }
+  } finally {
+    rl.close();
+  }
+  const final = sessionBill(session);
+  write("");
+  for (const value of formatSessionBill(final)) write(value);
+  return final;
+}
+
+async function showProof(
+  session: CodingSession,
+  write: (value: string) => void,
+): Promise<void> {
+  try {
+    write(formatRecoveryProof(await proveRecovery(session)));
+    session.proofShown = true;
+  } catch (error) {
+    write(`recovery proof unavailable: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}

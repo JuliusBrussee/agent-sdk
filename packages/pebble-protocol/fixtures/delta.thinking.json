@@ -1,0 +1,1 @@
+{"v":1,"seq":2,"ts":"2026-08-25T09:30:02.118Z","sessionId":"sess_01J9Z8Q4VHN7X2","kind":"delta.thinking","text":"The failing test points at cache-key drift; check the epoch boundary before touching the planner."}

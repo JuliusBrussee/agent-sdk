@@ -1,0 +1,19 @@
+✗ build failed: this change shrinks your cacheable prefix
+
+  locked plan    11,940 tok frozen prefix
+  this build      8,610 tok frozen prefix (−3,330)
+  token figures are local estimates — the same basis the build plans with
+
+  Raw token count went down, but 3,330 tokens moved out of the frozen
+  prefix into the live zone. The provider re-reads live-zone tokens at
+  cold input price on every turn, so the warm-read cost of this agent
+  went up even though it "got smaller".
+
+  Fix: keep static prose in instructions.md and skills/ — only
+  run-varying values belong in the live zone. If the moved content is
+  genuinely static, mark its stability "build". If the shrink is
+  intentional — you deleted prose on purpose — rerun with
+  `--accept-prefix-shrink` to reset the baseline.
+
+  A plan that regresses warm-read cost never locks, even when it lowers
+  raw token count.

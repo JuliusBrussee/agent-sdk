@@ -1,0 +1,17 @@
+✗ build failed: your frozen prefix changes between runs
+
+  agent.ts:8   context "today" (stability: "build")
+               () => `Today is ${new Date().toDateString()}`
+
+  This segment is declared build-stable, so it sits in the cacheable
+  frozen prefix — but its bytes came out different on two build passes.
+  A prefix that changes between runs makes the provider re-read your
+  full instructions at cold input price on every turn instead of a
+  warm cache read.
+
+  Fix: run-varying values belong in the live zone —
+    declare the segment `stability: "turn"`, or serve it from a tool
+    (tools/get_date.ts).
+
+  A plan that breaks the provider cache never locks, even when it lowers
+  raw token count.

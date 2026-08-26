@@ -1,0 +1,36 @@
+{
+  "name": "caveman-agent-sdk-repository",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Open-source monorepo for Caveman Agent SDK, adapters, protocol, coding agent, and initializer.",
+  "license": "Apache-2.0",
+  "packageManager": "npm@11.16.0",
+  "workspaces": [
+    "packages/agent",
+    "packages/adapter-kit",
+    "packages/adapters/*",
+    "packages/coding-agent",
+    "packages/create-caveman-agent",
+    "packages/pebble-protocol"
+  ],
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "scripts": {
+    "build": "npm run build:protocol && npm run build:agent && npm run build:create-agent",
+    "build:agent": "npm --prefix packages/agent run build",
+    "build:create-agent": "npm --prefix packages/create-caveman-agent run build",
+    "build:protocol": "npm --prefix packages/pebble-protocol run build",
+    "check:catalog": "node scripts/generate-agent-catalog.mjs --check",
+    "license:check": "node scripts/license-lint.mjs",
+    "test": "npm run license:check && npm run check:catalog && npm run test:protocol && npm run test:adapter-kit && npm run test:coding-agent && npm run test:package-types && npm run test:agent && npm run test:create-agent && npm run test:example",
+    "test:protocol": "npm --prefix packages/pebble-protocol test",
+    "test:adapter-kit": "node --test packages/adapter-kit/tests/*.test.mjs",
+    "test:coding-agent": "node --test packages/coding-agent/tests/*.test.mjs",
+    "test:package-types": "node scripts/typecheck-packages.mjs",
+    "test:agent": "npm --prefix packages/agent test",
+    "test:create-agent": "npm --prefix packages/create-caveman-agent test",
+    "test:example": "npm --prefix examples/coding-agent test",
+    "pack:check": "node scripts/pack-check.mjs"
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "name": "@caveman-ai/coding-agent",
+  "version": "0.1.0",
+  "description": "Interactive Caveman coding agent and caveman-code CLI.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JuliusBrussee/agent-sdk.git",
+    "directory": "packages/coding-agent"
+  },
+  "homepage": "https://caveman.so/products/caveman-agent",
+  "bugs": {
+    "url": "https://github.com/JuliusBrussee/agent-sdk/issues"
+  },
+  "type": "module",
+  "main": "src/index.js",
+  "types": "src/index.d.ts",
+  "bin": {
+    "caveman-code": "./src/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "import": "./src/index.js"
+    },
+    "./cli": {
+      "types": "./src/cli.d.ts",
+      "import": "./src/cli.js"
+    }
+  },
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "peerDependencies": {
+    "@caveman-ai/agent": "0.2.0"
+  },
+  "scripts": {
+    "test": "node --test tests/*.test.mjs"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

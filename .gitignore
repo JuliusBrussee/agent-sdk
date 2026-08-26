@@ -1,0 +1,11 @@
+node_modules/
+dist/
+*.tgz
+.DS_Store
+.caveman/
+.env
+.env.*
+!.env.example
+coverage/
+.cache/
+*.log

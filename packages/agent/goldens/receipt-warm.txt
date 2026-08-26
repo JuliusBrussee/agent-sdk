@@ -1,0 +1,11 @@
+run complete · 4 turns · 8.2s
+
+  model          claude-sonnet-5 (3 calls) · claude-haiku-4-5 (1 call)
+  mode           observe-only — engine adds compression + recovery
+  input          14,102 tok · 12,800 read warm (provider-reported)
+  output         412 tok
+  cost           $0.0085   list-price subtotal, not an invoice
+  cold estimate  $0.0316   inferred — same run with no warm prefix
+  budget         $0.0085 spent of $0.05 · 83% remains
+
+  full receipt   .caveman/runs/2026-08-14T15-02-11/receipt.json

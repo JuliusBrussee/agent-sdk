@@ -1,0 +1,1 @@
+{"v":1,"seq":12,"ts":"2026-08-25T09:30:30.220Z","sessionId":"sess_01J9Z8Q4VHN7X2","kind":"usage","usage":{"in":1234,"out":567,"cacheRead":8901,"cacheWrite":234,"costUsd":0.0042,"model":"claude-opus-4-6"}}

@@ -1,0 +1,16 @@
+✗ build failed: host-sandbox agents cannot lock a plan
+
+  sandbox/sandbox.ts:3   mode: "host"
+
+  This agent runs tools directly on the host, so the build cannot prove
+  what its tools touch — and a locked plan is a promise about behavior
+  the build has verified. Locking an unverifiable agent would make the
+  lock meaningless for every agent.
+
+  Fix: move the tools this agent actually needs into the default
+  sandbox (read tools usually port as-is), or keep host mode and run
+  observe-only — everything works, nothing is locked, and the receipt
+  says so.
+
+  Host mode is a capability, not a punishment; it is just outside what
+  a lock can promise.

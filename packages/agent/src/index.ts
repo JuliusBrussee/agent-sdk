@@ -1,0 +1,210 @@
+import type { ToolDefinition } from "./primitives.js";
+import { schema, tool } from "./primitives.js";
+import type { AgentDefinition } from "./definition.js";
+import {
+  runAgent,
+  streamAgent,
+  type RunOptions,
+} from "./runtime.js";
+import { agentDirRunDefaults } from "./dir-loader.js";
+import { writeRunReceipt } from "./receipt-print.js";
+
+export * from "./context-ir.js";
+export * from "./trajectory-ir.js";
+export * from "./profile.js";
+export * from "./compiler.js";
+export * from "./primitives.js";
+export { agent, type AgentDefinition } from "./definition.js";
+export {
+  AGENT_RUN_RECEIPT_SCHEMA,
+  OUTPUT_CLAMP_FLOOR_TOKENS,
+  createBudgetController,
+} from "./budget.js";
+export type { BreakerEvent, RunBreakers } from "./breakers.js";
+export { SUMMARY_SCHEMA_VERSION } from "./compaction.js";
+export type { CompactionOptions, ContextSummary } from "./compaction.js";
+export type {
+  BudgetController,
+  BudgetDenomination,
+  BudgetExhaustionContext,
+  BudgetExhaustionHandler,
+  BudgetTranche,
+  ReceiptCall,
+  ReceiptCompaction,
+  ReceiptResume,
+  ReceiptTool,
+  RunBudget,
+  RunReceipt,
+  RunStopReason,
+} from "./budget.js";
+export { DiskDurableStore } from "./durable.js";
+export type { DurableRunOptions, DurableStore } from "./durable.js";
+export type {
+  CavemanRunEvent,
+  ConversationState,
+  ModelCallRouteDecision,
+  ModelCallRouteInput,
+  ModelCallRouter,
+  RunOptions,
+  RunResult,
+} from "./runtime.js";
+export {
+  AgentRunController,
+  CavemanRunError,
+  createConversation,
+  verifySandboxConformance,
+} from "./runtime.js";
+export type { MemoryStoreConfig } from "./memory-store.js";
+export {
+  AGENT_DIR_ENTRY,
+  composeAgentDir,
+  loadAgentDir,
+} from "./dir-loader.js";
+// The cache planner (src/cache-planner/) is deliberately NOT re-exported:
+// internal imports only until the package's public planner surface is decided
+// (tests reach it via dist/cache-planner/index.js directly).
+export type {
+  AgentDirConfig,
+  AgentDirContextValue,
+  AgentDirModules,
+  AgentDirRunDefaults,
+} from "./dir-loader.js";
+export { routine, routineOutcomes } from "./routine.js";
+export type { RoutineOutcome, RoutineOutcomeCount } from "./routine.js";
+export { renderReceipt } from "./receipt-print.js";
+export type { ReceiptLike, ReceiptPrintCall } from "./receipt-print.js";
+
+/**
+ * A directory-loaded definition carries run defaults (its config's budget and
+ * breakers, the generated sandbox entry, and receipt printing) — explicit
+ * RunOptions override them, and a caller-supplied `maxCostUsd` keeps the
+ * default budget out because the two contracts are mutually exclusive.
+ * Defaults are assigned imperatively so a caller's explicit `undefined`
+ * cannot clobber one through spread ordering.
+ */
+function withAgentDirDefaults(
+  definition: AgentDefinition,
+  options: RunOptions | undefined,
+  defaultPrint = true,
+): RunOptions | undefined {
+  const defaults = agentDirRunDefaults(definition);
+  if (defaults === undefined) return options;
+  const merged: RunOptions = { ...options };
+  if (merged.budget === undefined && merged.maxCostUsd === undefined &&
+      defaults.budget !== undefined) {
+    merged.budget = defaults.budget;
+  }
+  if (merged.breakers === undefined && defaults.breakers !== undefined) {
+    merged.breakers = defaults.breakers;
+  }
+  if (merged.rootDir === undefined && defaults.rootDir !== undefined) {
+    merged.rootDir = defaults.rootDir;
+  }
+  if (merged.entryPath === undefined && defaults.entryPath !== undefined) {
+    merged.entryPath = defaults.entryPath;
+  }
+  if (defaultPrint && merged.printReceipt === undefined) {
+    merged.printReceipt = true;
+  }
+  return merged;
+}
+
+export async function run(
+  definition: AgentDefinition,
+  input: string,
+  options?: RunOptions,
+) {
+  const merged = withAgentDirDefaults(definition, options);
+  const result = await runAgent(definition, input, merged);
+  // F1: the receipt print is the default end of a scaffolded (directory-
+  // loaded) run — `printReceipt` defaults ON there and OFF everywhere else,
+  // because stdout may be a protocol channel a receipt would corrupt.
+  if (merged?.printReceipt === true) {
+    try {
+      const { rendered } = await writeRunReceipt(
+        merged.rootDir ?? process.cwd(),
+        result.receipt,
+        { mode: result.mode, durationMs: result.latencyMs },
+      );
+      process.stdout.write(rendered);
+    } catch (error) {
+      process.stderr.write(`caveman agent: receipt write failed: ${
+        error instanceof Error ? error.message : String(error)
+      }\n`);
+    }
+  }
+  return result;
+}
+
+export function stream(
+  definition: AgentDefinition,
+  input: string,
+  options?: RunOptions,
+) {
+  // Streaming has no receipt print site yet, so the flag stays unset here
+  // rather than riding along inert.
+  return streamAgent(definition, input, withAgentDirDefaults(definition, options, false));
+}
+
+export function subagent(options: {
+  name: string;
+  description: string;
+  agent: AgentDefinition;
+  timeoutMs?: number;
+  maxInputChars?: number;
+  maxCalls?: number;
+  /**
+   * This child's wallet in USD. Under a USD-metered run the wallet is carved
+   * out of the parent's **remaining** budget when the child is spawned, and its
+   * unspent remainder returns to the parent when the child finishes.
+   */
+  maxCostUsd?: number;
+  /**
+   * This child's wallet in tokens — the denomination sibling of `maxCostUsd`,
+   * used by a token-metered run. A token-metered run cannot fund a subagent
+   * that declares no token wallet.
+   */
+  maxTokens?: number;
+  maxContextTokens?: number;
+}): ToolDefinition {
+  const maxInputChars = options.maxInputChars ?? 32_768;
+  if (!Number.isSafeInteger(maxInputChars) || maxInputChars <= 0) {
+    throw new Error("caveman agent: subagent maxInputChars must be a positive integer");
+  }
+  const maxCalls = options.maxCalls ?? 1;
+  const maxCostUsd = options.maxCostUsd ?? 1;
+  const maxContextTokens = options.maxContextTokens ?? 128_000;
+  if (!Number.isSafeInteger(maxCalls) || maxCalls <= 0) {
+    throw new Error("caveman agent: subagent maxCalls must be a positive integer");
+  }
+  if (!Number.isFinite(maxCostUsd) || maxCostUsd <= 0) {
+    throw new Error("caveman agent: subagent maxCostUsd must be positive");
+  }
+  if (options.maxTokens !== undefined &&
+      (!Number.isSafeInteger(options.maxTokens) || options.maxTokens <= 0)) {
+    throw new Error("caveman agent: subagent maxTokens must be a positive integer");
+  }
+  if (!Number.isSafeInteger(maxContextTokens) || maxContextTokens <= 0) {
+    throw new Error("caveman agent: subagent maxContextTokens must be a positive integer");
+  }
+  return tool({
+    name: options.name,
+    description: options.description,
+    input: schema.object({ task: schema.string() }),
+    effect: "read",
+    result: "auto",
+    ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
+    runtime: {
+      kind: "subagent",
+      definition: options.agent,
+      maxInputChars,
+      maxCalls,
+      maxCostUsd,
+      ...(options.maxTokens === undefined ? {} : { maxTokens: options.maxTokens }),
+      maxContextTokens,
+    },
+    async execute() {
+      throw new Error("cave_subagent_framework_runner_required");
+    },
+  });
+}

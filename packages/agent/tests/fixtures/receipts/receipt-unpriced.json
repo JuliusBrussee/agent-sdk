@@ -1,0 +1,51 @@
+{
+  "schema": "caveman.agent.receipt-print-fixture.v1",
+  "runId": "fixture-unpriced",
+  "agentId": "lab-preview-bot",
+  "basis": "estimated_list_price_subtotal",
+  "claimBasis": "inferred",
+  "stopReason": "complete",
+  "denomination": "tokens",
+  "max": 200000,
+  "released": 200000,
+  "spent": 6392,
+  "capBreached": false,
+  "overspent": 0,
+  "totalEstimatedUsd": 0,
+  "totalTokens": 6392,
+  "unpriced": true,
+  "calls": [
+    {
+      "provider": "acme",
+      "model": "acme-lab-preview",
+      "inputTokens": 3204,
+      "outputTokens": 100,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0,
+      "reasoningTokens": 0,
+      "estimatedUsd": 0,
+      "unpriced": true,
+      "usageBasis": "provider_reported"
+    },
+    {
+      "provider": "acme",
+      "model": "acme-lab-preview",
+      "inputTokens": 3000,
+      "outputTokens": 88,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0,
+      "reasoningTokens": 0,
+      "estimatedUsd": 0,
+      "unpriced": true,
+      "usageBasis": "provider_reported"
+    }
+  ],
+  "tools": [],
+  "subagents": [],
+  "tranches": [],
+  "breakers": [],
+  "compactions": [],
+  "mode": "observe-only",
+  "durationMs": 3100,
+  "receiptPath": ".caveman/runs/2026-08-14T15-09-46/receipt.json"
+}

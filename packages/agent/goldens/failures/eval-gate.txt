@@ -1,0 +1,18 @@
+✗ build failed: both development evals fail on the cheapest candidate plan
+
+  evals/support.eval.ts
+    profiled 1 fixture (refund-request) → workload profile
+    ✗ order-status         (development)  expected the order id in the reply, none found
+    ✗ angry-escalation     (development)  reply must name the human escalation path
+
+  Holdout evals were not run — they open only after a plan is selected,
+  and no plan survived selection.
+
+  The build only locks a plan that passes every development eval you
+  declared. The cheapest candidate failed both, and the next candidate
+  up also failed, so no plan locked.
+
+  Fix: run `caveman-agent dev` against the failing fixtures to see the
+  actual replies, then either fix the agent or — if the expectation is
+  wrong — fix the eval. Weakening a grader to make a build pass is a
+  product decision; make it on purpose.

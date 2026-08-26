@@ -1,0 +1,1 @@
+{"v":1,"seq":13,"ts":"2026-08-25T09:30:31.008Z","sessionId":"sess_01J9Z8Q4VHN7X2","kind":"permission.request","id":"perm_01J9Z8R3T","tool":"bash","plainLanguage":"Delete ./build to clear stale artifacts before the release check.","detail":"bash -lc 'rm -rf ./build'"}

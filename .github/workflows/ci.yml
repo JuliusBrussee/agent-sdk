@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-15]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.18.0
+          cache: npm
+          cache-dependency-path: |
+            packages/agent/package-lock.json
+            packages/pebble-protocol/package-lock.json
+            packages/create-caveman-agent/package-lock.json
+            examples/coding-agent/package-lock.json
+      - run: npm ci --prefix packages/pebble-protocol
+      - run: npm --prefix packages/pebble-protocol run build
+      - run: npm ci --prefix packages/agent
+      - run: npm ci --prefix packages/create-caveman-agent
+      - run: npm ci --prefix examples/coding-agent --ignore-scripts
+      - run: npm test
+      - run: npm run license:check
+      - run: npm run pack:check
+
+  windows-portability:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.18.0
+          cache: npm
+          cache-dependency-path: |
+            packages/agent/package-lock.json
+            packages/pebble-protocol/package-lock.json
+      - run: npm ci --prefix packages/pebble-protocol
+      - run: npm --prefix packages/pebble-protocol run build
+      - run: npm ci --prefix packages/agent
+      - run: npm --prefix packages/agent run build
+      - run: node --test packages/agent/tests/windows-process.runtime.mjs packages/agent/tests/windows-shell-smoke.runtime.mjs

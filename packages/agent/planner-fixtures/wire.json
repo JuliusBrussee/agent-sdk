@@ -1,0 +1,909 @@
+{
+  "catalog_sha256": "44f273c90cd7ab4707888fdf7ac5aea21d668e2204ef8a66683644e9151e1ce8",
+  "cases": [
+    {
+      "name": "anthropic-messages-stable-and-rolling",
+      "request": {
+        "scope": "org-a/project-a",
+        "epoch": "anthropic-messages-stable-and-rolling",
+        "partition_key": "session-1",
+        "expected_calls": 4,
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-6",
+        "endpoint": "/v1/messages",
+        "runtime_mode": "optimize",
+        "auth_mode": "payg",
+        "prefix_tokens": 5000,
+        "body": "{\"model\":\"claude-sonnet-4-6\",\"system\":\"You are a careful compiler.\",\"tools\":[{\"name\":\"read_file\",\"description\":\"Read one file\",\"input_schema\":{\"type\":\"object\"}}],\"messages\":[{\"role\":\"user\",\"content\":\"Inspect this repository\"}],\"max_tokens\":256}"
+      },
+      "result": {
+        "body": "{\"model\":\"claude-sonnet-4-6\",\"system\":\"You are a careful compiler.\",\"tools\":[{\"name\":\"read_file\",\"description\":\"Read one file\",\"input_schema\":{\"type\":\"object\"},\"cache_control\":{\"type\":\"ephemeral\"}}],\"messages\":[{\"role\":\"user\",\"content\":\"Inspect this repository\"}],\"max_tokens\":256,\"cache_control\":{\"type\":\"ephemeral\"}}",
+        "applied": true,
+        "decision": "apply",
+        "reason": "applied",
+        "optimizer_ids": [
+          "anthropic-cache-breakpoints",
+          "cave-cache-anthropic-rolling-v1"
+        ],
+        "claim_basis": "inferred",
+        "plan": {
+          "decision": "apply",
+          "reason": "applied",
+          "profile_id": "cave-cache-anthropic-v1",
+          "mode": "explicit",
+          "attribution": "causal",
+          "prefix_sha256": "43432003d7e01de76efb3065900842d2e1a65ec9861bd75971a3175f4611bbce",
+          "key_shard": 0,
+          "key_shard_count": 1,
+          "breakpoints": [
+            {
+              "after_segment": "native-prefix",
+              "prefix_sha256": "43432003d7e01de76efb3065900842d2e1a65ec9861bd75971a3175f4611bbce",
+              "prefix_tokens": 5000,
+              "expected_calls": 4,
+              "break_even_calls": 2,
+              "expected_net_input_rate_units": 12250
+            }
+          ],
+          "expected_net_input_rate_units": 12250,
+          "economics_basis": "modeled_input_rate_units"
+        }
+      }
+    },
+    {
+      "name": "openai-chat-explicit-key-and-breakpoint",
+      "request": {
+        "scope": "org-a/project-a",
+        "epoch": "openai-chat-explicit-key-and-breakpoint",
+        "partition_key": "session-1",
+        "expected_calls": 4,
+        "provider": "openai",
+        "model": "gpt-5.6",
+        "endpoint": "/v1/chat/completions",
+        "runtime_mode": "optimize",
+        "auth_mode": "payg",
+        "prefix_tokens": 5000,
+        "body": "{\"model\":\"gpt-5.6\",\"messages\":[{\"role\":\"system\",\"content\":\"You are a support assistant with a long stable policy.\"},{\"role\":\"user\",\"content\":\"What should I do next?\"}],\"stream\":true}"
+      },
+      "result": {
+        "body": "{\"model\":\"gpt-5.6\",\"messages\":[{\"role\":\"system\",\"content\":[{\"type\":\"text\",\"text\":\"You are a support assistant with a long stable policy.\",\"prompt_cache_breakpoint\":{\"mode\":\"explicit\"}}]},{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"What should I do next?\",\"prompt_cache_breakpoint\":{\"mode\":\"explicit\"}}]}],\"stream\":true,\"prompt_cache_key\":\"d1bb293cd65796cc6298a1ca6a62247c\",\"prompt_cache_options\":{\"mode\":\"explicit\"}}",
+        "applied": true,
+        "decision": "apply",
+        "reason": "applied",
+        "optimizer_ids": [
+          "openai-prompt-cache-key",
+          "cave-cache-openai-explicit-v1"
+        ],
+        "claim_basis": "inferred",
+        "plan": {
+          "decision": "apply",
+          "reason": "applied",
+          "profile_id": "cave-cache-openai-explicit-v1",
+          "mode": "explicit",
+          "attribution": "causal",
+          "prefix_sha256": "856f3abf07860dc8eb1c1b440bd0787a57fbe5e34f822b7c500d47363076e9b1",
+          "routing_key": "d1bb293cd65796cc6298a1ca6a62247c",
+          "key_shard": 0,
+          "key_shard_count": 1,
+          "breakpoints": [
+            {
+              "after_segment": "native-prefix",
+              "prefix_sha256": "856f3abf07860dc8eb1c1b440bd0787a57fbe5e34f822b7c500d47363076e9b1",
+              "prefix_tokens": 5000,
+              "expected_calls": 4,
+              "break_even_calls": 2,
+              "expected_net_input_rate_units": 12250
+            }
+          ],
+          "expected_net_input_rate_units": 12250,
+          "economics_basis": "modeled_input_rate_units"
+        }
+      }
+    },
+    {
+      "name": "openai-chat-rolling-window",
+      "request": {
+        "scope": "org-a/project-a",
+        "epoch": "openai-chat-rolling-window",
+        "partition_key": "session-1",
+        "expected_calls": 4,
+        "provider": "openai",
+        "model": "gpt-5.6",
+        "endpoint": "/v1/chat/completions",
+        "runtime_mode": "optimize",
+        "auth_mode": "payg",
+        "prefix_tokens": 5000,
+        "body": "{\"model\":\"gpt-5.6\",\"messages\":[{\"role\":\"system\",\"content\":\"stable system\"},{\"role\":\"user\",\"content\":\"first task\"},{\"role\":\"assistant\",\"content\":\"first answer\"},{\"role\":\"user\",\"content\":\"latest task\"}]}"
+      },
+      "result": {
+        "body": "{\"model\":\"gpt-5.6\",\"messages\":[{\"role\":\"system\",\"content\":[{\"type\":\"text\",\"text\":\"stable system\",\"prompt_cache_breakpoint\":{\"mode\":\"explicit\"}}]},{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"first task\",\"prompt_cache_breakpoint\":{\"mode\":\"explicit\"}}]},{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"first answer\",\"prompt_cache_breakpoint\":{\"mode\":\"explicit\"}}]},{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"latest task\",\"prompt_cache_breakpoint\":{\"mode\":\"explicit\"}}]}],\"prompt_cache_key\":\"88f71969ccaee83e2c3685f9506ac93f\",\"prompt_cache_options\":{\"mode\":\"explicit\"}}",
+        "applied": true,
+        "decision": "apply",
+        "reason": "applied",
+        "optimizer_ids": [
+          "openai-prompt-cache-key",
+          "cave-cache-openai-explicit-v1"
+        ],
+        "claim_basis": "inferred",
+        "plan": {
+          "decision": "apply",
+          "reason": "applied",
+          "profile_id": "cave-cache-openai-explicit-v1",
+          "mode": "explicit",
+          "attribution": "causal",
+          "prefix_sha256": "39e6e0cedc0d791467b087c41779ea26af15c58f3fd08b41737547168c172031",
+          "routing_key": "88f71969ccaee83e2c3685f9506ac93f",
+          "key_shard": 0,
+          "key_shard_count": 1,
+          "breakpoints": [
+            {
+              "after_segment": "native-prefix",
+              "prefix_sha256": "39e6e0cedc0d791467b087c41779ea26af15c58f3fd08b41737547168c172031",
+              "prefix_tokens": 5000,
+              "expected_calls": 4,
+              "break_even_calls": 2,
+              "expected_net_input_rate_units": 12250
+            }
+          ],
+          "expected_net_input_rate_units": 12250,
+          "economics_basis": "modeled_input_rate_units"
+        }
+      }
+    },
+    {
+      "name": "openai-chat-breakpoint-window-cap",
+      "request": {
+        "scope": "org-a/project-a",
+        "epoch": "openai-chat-breakpoint-window-cap",
+        "partition_key": "session-1",
+        "expected_calls": 4,
+        "provider": "openai",
+        "model": "gpt-5.6",
+        "endpoint": "/v1/chat/completions",
+        "runtime_mode": "optimize",
+        "auth_mode": "payg",
+        "prefix_tokens": 5000,
+        "body": "{\"model\":\"gpt-5.6\",\"messages\":[{\"role\":\"system\",\"content\":\"stable system\"},{\"role\":\"user\",\"content\":\"task one\"},{\"role\":\"assistant\",\"content\":\"answer one\"},{\"role\":\"user\",\"content\":\"task two\"},{\"role\":\"assistant\",\"content\":\"answer two\"},{\"role\":\"user\",\"content\":\"task three\"}]}"
+      },
+      "result": {
+        "body": "{\"model\":\"gpt-5.6\",\"messages\":[{\"role\":\"system\",\"content\":[{\"type\":\"text\",\"text\":\"stable system\",\"prompt_cache_breakpoint\":{\"mode\":\"explicit\"}}]},{\"role\":\"user\",\"content\":\"task one\"},{\"role\":\"assistant\",\"content\":\"answer one\"},{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"task two\",\"prompt_cache_breakpoint\":{\"mode\":\"explicit\"}}]},{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"answer two\",\"prompt_cache_breakpoint\":{\"mode\":\"explicit\"}}]},{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"task three\",\"prompt_cache_breakpoint\":{\"mode\":\"explicit\"}}]}],\"prompt_cache_key\":\"88f71969ccaee83e2c3685f9506ac93f\",\"prompt_cache_options\":{\"mode\":\"explicit\"}}",
+        "applied": true,
+        "decision": "apply",
+        "reason": "applied",
+        "optimizer_ids": [
+          "openai-prompt-cache-key",
+          "cave-cache-openai-explicit-v1"
+        ],
+        "claim_basis": "inferred",
+        "plan": {
+          "decision": "apply",
+          "reason": "applied",
+          "profile_id": "cave-cache-openai-explicit-v1",
+          "mode": "explicit",
+          "attribution": "causal",
+          "prefix_sha256": "39e6e0cedc0d791467b087c41779ea26af15c58f3fd08b41737547168c172031",
+          "routing_key": "88f71969ccaee83e2c3685f9506ac93f",
+          "key_shard": 0,
+          "key_shard_count": 1,
+          "breakpoints": [
+            {
+              "after_segment": "native-prefix",
+              "prefix_sha256": "39e6e0cedc0d791467b087c41779ea26af15c58f3fd08b41737547168c172031",
+              "prefix_tokens": 5000,
+              "expected_calls": 4,
+              "break_even_calls": 2,
+              "expected_net_input_rate_units": 12250
+            }
+          ],
+          "expected_net_input_rate_units": 12250,
+          "economics_basis": "modeled_input_rate_units"
+        }
+      }
+    },
+    {
+      "name": "openai-chat-anchors-after-leading-stable",
+      "request": {
+        "scope": "org-a/project-a",
+        "epoch": "openai-chat-anchors-after-leading-stable",
+        "partition_key": "session-1",
+        "expected_calls": 4,
+        "provider": "openai",
+        "model": "gpt-5.6",
+        "endpoint": "/v1/chat/completions",
+        "runtime_mode": "optimize",
+        "auth_mode": "payg",
+        "prefix_tokens": 5000,
+        "body": "{\"model\":\"gpt-5.6\",\"messages\":[{\"role\":\"system\",\"content\":\"stable system\"},{\"role\":\"developer\",\"content\":\"stable developer\"},{\"role\":\"user\",\"content\":\"task one\"},{\"role\":\"assistant\",\"content\":\"answer one\"},{\"role\":\"user\",\"content\":\"task two\"},{\"role\":\"assistant\",\"content\":\"answer two\"},{\"role\":\"user\",\"content\":\"task three\"}]}"
+      },
+      "result": {
+        "body": "{\"model\":\"gpt-5.6\",\"messages\":[{\"role\":\"system\",\"content\":\"stable system\"},{\"role\":\"developer\",\"content\":[{\"type\":\"text\",\"text\":\"stable developer\",\"prompt_cache_breakpoint\":{\"mode\":\"explicit\"}}]},{\"role\":\"user\",\"content\":\"task one\"},{\"role\":\"assistant\",\"content\":\"answer one\"},{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"task two\",\"prompt_cache_breakpoint\":{\"mode\":\"explicit\"}}]},{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"answer two\",\"prompt_cache_breakpoint\":{\"mode\":\"explicit\"}}]},{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"task three\",\"prompt_cache_breakpoint\":{\"mode\":\"explicit\"}}]}],\"prompt_cache_key\":\"0375796fee889d56e370397d129b24be\",\"prompt_cache_options\":{\"mode\":\"explicit\"}}",
+        "applied": true,
+        "decision": "apply",
+        "reason": "applied",
+        "optimizer_ids": [
+          "openai-prompt-cache-key",
+          "cave-cache-openai-explicit-v1"
+        ],
+        "claim_basis": "inferred",
+        "plan": {
+          "decision": "apply",
+          "reason": "applied",
+          "profile_id": "cave-cache-openai-explicit-v1",
+          "mode": "explicit",
+          "attribution": "causal",
+          "prefix_sha256": "9a487fe97a6db8a8b51c49e6fd5d1cb914dd567d53651edf16a8e1b79def4043",
+          "routing_key": "0375796fee889d56e370397d129b24be",
+          "key_shard": 0,
+          "key_shard_count": 1,
+          "breakpoints": [
+            {
+              "after_segment": "native-prefix",
+              "prefix_sha256": "9a487fe97a6db8a8b51c49e6fd5d1cb914dd567d53651edf16a8e1b79def4043",
+              "prefix_tokens": 5000,
+              "expected_calls": 4,
+              "break_even_calls": 2,
+              "expected_net_input_rate_units": 12250
+            }
+          ],
+          "expected_net_input_rate_units": 12250,
+          "economics_basis": "modeled_input_rate_units"
+        }
+      }
+    },
+    {
+      "name": "openai-responses-rolling-window",
+      "request": {
+        "scope": "org-a/project-a",
+        "epoch": "openai-responses-rolling-window",
+        "partition_key": "session-1",
+        "expected_calls": 4,
+        "provider": "openai",
+        "model": "gpt-5.6",
+        "endpoint": "/v1/responses",
+        "runtime_mode": "optimize",
+        "auth_mode": "payg",
+        "prefix_tokens": 5000,
+        "body": "{\"model\":\"gpt-5.6\",\"input\":[{\"role\":\"developer\",\"content\":\"stable policy\"},{\"role\":\"user\",\"content\":\"first task\"},{\"role\":\"assistant\",\"content\":\"first answer\"},{\"role\":\"user\",\"content\":\"latest task\"}]}"
+      },
+      "result": {
+        "body": "{\"model\":\"gpt-5.6\",\"input\":[{\"role\":\"developer\",\"content\":[{\"type\":\"input_text\",\"text\":\"stable policy\",\"prompt_cache_breakpoint\":{\"mode\":\"explicit\"}}]},{\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"first task\",\"prompt_cache_breakpoint\":{\"mode\":\"explicit\"}}]},{\"role\":\"assistant\",\"content\":[{\"type\":\"input_text\",\"text\":\"first answer\",\"prompt_cache_breakpoint\":{\"mode\":\"explicit\"}}]},{\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"latest task\",\"prompt_cache_breakpoint\":{\"mode\":\"explicit\"}}]}],\"prompt_cache_key\":\"cc7ee7650e04acb2376fe04318f4a6fd\",\"prompt_cache_options\":{\"mode\":\"explicit\"}}",
+        "applied": true,
+        "decision": "apply",
+        "reason": "applied",
+        "optimizer_ids": [
+          "openai-prompt-cache-key",
+          "cave-cache-openai-explicit-v1"
+        ],
+        "claim_basis": "inferred",
+        "plan": {
+          "decision": "apply",
+          "reason": "applied",
+          "profile_id": "cave-cache-openai-explicit-v1",
+          "mode": "explicit",
+          "attribution": "causal",
+          "prefix_sha256": "d6060ecc6096a4cf93e6904dcb0fbb401de89a48b89d5d8b3776a4a3589ffb60",
+          "routing_key": "cc7ee7650e04acb2376fe04318f4a6fd",
+          "key_shard": 0,
+          "key_shard_count": 1,
+          "breakpoints": [
+            {
+              "after_segment": "native-prefix",
+              "prefix_sha256": "d6060ecc6096a4cf93e6904dcb0fbb401de89a48b89d5d8b3776a4a3589ffb60",
+              "prefix_tokens": 5000,
+              "expected_calls": 4,
+              "break_even_calls": 2,
+              "expected_net_input_rate_units": 12250
+            }
+          ],
+          "expected_net_input_rate_units": 12250,
+          "economics_basis": "modeled_input_rate_units"
+        }
+      }
+    },
+    {
+      "name": "openai-responses-affinity-fallback",
+      "request": {
+        "scope": "org-a/project-a",
+        "epoch": "openai-responses-affinity-fallback",
+        "partition_key": "session-1",
+        "expected_calls": 4,
+        "provider": "openai",
+        "model": "gpt-5.6",
+        "endpoint": "/v1/responses",
+        "runtime_mode": "optimize",
+        "auth_mode": "payg",
+        "prefix_tokens": 5000,
+        "body": "{\"model\":\"gpt-5.6\",\"instructions\":\"Stable instructions\",\"input\":\"current question\"}"
+      },
+      "result": {
+        "body": "{\"model\":\"gpt-5.6\",\"instructions\":\"Stable instructions\",\"input\":\"current question\",\"prompt_cache_key\":\"418fcb38742bafd1c2104275a361467c\"}",
+        "applied": true,
+        "decision": "apply",
+        "reason": "affinity_fallback",
+        "optimizer_ids": [
+          "openai-prompt-cache-key"
+        ],
+        "claim_basis": "inferred",
+        "plan": {
+          "decision": "apply",
+          "reason": "applied",
+          "profile_id": "cave-cache-openai-explicit-v1",
+          "mode": "explicit",
+          "attribution": "affinity",
+          "prefix_sha256": "e97fbf88d861b25360f866e35229de853f7fdb614d5b79b4ed59a23e512713b2",
+          "routing_key": "418fcb38742bafd1c2104275a361467c",
+          "key_shard": 0,
+          "key_shard_count": 1,
+          "breakpoints": [
+            {
+              "after_segment": "native-prefix",
+              "prefix_sha256": "e97fbf88d861b25360f866e35229de853f7fdb614d5b79b4ed59a23e512713b2",
+              "prefix_tokens": 5000,
+              "expected_calls": 4,
+              "break_even_calls": 2,
+              "expected_net_input_rate_units": 12250
+            }
+          ],
+          "expected_net_input_rate_units": 12250,
+          "economics_basis": "modeled_input_rate_units"
+        }
+      }
+    },
+    {
+      "name": "openai-chat-caller-managed-pass-through",
+      "request": {
+        "scope": "org-a/project-a",
+        "epoch": "openai-chat-caller-managed-pass-through",
+        "partition_key": "session-1",
+        "expected_calls": 4,
+        "provider": "openai",
+        "model": "gpt-5.6",
+        "endpoint": "/v1/chat/completions",
+        "runtime_mode": "optimize",
+        "auth_mode": "payg",
+        "prefix_tokens": 5000,
+        "body": "{\"model\":\"gpt-5.6\",\"prompt_cache_key\":\"caller-key\",\"messages\":[{\"role\":\"user\",\"content\":\"hello\"}]}"
+      },
+      "result": {
+        "body": "{\"model\":\"gpt-5.6\",\"prompt_cache_key\":\"caller-key\",\"messages\":[{\"role\":\"user\",\"content\":\"hello\"}]}",
+        "applied": false,
+        "decision": "pass_through",
+        "reason": "caller_managed",
+        "claim_basis": "none",
+        "plan": {
+          "decision": "pass_through",
+          "reason": "unsupported",
+          "profile_id": "unsupported",
+          "mode": "unsupported",
+          "attribution": "none",
+          "key_shard": 0,
+          "key_shard_count": 1,
+          "expected_net_input_rate_units": 0,
+          "economics_basis": "unavailable"
+        }
+      }
+    },
+    {
+      "name": "openai-chat-record-mode-pass-through",
+      "request": {
+        "scope": "org-a/project-a",
+        "epoch": "openai-chat-record-mode-pass-through",
+        "partition_key": "session-1",
+        "expected_calls": 4,
+        "provider": "openai",
+        "model": "gpt-5.6",
+        "endpoint": "/v1/chat/completions",
+        "runtime_mode": "record",
+        "auth_mode": "payg",
+        "prefix_tokens": 5000,
+        "body": "{\"model\":\"gpt-5.6\",\"messages\":[{\"role\":\"system\",\"content\":\"stable\"},{\"role\":\"user\",\"content\":\"one\"}]}"
+      },
+      "result": {
+        "body": "{\"model\":\"gpt-5.6\",\"messages\":[{\"role\":\"system\",\"content\":\"stable\"},{\"role\":\"user\",\"content\":\"one\"}]}",
+        "applied": false,
+        "decision": "pass_through",
+        "reason": "record_mode",
+        "claim_basis": "none",
+        "plan": {
+          "decision": "pass_through",
+          "reason": "unsupported",
+          "profile_id": "unsupported",
+          "mode": "unsupported",
+          "attribution": "none",
+          "key_shard": 0,
+          "key_shard_count": 1,
+          "expected_net_input_rate_units": 0,
+          "economics_basis": "unavailable"
+        }
+      }
+    },
+    {
+      "name": "bedrock-converse-stable-rolling",
+      "request": {
+        "scope": "org-a/project-a",
+        "epoch": "bedrock-converse-stable-rolling",
+        "partition_key": "session-1",
+        "expected_calls": 4,
+        "provider": "bedrock",
+        "model": "global.anthropic.claude-sonnet-4-6",
+        "region": "us-east-1",
+        "endpoint": "converse",
+        "runtime_mode": "optimize",
+        "auth_mode": "payg",
+        "prefix_tokens": 5000,
+        "body": "{\"system\":[{\"text\":\"stable instructions\"}],\"messages\":[{\"role\":\"user\",\"content\":[{\"text\":\"hello\"}]}]}"
+      },
+      "result": {
+        "body": "{\"messages\":[{\"content\":[{\"text\":\"hello\"},{\"cachePoint\":{\"type\":\"default\"}}],\"role\":\"user\"}],\"system\":[{\"text\":\"stable instructions\"},{\"cachePoint\":{\"type\":\"default\"}}]}",
+        "applied": true,
+        "decision": "apply",
+        "reason": "applied",
+        "optimizer_ids": [
+          "bedrock-cache-points",
+          "cave-cache-bedrock-rolling-v1"
+        ],
+        "claim_basis": "inferred",
+        "plan": {
+          "decision": "apply",
+          "reason": "applied",
+          "profile_id": "cave-cache-bedrock-v1",
+          "mode": "explicit",
+          "attribution": "causal",
+          "prefix_sha256": "0db9ebddbe3c5120be31d64d239a2da9a34411d77f4ee8bf641fe0dd790fd391",
+          "key_shard": 0,
+          "key_shard_count": 1,
+          "breakpoints": [
+            {
+              "after_segment": "native-prefix",
+              "prefix_sha256": "0db9ebddbe3c5120be31d64d239a2da9a34411d77f4ee8bf641fe0dd790fd391",
+              "prefix_tokens": 5000,
+              "expected_calls": 4,
+              "break_even_calls": 2,
+              "expected_net_input_rate_units": 12250
+            }
+          ],
+          "expected_net_input_rate_units": 12250,
+          "economics_basis": "modeled_input_rate_units"
+        }
+      }
+    },
+    {
+      "name": "bedrock-invoke-stable-rolling",
+      "request": {
+        "scope": "org-a/project-a",
+        "epoch": "bedrock-invoke-stable-rolling",
+        "partition_key": "session-1",
+        "expected_calls": 4,
+        "provider": "bedrock",
+        "model": "global.anthropic.claude-sonnet-4-6",
+        "region": "us-east-1",
+        "endpoint": "invoke",
+        "runtime_mode": "optimize",
+        "auth_mode": "payg",
+        "prefix_tokens": 5000,
+        "body": "{\"system\":\"stable instructions\",\"messages\":[{\"role\":\"user\",\"content\":\"first task\"},{\"role\":\"assistant\",\"content\":\"first answer\"},{\"role\":\"user\",\"content\":\"latest task\"}]}"
+      },
+      "result": {
+        "body": "{\"messages\":[{\"content\":\"first task\",\"role\":\"user\"},{\"content\":\"first answer\",\"role\":\"assistant\"},{\"content\":[{\"cache_control\":{\"type\":\"ephemeral\"},\"text\":\"latest task\",\"type\":\"text\"}],\"role\":\"user\"}],\"system\":[{\"cache_control\":{\"type\":\"ephemeral\"},\"text\":\"stable instructions\",\"type\":\"text\"}]}",
+        "applied": true,
+        "decision": "apply",
+        "reason": "applied",
+        "optimizer_ids": [
+          "bedrock-cache-points",
+          "cave-cache-bedrock-rolling-v1"
+        ],
+        "claim_basis": "inferred",
+        "plan": {
+          "decision": "apply",
+          "reason": "applied",
+          "profile_id": "cave-cache-bedrock-v1",
+          "mode": "explicit",
+          "attribution": "causal",
+          "prefix_sha256": "7751ac015bd4abca482b3b2434a020e1ccd892d969018c3ff2699b360219d668",
+          "key_shard": 0,
+          "key_shard_count": 1,
+          "breakpoints": [
+            {
+              "after_segment": "native-prefix",
+              "prefix_sha256": "7751ac015bd4abca482b3b2434a020e1ccd892d969018c3ff2699b360219d668",
+              "prefix_tokens": 5000,
+              "expected_calls": 4,
+              "break_even_calls": 2,
+              "expected_net_input_rate_units": 12250
+            }
+          ],
+          "expected_net_input_rate_units": 12250,
+          "economics_basis": "modeled_input_rate_units"
+        }
+      }
+    },
+    {
+      "name": "anthropic-caller-managed-pass-through",
+      "request": {
+        "scope": "org-a/project-a",
+        "epoch": "anthropic-caller-managed-pass-through",
+        "partition_key": "session-1",
+        "expected_calls": 4,
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-6",
+        "endpoint": "/v1/messages",
+        "runtime_mode": "optimize",
+        "auth_mode": "payg",
+        "prefix_tokens": 5000,
+        "body": "{\"model\":\"claude-sonnet-4-6\",\"system\":[{\"type\":\"text\",\"text\":\"stable\",\"cache_control\":{\"type\":\"ephemeral\"}}],\"messages\":[{\"role\":\"user\",\"content\":\"hello\"}]}"
+      },
+      "result": {
+        "body": "{\"model\":\"claude-sonnet-4-6\",\"system\":[{\"type\":\"text\",\"text\":\"stable\",\"cache_control\":{\"type\":\"ephemeral\"}}],\"messages\":[{\"role\":\"user\",\"content\":\"hello\"}]}",
+        "applied": false,
+        "decision": "pass_through",
+        "reason": "caller_managed",
+        "claim_basis": "none",
+        "plan": {
+          "decision": "pass_through",
+          "reason": "unsupported",
+          "profile_id": "unsupported",
+          "mode": "unsupported",
+          "attribution": "none",
+          "key_shard": 0,
+          "key_shard_count": 1,
+          "expected_net_input_rate_units": 0,
+          "economics_basis": "unavailable"
+        }
+      }
+    },
+    {
+      "name": "bedrock-converse-caller-managed-pass-through",
+      "request": {
+        "scope": "org-a/project-a",
+        "epoch": "bedrock-converse-caller-managed-pass-through",
+        "partition_key": "session-1",
+        "expected_calls": 4,
+        "provider": "bedrock",
+        "model": "global.anthropic.claude-sonnet-4-6",
+        "region": "us-east-1",
+        "endpoint": "converse",
+        "runtime_mode": "optimize",
+        "auth_mode": "payg",
+        "prefix_tokens": 5000,
+        "body": "{\"system\":[{\"text\":\"stable\"},{\"cachePoint\":{\"type\":\"default\"}}],\"messages\":[{\"role\":\"user\",\"content\":[{\"text\":\"hi\"}]}]}"
+      },
+      "result": {
+        "body": "{\"system\":[{\"text\":\"stable\"},{\"cachePoint\":{\"type\":\"default\"}}],\"messages\":[{\"role\":\"user\",\"content\":[{\"text\":\"hi\"}]}]}",
+        "applied": false,
+        "decision": "pass_through",
+        "reason": "caller_managed",
+        "claim_basis": "none",
+        "plan": {
+          "decision": "pass_through",
+          "reason": "unsupported",
+          "profile_id": "unsupported",
+          "mode": "unsupported",
+          "attribution": "none",
+          "key_shard": 0,
+          "key_shard_count": 1,
+          "expected_net_input_rate_units": 0,
+          "economics_basis": "unavailable"
+        }
+      }
+    },
+    {
+      "name": "openai-chat-truncated-body-malformed",
+      "request": {
+        "scope": "org-a/project-a",
+        "epoch": "openai-chat-truncated-body-malformed",
+        "partition_key": "session-1",
+        "expected_calls": 4,
+        "provider": "openai",
+        "model": "gpt-5.6",
+        "endpoint": "/v1/chat/completions",
+        "runtime_mode": "optimize",
+        "auth_mode": "payg",
+        "prefix_tokens": 5000,
+        "body": "{\"model\":\"gpt-5.6\",\"messages\":[{\"role\":\"user\",\"content\":\"x\"}"
+      },
+      "result": {
+        "body": "{\"model\":\"gpt-5.6\",\"messages\":[{\"role\":\"user\",\"content\":\"x\"}",
+        "applied": false,
+        "decision": "pass_through",
+        "reason": "malformed_request",
+        "claim_basis": "none",
+        "plan": {
+          "decision": "pass_through",
+          "reason": "unsupported",
+          "profile_id": "unsupported",
+          "mode": "unsupported",
+          "attribution": "none",
+          "key_shard": 0,
+          "key_shard_count": 1,
+          "expected_net_input_rate_units": 0,
+          "economics_basis": "unavailable"
+        }
+      }
+    },
+    {
+      "name": "anthropic-non-payg-pass-through",
+      "request": {
+        "scope": "org-a/project-a",
+        "epoch": "anthropic-non-payg-pass-through",
+        "partition_key": "session-1",
+        "expected_calls": 4,
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-6",
+        "endpoint": "/v1/messages",
+        "runtime_mode": "optimize",
+        "auth_mode": "oauth",
+        "prefix_tokens": 5000,
+        "body": "{\"model\":\"claude-sonnet-4-6\",\"system\":\"stable\",\"messages\":[{\"role\":\"user\",\"content\":\"hello\"}]}"
+      },
+      "result": {
+        "body": "{\"model\":\"claude-sonnet-4-6\",\"system\":\"stable\",\"messages\":[{\"role\":\"user\",\"content\":\"hello\"}]}",
+        "applied": false,
+        "decision": "pass_through",
+        "reason": "non_payg",
+        "claim_basis": "none",
+        "plan": {
+          "decision": "pass_through",
+          "reason": "unsupported",
+          "profile_id": "unsupported",
+          "mode": "unsupported",
+          "attribution": "none",
+          "key_shard": 0,
+          "key_shard_count": 1,
+          "expected_net_input_rate_units": 0,
+          "economics_basis": "unavailable"
+        }
+      }
+    },
+    {
+      "name": "openai-chat-body-model-mismatch",
+      "request": {
+        "scope": "org-a/project-a",
+        "epoch": "openai-chat-body-model-mismatch",
+        "partition_key": "session-1",
+        "expected_calls": 4,
+        "provider": "openai",
+        "model": "gpt-5.6",
+        "endpoint": "/v1/chat/completions",
+        "runtime_mode": "optimize",
+        "auth_mode": "payg",
+        "prefix_tokens": 5000,
+        "body": "{\"model\":\"gpt-4o\",\"messages\":[{\"role\":\"user\",\"content\":\"hello\"}]}"
+      },
+      "result": {
+        "body": "{\"model\":\"gpt-4o\",\"messages\":[{\"role\":\"user\",\"content\":\"hello\"}]}",
+        "applied": false,
+        "decision": "pass_through",
+        "reason": "profile_mismatch",
+        "claim_basis": "none",
+        "plan": {
+          "decision": "pass_through",
+          "reason": "unsupported",
+          "profile_id": "unsupported",
+          "mode": "unsupported",
+          "attribution": "none",
+          "key_shard": 0,
+          "key_shard_count": 1,
+          "expected_net_input_rate_units": 0,
+          "economics_basis": "unavailable"
+        }
+      }
+    },
+    {
+      "name": "anthropic-duplicate-key-malformed",
+      "request": {
+        "scope": "org-a/project-a",
+        "epoch": "anthropic-duplicate-key-malformed",
+        "partition_key": "session-1",
+        "expected_calls": 4,
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-6",
+        "endpoint": "/v1/messages",
+        "runtime_mode": "optimize",
+        "auth_mode": "payg",
+        "prefix_tokens": 5000,
+        "body": "{\"model\":\"claude-sonnet-4-6\",\"system\":\"a\",\"system\":\"b\",\"messages\":[{\"role\":\"user\",\"content\":\"hello\"}]}"
+      },
+      "result": {
+        "body": "{\"model\":\"claude-sonnet-4-6\",\"system\":\"a\",\"system\":\"b\",\"messages\":[{\"role\":\"user\",\"content\":\"hello\"}]}",
+        "applied": false,
+        "decision": "pass_through",
+        "reason": "malformed_request",
+        "claim_basis": "none",
+        "plan": {
+          "decision": "pass_through",
+          "reason": "unsupported",
+          "profile_id": "unsupported",
+          "mode": "unsupported",
+          "attribution": "none",
+          "key_shard": 0,
+          "key_shard_count": 1,
+          "expected_net_input_rate_units": 0,
+          "economics_basis": "unavailable"
+        }
+      }
+    },
+    {
+      "name": "unknown-provider-malformed-body",
+      "request": {
+        "scope": "org-a/project-a",
+        "epoch": "unknown-provider-malformed-body",
+        "partition_key": "session-1",
+        "expected_calls": 4,
+        "provider": "acme",
+        "model": "acme-large",
+        "endpoint": "/v1/complete",
+        "runtime_mode": "optimize",
+        "auth_mode": "payg",
+        "prefix_tokens": 5000,
+        "body": "{\"a\":1,\"a\":2}"
+      },
+      "result": {
+        "body": "{\"a\":1,\"a\":2}",
+        "applied": false,
+        "decision": "pass_through",
+        "reason": "malformed_request",
+        "claim_basis": "none",
+        "plan": {
+          "decision": "pass_through",
+          "reason": "unsupported",
+          "profile_id": "unsupported",
+          "mode": "unsupported",
+          "attribution": "none",
+          "key_shard": 0,
+          "key_shard_count": 1,
+          "expected_net_input_rate_units": 0,
+          "economics_basis": "unavailable"
+        }
+      }
+    },
+    {
+      "name": "anthropic-messages-unicode-escape-heavy",
+      "request": {
+        "scope": "org-a/project-a",
+        "epoch": "anthropic-messages-unicode-escape-heavy",
+        "partition_key": "session-1",
+        "expected_calls": 4,
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-6",
+        "endpoint": "/v1/messages",
+        "runtime_mode": "optimize",
+        "auth_mode": "payg",
+        "prefix_tokens": 5000,
+        "body": "{\"model\":\"claude-sonnet-4-6\",\"system\":\"🦣 \\\"mammoth\\\" \u003c\u0026\u003e — 表意文字 ünïcøde\",\"messages\":[{\"role\":\"user\",\"content\":\"héllo\"}],\"max_tokens\":64}"
+      },
+      "result": {
+        "body": "{\"model\":\"claude-sonnet-4-6\",\"system\":[{\"type\":\"text\",\"text\":\"🦣 \\\"mammoth\\\" \u003c\u0026\u003e — 表意文字 ünïcøde\",\"cache_control\":{\"type\":\"ephemeral\"}}],\"messages\":[{\"role\":\"user\",\"content\":\"héllo\"}],\"max_tokens\":64,\"cache_control\":{\"type\":\"ephemeral\"}}",
+        "applied": true,
+        "decision": "apply",
+        "reason": "applied",
+        "optimizer_ids": [
+          "anthropic-cache-breakpoints",
+          "cave-cache-anthropic-rolling-v1"
+        ],
+        "claim_basis": "inferred",
+        "plan": {
+          "decision": "apply",
+          "reason": "applied",
+          "profile_id": "cave-cache-anthropic-v1",
+          "mode": "explicit",
+          "attribution": "causal",
+          "prefix_sha256": "30e8b5112a817e80de72a3138cd1e05848776135681e046b4848c11dc99a5564",
+          "key_shard": 0,
+          "key_shard_count": 1,
+          "breakpoints": [
+            {
+              "after_segment": "native-prefix",
+              "prefix_sha256": "30e8b5112a817e80de72a3138cd1e05848776135681e046b4848c11dc99a5564",
+              "prefix_tokens": 5000,
+              "expected_calls": 4,
+              "break_even_calls": 2,
+              "expected_net_input_rate_units": 12250
+            }
+          ],
+          "expected_net_input_rate_units": 12250,
+          "economics_basis": "modeled_input_rate_units"
+        }
+      }
+    },
+    {
+      "name": "openai-chat-unicode-escape-heavy",
+      "request": {
+        "scope": "org-a/project-a",
+        "epoch": "openai-chat-unicode-escape-heavy",
+        "partition_key": "session-1",
+        "expected_calls": 4,
+        "provider": "openai",
+        "model": "gpt-5.6",
+        "endpoint": "/v1/chat/completions",
+        "runtime_mode": "optimize",
+        "auth_mode": "payg",
+        "prefix_tokens": 5000,
+        "body": "{\"model\":\"gpt-5.6\",\"messages\":[{\"role\":\"system\",\"content\":\"🦣 \\\"mammoth\\\" \u003c\u0026\u003e — 表意文字\"},{\"role\":\"user\",\"content\":\"héllo ünïcøde\"}]}"
+      },
+      "result": {
+        "body": "{\"model\":\"gpt-5.6\",\"messages\":[{\"role\":\"system\",\"content\":[{\"type\":\"text\",\"text\":\"🦣 \\\"mammoth\\\" \\u003c\\u0026\\u003e — 表意文字\",\"prompt_cache_breakpoint\":{\"mode\":\"explicit\"}}]},{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"héllo ünïcøde\",\"prompt_cache_breakpoint\":{\"mode\":\"explicit\"}}]}],\"prompt_cache_key\":\"8a92274daed1469868a4c69cde5eaba4\",\"prompt_cache_options\":{\"mode\":\"explicit\"}}",
+        "applied": true,
+        "decision": "apply",
+        "reason": "applied",
+        "optimizer_ids": [
+          "openai-prompt-cache-key",
+          "cave-cache-openai-explicit-v1"
+        ],
+        "claim_basis": "inferred",
+        "plan": {
+          "decision": "apply",
+          "reason": "applied",
+          "profile_id": "cave-cache-openai-explicit-v1",
+          "mode": "explicit",
+          "attribution": "causal",
+          "prefix_sha256": "f38ae6f5bb285e9996f739d15348ca72902acd88880e7b1842460204f5f7fabb",
+          "routing_key": "8a92274daed1469868a4c69cde5eaba4",
+          "key_shard": 0,
+          "key_shard_count": 1,
+          "breakpoints": [
+            {
+              "after_segment": "native-prefix",
+              "prefix_sha256": "f38ae6f5bb285e9996f739d15348ca72902acd88880e7b1842460204f5f7fabb",
+              "prefix_tokens": 5000,
+              "expected_calls": 4,
+              "break_even_calls": 2,
+              "expected_net_input_rate_units": 12250
+            }
+          ],
+          "expected_net_input_rate_units": 12250,
+          "economics_basis": "modeled_input_rate_units"
+        }
+      }
+    },
+    {
+      "name": "bedrock-invoke-unicode-escape-heavy",
+      "request": {
+        "scope": "org-a/project-a",
+        "epoch": "bedrock-invoke-unicode-escape-heavy",
+        "partition_key": "session-1",
+        "expected_calls": 4,
+        "provider": "bedrock",
+        "model": "global.anthropic.claude-sonnet-4-6",
+        "region": "us-east-1",
+        "endpoint": "invoke",
+        "runtime_mode": "optimize",
+        "auth_mode": "payg",
+        "prefix_tokens": 5000,
+        "body": "{\"system\":\"🦣 \\\"mammoth\\\" \u003c\u0026\u003e — 表意文字 ünïcøde\",\"messages\":[{\"role\":\"user\",\"content\":\"héllo — 表意\"}]}"
+      },
+      "result": {
+        "body": "{\"messages\":[{\"content\":[{\"cache_control\":{\"type\":\"ephemeral\"},\"text\":\"héllo — 表意\",\"type\":\"text\"}],\"role\":\"user\"}],\"system\":[{\"cache_control\":{\"type\":\"ephemeral\"},\"text\":\"🦣 \\\"mammoth\\\" \\u003c\\u0026\\u003e — 表意文字 ünïcøde\",\"type\":\"text\"}]}",
+        "applied": true,
+        "decision": "apply",
+        "reason": "applied",
+        "optimizer_ids": [
+          "bedrock-cache-points",
+          "cave-cache-bedrock-rolling-v1"
+        ],
+        "claim_basis": "inferred",
+        "plan": {
+          "decision": "apply",
+          "reason": "applied",
+          "profile_id": "cave-cache-bedrock-v1",
+          "mode": "explicit",
+          "attribution": "causal",
+          "prefix_sha256": "8606e790c1448bd5d147fb4fa7d136f44794f8de614ecbb26a9d14c66bc44c1f",
+          "key_shard": 0,
+          "key_shard_count": 1,
+          "breakpoints": [
+            {
+              "after_segment": "native-prefix",
+              "prefix_sha256": "8606e790c1448bd5d147fb4fa7d136f44794f8de614ecbb26a9d14c66bc44c1f",
+              "prefix_tokens": 5000,
+              "expected_calls": 4,
+              "break_even_calls": 2,
+              "expected_net_input_rate_units": 12250
+            }
+          ],
+          "expected_net_input_rate_units": 12250,
+          "economics_basis": "modeled_input_rate_units"
+        }
+      }
+    }
+  ]
+}

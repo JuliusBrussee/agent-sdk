@@ -1,0 +1,31 @@
+{
+  "name": "@caveman-ai/adapter-claude-agent-sdk",
+  "version": "0.1.0",
+  "description": "Caveman adapter for Anthropic Claude Agent SDK.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JuliusBrussee/agent-sdk.git",
+    "directory": "packages/adapters/claude-agent-sdk"
+  },
+  "type": "module",
+  "main": "src/index.js",
+  "types": "src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "import": "./src/index.js"
+    },
+    "./manifest": "./src/manifest.js"
+  },
+  "files": ["src", "README.md"],
+  "dependencies": {
+    "@caveman-ai/adapter-kit": "0.1.0"
+  },
+  "peerDependencies": {
+    "@caveman-ai/agent": "0.2.0",
+    "@anthropic-ai/claude-agent-sdk": "0.3.220"
+  },
+  "engines": { "node": ">=22.19.0" },
+  "publishConfig": { "access": "public" }
+}

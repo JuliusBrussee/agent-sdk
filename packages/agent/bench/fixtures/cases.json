@@ -1,0 +1,115 @@
+{
+  "schema": "cavebench.compiler-replay.cases.v1",
+  "declared_tool_schemas": [
+    { "name": "inspect_file", "bytes": 640 },
+    { "name": "search_workspace", "bytes": 720 },
+    { "name": "execute_analysis", "bytes": 910 },
+    { "name": "write_artifact", "bytes": 780 },
+    { "name": "run_verifier", "bytes": 560 },
+    { "name": "legacy_remote_lookup", "bytes": 850 }
+  ],
+  "declared_context_segments": [
+    { "kind": "task", "bytes": "task_file" },
+    { "kind": "policy", "bytes": 512 },
+    { "kind": "legacy_reference", "bytes": 1024 }
+  ],
+  "expected_cardinality": { "train": 4, "dev": 4, "held": 4 },
+  "cases": [
+    {
+      "task_id": "3d-scan-calc",
+      "family": "geometry-artifact-analysis",
+      "split": "train",
+      "required_context": ["task", "policy"],
+      "model_calls": 2,
+      "tool_sequence": ["inspect_file", "execute_analysis", "write_artifact", "run_verifier"]
+    },
+    {
+      "task_id": "bike-rebalance",
+      "family": "discrete-resource-optimization",
+      "split": "train",
+      "required_context": ["task", "policy"],
+      "model_calls": 2,
+      "tool_sequence": ["inspect_file", "execute_analysis", "write_artifact", "run_verifier"]
+    },
+    {
+      "task_id": "citation-check",
+      "family": "document-integrity-audit",
+      "split": "train",
+      "required_context": ["task", "policy"],
+      "model_calls": 2,
+      "tool_sequence": ["inspect_file", "search_workspace", "execute_analysis", "write_artifact", "run_verifier"]
+    },
+    {
+      "task_id": "dialogue-parser",
+      "family": "text-parser-repair",
+      "split": "train",
+      "required_context": ["task", "policy"],
+      "model_calls": 2,
+      "tool_sequence": ["inspect_file", "search_workspace", "write_artifact", "run_verifier"]
+    },
+    {
+      "task_id": "ada-bathroom-plan-repair",
+      "family": "cad-rule-repair",
+      "split": "dev",
+      "required_context": ["task", "policy"],
+      "model_calls": 2,
+      "tool_sequence": ["inspect_file", "execute_analysis", "write_artifact", "run_verifier"]
+    },
+    {
+      "task_id": "azure-bgp-oscillation-route-leak",
+      "family": "network-incident-analysis",
+      "split": "dev",
+      "required_context": ["task", "policy"],
+      "model_calls": 2,
+      "tool_sequence": ["inspect_file", "search_workspace", "execute_analysis", "write_artifact", "run_verifier"]
+    },
+    {
+      "task_id": "earthquake-plate-calculation",
+      "family": "geospatial-calculation",
+      "split": "dev",
+      "required_context": ["task", "policy"],
+      "model_calls": 2,
+      "tool_sequence": ["inspect_file", "execute_analysis", "write_artifact", "run_verifier"]
+    },
+    {
+      "task_id": "econ-detrending-correlation",
+      "family": "spreadsheet-time-series-analysis",
+      "split": "dev",
+      "required_context": ["task", "policy"],
+      "model_calls": 2,
+      "tool_sequence": ["inspect_file", "search_workspace", "execute_analysis", "write_artifact", "run_verifier"]
+    },
+    {
+      "task_id": "crystallographic-wyckoff-position-analysis",
+      "family": "crystal-structure-analysis",
+      "split": "held",
+      "required_context": ["task", "policy"],
+      "model_calls": 2,
+      "tool_sequence": ["inspect_file", "search_workspace", "execute_analysis", "write_artifact", "run_verifier"]
+    },
+    {
+      "task_id": "dynamic-object-aware-egomotion",
+      "family": "video-motion-estimation",
+      "split": "held",
+      "required_context": ["task", "policy"],
+      "model_calls": 2,
+      "tool_sequence": ["inspect_file", "execute_analysis", "write_artifact", "run_verifier"]
+    },
+    {
+      "task_id": "energy-ac-optimal-power-flow",
+      "family": "power-flow-optimization",
+      "split": "held",
+      "required_context": ["task", "policy"],
+      "model_calls": 2,
+      "tool_sequence": ["inspect_file", "execute_analysis", "write_artifact", "run_verifier"]
+    },
+    {
+      "task_id": "energy-market-pricing",
+      "family": "market-clearing-analysis",
+      "split": "held",
+      "required_context": ["task", "policy"],
+      "model_calls": 2,
+      "tool_sequence": ["inspect_file", "search_workspace", "execute_analysis", "write_artifact", "run_verifier"]
+    }
+  ]
+}
