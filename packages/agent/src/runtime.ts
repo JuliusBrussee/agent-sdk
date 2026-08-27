@@ -77,13 +77,16 @@ import { catalogSearchCeiling } from "./catalog.js";
 import { findPackageJSONCompat } from "./node-compat.js";
 import {
   SUMMARY_SCHEMA_VERSION,
+  contextSummarySources,
   elidedDigest,
   evictMessage,
+  latestContextSummary,
   messagesTokens,
   parseContextSummary,
   planCompaction,
   renderSummary,
   summarizationInstruction,
+  validateContextSummaryTransition,
   type ContextSummary,
 } from "./compaction.js";
 import { validateAgentGraph } from "./definition-graph.js";
@@ -107,15 +110,23 @@ import {
 } from "./context-ir.js";
 import {
   memoryTTLMilliseconds,
+  type NestedToolDispatchOptions,
   type SubagentRuntimeDefinition,
   type ToolDefinition,
+  type ToolExecutionContext,
 } from "./primitives.js";
 import {
-  memoryFilePath,
-  mutateMemories,
-  type MemoryEntry,
-  type MemoryStoreConfig,
+  ProgrammaticSpeculationScope,
+  programmaticToolMetadata,
+} from "./programmatic-tools.js";
+import {
+  createFileMemoryAdapter,
 } from "./memory-store.js";
+import {
+  createMemoryEngine,
+  type MemoryEngine,
+  type MemoryRuntimeConfig,
+} from "./memory.js";
 import { networkIsolatedNode } from "./sandbox-network.js";
 import { killProcessTree, portableInvocation } from "./portable-process.js";
 import { expandSourceGraph } from "./source-graph.js";
@@ -131,6 +142,8 @@ export type CavemanRunEvent =
   | { type: "context_ready"; runId: string; contextIR: ContextIR; bill: Record<string, number> }
   | { type: "model_route"; runId: string; decision: ModelCallRouteDecision }
   | { type: "pi"; runId: string; event: AgentEvent }
+  | { type: "nested_tool_start"; runId: string; id: string; name: string; args: unknown }
+  | { type: "nested_tool_end"; runId: string; id: string; name: string; isError: boolean; result: unknown }
   | { type: "run_end"; runId: string; result: RunResult }
   // A run that fails still carries its ledger: `receipt` is the
   // partial receipt built from the same ReceiptRecorder the run_end path uses,
@@ -664,7 +677,7 @@ export interface RunOptions {
    * share an agent id and namespace. Defaults: `CAVE_AGENT_MEMORY_ROOT` or
    * `~/.caveman/agent-memory`, single-tenant.
    */
-  memory?: MemoryStoreConfig;
+  memory?: MemoryRuntimeConfig;
   /**
    * Handle for releasing staged budget during this run. Pair it
    * with `budget.initialUsd` / `budget.initialTokens`: the run starts metered
@@ -1654,6 +1667,12 @@ async function* streamAgentInternal(
   // Declared outside the main try so failed descendants can still be attached
   // to this run's terminal receipt in the catch path.
   const nestedReceipts: RunReceipt[] = [];
+  const programmaticScopesByToolName = new Map<string, ProgrammaticSpeculationScope>();
+  const closeProgrammaticSpeculation = async (): Promise<void> => {
+    await Promise.all(
+      [...programmaticScopesByToolName.values()].map((scope) => scope.close()),
+    );
+  };
   let boundController: BudgetController | undefined;
   let controlledAgent: Agent | undefined;
   let invocationSpanRecord: InvocationSpanRecord | undefined;
@@ -1818,6 +1837,16 @@ async function* streamAgentInternal(
     const gatewayActive = routing.routed;
     const sessionId = durableSessionId ?? options.sessionId ?? conversation?.sessionId ?? `${definition.id}-${runId}`;
     const workflow = options.workflow ?? definition.id;
+    const memoryEngine = definition.memory === undefined
+      ? undefined
+      : resolveMemoryEngine(definition.memory, definition.id, options.memory);
+    // Ambient work needs one engine owned across turns. A one-shot implicit
+    // engine still serves explicit tools, but is never left writing after run.
+    const ambientMemoryActive = definition.memory?.ambient !== false &&
+      options.memory?.engine === memoryEngine;
+    const passiveRecall = !ambientMemoryActive
+      ? undefined
+      : memoryEngine?.beginTurn({ sessionId, text: input });
     const invocationTrace = gatewayActive
       ? options.invocationTrace ?? rootInvocationTrace(
         definition.id,
@@ -1899,6 +1928,15 @@ async function* streamAgentInternal(
       incomplete: false,
       observeOnly: false,
     };
+    let dispatchNestedTool: ((input: {
+      parent: ToolDefinition;
+      parentToolCallId: string;
+      name: string;
+      args: unknown;
+      options: NestedToolDispatchOptions | undefined;
+      parentSignal: AbortSignal;
+      turnKey?: object;
+    }) => Promise<unknown>) | undefined;
     const hasDynamicRecoveryRoute = efficiencyPlan?.segment_routes.some((route) =>
       route.segment_kind === "history" || route.segment_kind === "tool_result") ?? false;
     const hasToolResultRoute = efficiencyPlan?.segment_routes.some((route) =>
@@ -1913,7 +1951,7 @@ async function* streamAgentInternal(
     const dirSkills = agentDirSkills(definition);
     const memoryTools = definition.memory === undefined
       ? []
-      : localMemoryTools(definition.memory, definition.id, options.memory);
+      : localMemoryTools(definition.memory, memoryEngine!);
     // Descendants inherit the durable journal through the execution context:
     // the root's own frozen context predates the journal, so subagents get
     // this extended view — same object otherwise, so nothing else changes.
@@ -1957,6 +1995,17 @@ async function* streamAgentInternal(
           options.engineBin,
           providerTool,
           hasToolResultRoute,
+          item.nestedTools === undefined
+            ? undefined
+            : (request) => {
+              if (dispatchNestedTool === undefined) {
+                throw new Error("cave_nested_tool_dispatch_unavailable");
+              }
+              return dispatchNestedTool({ parent: item, ...request });
+            },
+          programmaticToolMetadata(item) === undefined
+            ? undefined
+            : (toolCallId) => programmaticScopesByToolName.get(item.name)?.finish(toolCallId),
         );
       }),
       ...(needsRecoveryTool ? [recoveryTool(recoveryHandles, options.engineBin, appliedPlan.trace)] : []),
@@ -2109,9 +2158,56 @@ async function* streamAgentInternal(
     let previousRouteUsage: ModelCallRouteInput["previousUsage"];
     const queued: CavemanRunEvent[] = [];
     let wake: (() => void) | undefined;
+    const wakeQueuedConsumer = (): void => {
+      const pending = wake;
+      wake = undefined;
+      pending?.();
+    };
     const toolCalls: string[] = durableResume === undefined
       ? []
       : durableResume.priorToolEvents.map((entry) => entry.name);
+    const configuredToolsByName = new Map(definition.tools.map((item) => [item.name, item]));
+    // Composite containers remain visible in results/receipts but do not buy
+    // extra hidden calls. Direct and nested calls share this one run-local cap.
+    let toolBudgetCallCount = durableResume === undefined
+      ? 0
+      : durableResume.priorToolEvents.reduce((count, entry) =>
+        configuredToolsByName.get(entry.name)?.nestedTools === undefined ? count + 1 : count, 0);
+    let compositeEnvelopeCallCount = durableResume === undefined
+      ? 0
+      : durableResume.priorToolEvents.reduce((count, entry) =>
+        configuredToolsByName.get(entry.name)?.nestedTools === undefined ? count : count + 1, 0);
+    let compositeEnvelopeTurnKey: AssistantMessage | undefined;
+    let compositeEnvelopeTurnCount = 0;
+    const compositeTurnKeys = new Map<string, object>();
+    const nestedOutcomesByParent = new Map<string, Array<{ sequence: number; isError: boolean }>>();
+    type NestedScheduler = {
+      readonly activeReads: Set<Promise<unknown>>;
+      effectTail: Promise<void>;
+    };
+    const nestedSchedulersByParent = new Map<string, NestedScheduler>();
+    const scheduleNested = (
+      parentToolCallId: string,
+      effect: ToolDefinition["effect"],
+      execute: () => Promise<unknown>,
+    ): Promise<unknown> => {
+      let scheduler = nestedSchedulersByParent.get(parentToolCallId);
+      if (scheduler === undefined) {
+        scheduler = { activeReads: new Set(), effectTail: Promise.resolve() };
+        nestedSchedulersByParent.set(parentToolCallId, scheduler);
+      }
+      if (effect === "read") {
+        const work = scheduler.effectTail.then(execute);
+        scheduler.activeReads.add(work);
+        void work.finally(() => scheduler!.activeReads.delete(work)).catch(() => undefined);
+        return work;
+      }
+      const barriers = [scheduler.effectTail, ...scheduler.activeReads];
+      const work = Promise.allSettled(barriers).then(execute);
+      scheduler.effectTail = work.then(() => undefined, () => undefined);
+      return work;
+    };
+    let nestedToolSequence = 0;
     // Turn-state watermark: how much of pi's message array the journal has.
     // Tail identity detects a wholesale rewrite (compaction journals its own
     // snapshot; this is the fail-safe for any other rewrite). The seed itself
@@ -2139,6 +2235,176 @@ async function* streamAgentInternal(
       (efficiencyPlan === undefined
         ? 64
         : Math.max(1, definition.tools.length) * Math.max(1, maxModelCalls - 1));
+    dispatchNestedTool = async ({
+      parent,
+      parentToolCallId,
+      name,
+      args,
+      options: dispatchOptions,
+      parentSignal,
+      turnKey: suppliedTurnKey,
+    }): Promise<unknown> => {
+      const nested = parent.nestedTools?.find((item) => item.name === name);
+      if (nested === undefined) throw new Error(`cave_nested_tool_not_allowed:${name}`);
+      if (dispatchOptions?.claimSpeculation === true) {
+        if (nested.effect !== "read" || nested.speculative !== true ||
+            parent.speculativeTools?.includes(nested.name) !== true) {
+          throw new Error(`cave_nested_tool_speculation_not_allowed:${nested.name}`);
+        }
+        if (args === null || typeof args !== "object" || Array.isArray(args) ||
+            !Value.Check(nested.input, args)) {
+          throw new Error(`cave_tool_input_schema_mismatch:${nested.name}`);
+        }
+        const claimed = programmaticScopesByToolName.get(parent.name)?.claim(
+          parentToolCallId,
+          nested.name,
+          args as Record<string, unknown>,
+          dispatchOptions.signal,
+        );
+        if (claimed !== undefined) return claimed;
+      }
+      const turnKey = suppliedTurnKey ?? compositeTurnKeys.get(parentToolCallId);
+      if (turnKey === undefined) throw new Error("cave_nested_tool_parent_inactive");
+
+      const nestedToolCallId = `${parentToolCallId}:nested:${++nestedToolSequence}`;
+      const outcome = { sequence: nestedToolSequence, isError: true };
+      const parentOutcomes = nestedOutcomesByParent.get(parentToolCallId) ?? [];
+      parentOutcomes.push(outcome);
+      nestedOutcomesByParent.set(parentToolCallId, parentOutcomes);
+      queued.push({
+        type: "nested_tool_start",
+        runId,
+        id: nestedToolCallId,
+        name: nested.name,
+        args,
+      });
+      wakeQueuedConsumer();
+      toolCalls.push(nested.name);
+      toolBudgetCallCount++;
+      receipt.recordToolCall(nested.name);
+      let isError = true;
+      let eventResult: unknown;
+      try {
+        if (deadlineAt !== undefined && performance.now() >= deadlineAt) {
+          stopReason = "deadline";
+          throw new Error("cave_run_deadline_exceeded");
+        }
+        if (budgetMeter?.revoked) {
+          stopReason = "wallet_revoked";
+          throw new Error("cave_budget_revoked");
+        }
+        if (budgetMeter !== undefined &&
+            (budgetMeter.capBreached || budgetMeter.remaining() <= 0)) {
+          stopReason = "budget_exhausted";
+          throw new Error("cave_budget_exhausted");
+        }
+        if (toolBudgetCallCount > maxToolCalls) {
+          throw new Error("cave_tool_call_budget_exceeded");
+        }
+        if (breakers !== undefined) {
+          const decision = breakers.observeToolCall({
+            toolCallId: nestedToolCallId,
+            toolName: nested.name,
+            args,
+            allowRepeat: nested.allowRepeat === true,
+            turnKey,
+          });
+          if (decision.block) throw new Error(decision.reason!);
+        }
+        if (nested.effect === "write" && definition.sandbox === "fixture") {
+          throw new Error("cave_side_effect_blocked");
+        }
+        if (definition.sandbox === "required") {
+          throw new Error("cave_nested_tool_sandbox_unsupported");
+        }
+        if (args === null || typeof args !== "object" || Array.isArray(args) ||
+            !Value.Check(nested.input, args)) {
+          throw new Error(`cave_tool_input_schema_mismatch:${nested.name}`);
+        }
+        const timeout = AbortSignal.timeout(nested.timeoutMs);
+        const signals = [parentSignal, timeout];
+        if (dispatchOptions?.signal !== undefined) signals.push(dispatchOptions.signal);
+        const combined = AbortSignal.any(signals);
+        if (combined.aborted) throw abortSignalError(combined, "cave_nested_tool_aborted");
+        const value = await scheduleNested(parentToolCallId, nested.effect, async () => {
+          if (combined.aborted) throw abortSignalError(combined, "cave_nested_tool_aborted");
+          if (deadlineAt !== undefined && performance.now() >= deadlineAt) {
+            stopReason = "deadline";
+            throw new Error("cave_run_deadline_exceeded");
+          }
+          if (budgetMeter?.revoked) throw new Error("cave_budget_revoked");
+          return nested.runtime?.kind === "subagent"
+            ? executeSubagent(
+                nested,
+                args,
+                combined,
+                { ...nestedOptions, model },
+                nestedUsage,
+                executionContextForDescendants,
+                budgetMeter,
+                deadlineAt,
+              )
+            : nested.execute(args, combined);
+        });
+        isError = false;
+        eventResult = value;
+        if (nested.effect === "write") turnStateChanged = true;
+        if (nested.runtime?.kind === "subagent") turnStateChanged = true;
+        return value;
+      } catch (error) {
+        eventResult = error instanceof Error ? error.message : String(error);
+        throw error;
+      } finally {
+        outcome.isError = isError;
+        receipt.recordToolOutcome(nested.name, isError);
+        breakers?.observeToolResult(nestedToolCallId, isError);
+        queued.push({
+          type: "nested_tool_end",
+          runId,
+          id: nestedToolCallId,
+          name: nested.name,
+          isError,
+          result: eventResult,
+        });
+        wakeQueuedConsumer();
+        if (activeJournal !== undefined) {
+          activeJournal.emit({
+            v: DURABLE_JOURNAL_VERSION,
+            at: activeJournal.now(),
+            type: "tool",
+            name: nested.name,
+            isError,
+          });
+          await activeJournal.flush();
+        }
+      }
+    };
+    const foldNestedOutcomes = (parentToolCallId: string): void => {
+      for (const outcome of (nestedOutcomesByParent.get(parentToolCallId) ?? [])
+        .sort((left, right) => left.sequence - right.sequence)) {
+        toolErrorStreak = outcome.isError ? toolErrorStreak + 1 : 0;
+      }
+      nestedOutcomesByParent.delete(parentToolCallId);
+      nestedSchedulersByParent.delete(parentToolCallId);
+    };
+    for (const parent of definition.tools) {
+      const metadata = programmaticToolMetadata(parent);
+      if (metadata?.enabled !== true) continue;
+      programmaticScopesByToolName.set(parent.name, new ProgrammaticSpeculationScope(
+        runId,
+        parent,
+        (launch) => dispatchNestedTool!({
+          parent,
+          parentToolCallId: launch.parentToolCallId,
+          name: launch.name,
+          args: launch.args,
+          options: { signal: launch.signal },
+          parentSignal: launch.signal,
+          turnKey: launch.turnKey,
+        }),
+        foldNestedOutcomes,
+      ));
+    }
     const accountedAssistantMessages = new WeakSet<object>();
     const accountProviderMessage = (message: AssistantMessage): void => {
       // beforeToolCall runs after the provider message but before its tools.
@@ -2393,6 +2659,12 @@ async function* streamAgentInternal(
           throw new Error("cave_reasoning_budget_exceeded");
         }
       }
+      // Any provider-stream bet that the just-finished turn did not claim is
+      // cancelled and durably settled before routing or admitting another
+      // paid call. This keeps breaker and receipt state causally ordered.
+      await Promise.all(
+        [...programmaticScopesByToolName.values()].map((scope) => scope.settleBeforeNextStream()),
+      );
       // The hard model-call ceiling is a stop condition, not a failure: ending
       // the run through the same graceful path as every other stop keeps the
       // partial work and the receipt intact. Checked before the
@@ -2524,7 +2796,8 @@ async function* streamAgentInternal(
         : streamOptions?.signal === undefined
           ? options.signal
           : AbortSignal.any([streamOptions.signal, options.signal]);
-      const streamOnce = () => baseStream(selected, context, {
+      const streamOnce = async () => {
+        let source = await baseStream(selected, context, {
         ...streamOptions,
         ...(options.cacheRetention === undefined
           ? {}
@@ -2624,7 +2897,12 @@ async function* streamAgentInternal(
             providerModel,
           );
         },
-      });
+        });
+        for (const scope of programmaticScopesByToolName.values()) {
+          source = scope.wrapStream(source);
+        }
+        return source;
+      };
       if (activeJournal !== undefined) {
         // The intent is durable BEFORE the provider can be reached: a crash
         // from here until the settle lands is exactly the at-least-once
@@ -2714,15 +2992,19 @@ async function* streamAgentInternal(
       },
       sessionId,
       streamFn,
-      transformContext: async (messages) => transformConversationContext(
-        messages,
+      transformContext: async (messages) => injectMemoryPrompt(
+        await transformConversationContext(
+          messages,
+          originalConversationMessages.length,
+          lowered,
+          efficiencyPlan,
+          options.engineBin,
+          appliedPlan,
+          conversationOriginals,
+          options.signal,
+        ),
         originalConversationMessages.length,
-        lowered,
-        efficiencyPlan,
-        options.engineBin,
-        appliedPlan,
-        conversationOriginals,
-        options.signal,
+        passiveRecall?.prompt,
       ),
       // The between-calls point where a compaction can persist: the turn has
       // settled, no tool is in flight, and the replacement context this returns
@@ -2902,6 +3184,7 @@ async function* streamAgentInternal(
       },
       beforeToolCall: async ({ toolCall, args, assistantMessage }) => {
         accountProviderMessage(assistantMessage);
+        const configured = configuredToolsByName.get(toolCall.name);
         if (deadlineAt !== undefined && performance.now() >= deadlineAt) {
           stopReason = "deadline";
           return { block: true, reason: "cave_run_deadline_exceeded" };
@@ -2915,18 +3198,32 @@ async function* streamAgentInternal(
           stopReason = "budget_exhausted";
           return { block: true, reason: "cave_budget_exhausted" };
         }
-        // Pi emits tool_execution_start before this hook, so current call is
-        // already present. Block only calls beyond locked ceiling.
-        if (toolCalls.length > maxToolCalls) {
+        // Pi emits tool_execution_start before this hook, so direct calls are
+        // already admitted. Composite containers do not consume this cap;
+        // their kernel-dispatched nested calls do.
+        if (toolBudgetCallCount > maxToolCalls) {
           return { block: true, reason: "cave_tool_call_budget_exceeded" };
         }
-        if (breakers !== undefined) {
+        if (configured?.nestedTools !== undefined) {
+          if (compositeEnvelopeCallCount > maxToolCalls) {
+            return { block: true, reason: "cave_tool_call_budget_exceeded" };
+          }
+          if (compositeEnvelopeTurnKey !== assistantMessage) {
+            compositeEnvelopeTurnKey = assistantMessage;
+            compositeEnvelopeTurnCount = 0;
+          }
+          compositeEnvelopeTurnCount++;
+          if (breakers !== undefined &&
+              compositeEnvelopeTurnCount > breakers.config.maxToolCallsPerTurn) {
+            return { block: true, reason: "cave_fan_out_cap_exceeded" };
+          }
+        }
+        if (breakers !== undefined && configured?.nestedTools === undefined) {
           const decision = breakers.observeToolCall({
             toolCallId: toolCall.id,
             toolName: toolCall.name,
             args,
-            allowRepeat: definition.tools.find((item) => item.name === toolCall.name)
-              ?.allowRepeat === true,
+            allowRepeat: configured?.allowRepeat === true,
             turnKey: assistantMessage,
           });
           if (decision.block) return { block: true, reason: decision.reason! };
@@ -2939,10 +3236,12 @@ async function* streamAgentInternal(
           }
           return undefined;
         }
-        const configured = definition.tools.find((item) => item.name === toolCall.name);
         if (!configured) return { block: true, reason: "cave_unknown_tool" };
         if (configured.effect === "write" && definition.sandbox === "fixture") {
           return { block: true, reason: "cave_side_effect_blocked" };
+        }
+        if (configured.nestedTools !== undefined && definition.sandbox === "required") {
+          return { block: true, reason: "cave_nested_tool_sandbox_unsupported" };
         }
         if (definition.sandbox === "required" &&
             configured.runtime?.kind !== "subagent" &&
@@ -2951,6 +3250,32 @@ async function* streamAgentInternal(
         }
         if (args === null || typeof args !== "object" || Array.isArray(args)) {
           return { block: true, reason: "cave_tool_arguments_invalid" };
+        }
+        if (configured.nestedTools !== undefined) {
+          const activation = programmaticScopesByToolName.get(configured.name)?.activate(
+            toolCall.id,
+            assistantMessage,
+            isRecord(args) ? args.code : undefined,
+          );
+          if (activation === undefined) {
+            compositeTurnKeys.set(toolCall.id, assistantMessage);
+          } else {
+            compositeTurnKeys.set(toolCall.id, activation.turnKey);
+            const speculativeOutcomes = nestedOutcomesByParent.get(
+              activation.provisionalParentToolCallId,
+            );
+            if (speculativeOutcomes !== undefined) {
+              nestedOutcomesByParent.delete(activation.provisionalParentToolCallId);
+              nestedOutcomesByParent.set(toolCall.id, speculativeOutcomes);
+            }
+            const speculativeScheduler = nestedSchedulersByParent.get(
+              activation.provisionalParentToolCallId,
+            );
+            if (speculativeScheduler !== undefined) {
+              nestedSchedulersByParent.delete(activation.provisionalParentToolCallId);
+              nestedSchedulersByParent.set(toolCall.id, speculativeScheduler);
+            }
+          }
         }
         return undefined;
       },
@@ -2987,17 +3312,29 @@ async function* streamAgentInternal(
       if (event.type === "tool_execution_start") {
         toolCalls.push(event.toolName);
         receipt.recordToolCall(event.toolName);
+        if (configuredToolsByName.get(event.toolName)?.nestedTools === undefined) {
+          toolBudgetCallCount++;
+        } else {
+          compositeEnvelopeCallCount++;
+        }
       }
       if (event.type === "tool_execution_end") {
         receipt.recordToolOutcome(event.toolName, event.isError);
-        breakers?.observeToolResult(event.toolCallId, event.isError);
-        toolErrorStreak = event.isError ? toolErrorStreak + 1 : 0;
-        const configured = definition.tools.find((item) => item.name === event.toolName);
+        const configured = configuredToolsByName.get(event.toolName);
+        if (configured?.nestedTools === undefined) {
+          breakers?.observeToolResult(event.toolCallId, event.isError);
+        } else {
+          foldNestedOutcomes(event.toolCallId);
+          compositeTurnKeys.delete(event.toolCallId);
+        }
+        if (configured?.nestedTools === undefined) {
+          toolErrorStreak = event.isError ? toolErrorStreak + 1 : 0;
+        }
         // Progress follows state, not display text. Declared writes are the
         // obvious case; framework-owned memory tools and successful subagents
         // can also mutate durable or opaque child state while returning the
         // same short result each turn.
-        if (!event.isError && (configured?.effect === "write" ||
+        if (!event.isError && ((configured?.nestedTools === undefined && configured?.effect === "write") ||
             configured?.runtime?.kind === "subagent" ||
             event.toolName.startsWith("cave_memory_"))) {
           turnStateChanged = true;
@@ -3090,6 +3427,7 @@ async function* streamAgentInternal(
       }
     }
     await execution;
+    await closeProgrammaticSpeculation();
     if (efficiencyPlan && reasoningUsageUnavailable) {
       throw new Error("cave_reasoning_usage_unavailable");
     }
@@ -3117,6 +3455,9 @@ async function* streamAgentInternal(
       throw new Error(`cave_provider_terminal_${finalMessage.stopReason}`);
     }
     const text = finalMessage === undefined ? "" : assistantText(finalMessage);
+    if (ambientMemoryActive && text !== "") {
+      memoryEngine?.endTurn({ sessionId, text });
+    }
     if (definition.output?.schema && finalMessage !== undefined) {
       let parsed: unknown;
       try {
@@ -3265,7 +3606,8 @@ async function* streamAgentInternal(
     await releaseRunResources();
     finishInvocationSpan(1);
     yield { type: "run_end", runId, result };
-  } catch (error) {
+  } catch (caughtError) {
+    let error: unknown = caughtError;
     if (pendingSpendReservations.length > 0) {
       markSpendIncomplete(executionContext.spendLedgers);
     }
@@ -3274,6 +3616,11 @@ async function* streamAgentInternal(
     budgetMeter?.revoke();
     activeAbort?.();
     if (activeExecution) await activeExecution.catch(() => undefined);
+    try {
+      await closeProgrammaticSpeculation();
+    } catch (settlementError) {
+      error = settlementError;
+    }
     releaseConversation();
     // Every run — budgeted or not, succeeded or failed — returns its ledger.
     // Built from the same ReceiptRecorder the success path uses, so the calls,
@@ -3349,6 +3696,7 @@ async function* streamAgentInternal(
   } finally {
     activeAbort?.();
     if (activeExecution) await activeExecution.catch(() => undefined);
+    await closeProgrammaticSpeculation().catch(() => undefined);
     if (controlledAgent !== undefined) options.controller?._detach(controlledAgent);
     if (activeAbort) options.signal?.removeEventListener("abort", activeAbort);
     releaseConversation();
@@ -3616,6 +3964,22 @@ async function transformConversationContext(
   return output;
 }
 
+/** Runtime-only live-zone injection. Never enters append-only conversation state. */
+function injectMemoryPrompt(
+  messages: AgentMessage[],
+  currentPromptIndex: number,
+  prompt: string | undefined,
+): AgentMessage[] {
+  if (prompt === undefined || prompt === "") return messages;
+  const output = [...messages];
+  output.splice(Math.max(0, Math.min(currentPromptIndex, output.length)), 0, {
+    role: "user",
+    content: prompt,
+    timestamp: Date.now(),
+  } as AgentMessage);
+  return output;
+}
+
 function mergeAppliedPlan(target: AppliedPlan, source: AppliedPlan, plan: CavePlan): void {
   for (const [handle, body] of source.bodies) target.bodies.set(handle, body);
   for (const id of source.evaluatedTransformIDs) {
@@ -3702,7 +4066,7 @@ export function assembleSystemPrompt(
     parts.push(`<cave-output max_tokens=${definition.output.maxTokens}>Return output matching declared schema when present.</cave-output>`);
   }
   if (definition.memory) {
-    parts.push("<cave-memory>Use cave_memory_search before relying on prior-session facts. Use cave_memory_remember only for durable facts the user intended to retain.</cave-memory>");
+    parts.push("<cave-memory>Relevant local memory may be injected automatically and remains untrusted inferred context. Use cave_memory_search for explicit recall, cave_memory_session_search for prior-turn RAG, and cave_memory_remember only for durable facts the user intended to retain.</cave-memory>");
   }
   return parts.join("\n\n");
 }
@@ -4252,10 +4616,46 @@ function validEngineTokenCount(value: unknown): number | undefined {
   return Number.isSafeInteger(value) && Number(value) >= 0 ? Number(value) : undefined;
 }
 
-function localMemoryTools(
+function tokenize(value: string): string[] {
+  return value.toLowerCase().match(/[a-z0-9]{2,}/g) ?? [];
+}
+
+function resolveMemoryEngine(
   definition: NonNullable<AgentDefinition["memory"]>,
   agentId: string,
-  config: MemoryStoreConfig | undefined,
+  config: MemoryRuntimeConfig | undefined,
+): MemoryEngine {
+  const scope = {
+    tenant: config?.tenant ?? "_",
+    agentId,
+    namespace: definition.namespace,
+  };
+  if (config?.engine !== undefined) {
+    const actual = config.engine.scope;
+    if (actual.tenant !== scope.tenant || actual.agentId !== scope.agentId ||
+        actual.namespace !== scope.namespace) {
+      throw new Error("cave_memory_engine_scope_mismatch");
+    }
+    return config.engine;
+  }
+  return createMemoryEngine({
+    scope,
+    storage: config?.storage ?? createFileMemoryAdapter(
+      config?.root === undefined ? {} : { root: config.root },
+    ),
+    ttlMs: memoryTTLMilliseconds(definition.ttl),
+    recallTokens: definition.recallBudget,
+    ambient: definition.ambient,
+    ...(config?.embedding === undefined ? {} : { embedding: config.embedding }),
+    ...(config?.sidecar === undefined ? {} : { sidecar: config.sidecar }),
+    ...(config?.onError === undefined ? {} : { onError: config.onError }),
+    ...(config?.allowStore === undefined ? {} : { allowStore: config.allowStore }),
+  });
+}
+
+function localMemoryTools(
+  definition: NonNullable<AgentDefinition["memory"]>,
+  engine: MemoryEngine,
 ): AgentTool<TSchema>[] {
   // Defense in depth: memory() already rejects a non-local provenance/consent at
   // construction, but a hand-built MemoryDefinition must still fail
@@ -4264,11 +4664,6 @@ function localMemoryTools(
   if (definition.provenance !== "local" || definition.consent !== "local_only") {
     throw new Error("cave_memory_shared_backend_unavailable");
   }
-  // Resolved once so a validation failure surfaces at setup, and every entry is
-  // scoped by (tenant, agentId, namespace): two AgentDefinitions declaring the
-  // same namespace in one process write to different files and never bleed.
-  const filePath = memoryFilePath(config, agentId, definition.namespace);
-  const ttl = memoryTTLMilliseconds(definition.ttl);
   const recall: AgentTool<TSchema> = {
     name: "cave_memory_search",
     label: "cave_memory_search",
@@ -4277,27 +4672,8 @@ function localMemoryTools(
     executionMode: "parallel",
     async execute(_toolCallId, params) {
       const query = (params as { query: string }).query;
-      const now = Date.now();
-      // Eviction on read: a memory past its declared ttl is neither returned nor
-      // kept — the durable set is rewritten with only the live entries.
-      const live = await mutateMemories(filePath, (entries) =>
-        entries.filter((entry) => now - entry.createdAt <= ttl));
-      const terms = tokenize(query);
-      const ranked = live
-        .map((entry) => ({
-          entry,
-          score: terms.reduce((score, term) => score + tokenize(entry.text).filter((value) => value === term).length, 0),
-        }))
-        .filter((item) => item.score > 0)
-        .sort((first, second) => second.score-first.score || second.entry.createdAt-first.entry.createdAt);
-      const maxChars = definition.recallBudget * 4;
-      const hits: string[] = [];
-      let used = 0;
-      for (const item of ranked) {
-        if (used + item.entry.text.length > maxChars) continue;
-        hits.push(item.entry.text);
-        used += item.entry.text.length;
-      }
+      const hits = await engine.search(query);
+      const used = hits.reduce((sum, hit) => sum + hit.text.length, 0);
       return {
         content: [{ type: "text", text: JSON.stringify({ hits, basis: "inferred", namespace: definition.namespace }) }],
         details: { namespace: definition.namespace, recallTokensEstimated: Math.ceil(used / 4) },
@@ -4311,25 +4687,36 @@ function localMemoryTools(
     parameters: Type.Object({ text: Type.String() }),
     executionMode: "sequential",
     async execute(_toolCallId, params) {
-      const text = (params as { text: string }).text.trim();
-      if (text.length === 0 || text.length > 8_192) throw new Error("cave_memory_value_invalid");
-      await mutateMemories(filePath, (entries) => {
-        const next: MemoryEntry[] = entries.some((entry) => entry.text === text)
-          ? entries
-          : [...entries, { text, createdAt: Date.now() }];
-        return next.length > 1_000 ? next.slice(next.length - 1_000) : next;
-      });
+      const remembered = await engine.remember({ text: (params as { text: string }).text });
       return {
-        content: [{ type: "text", text: JSON.stringify({ remembered: true, basis: "inferred" }) }],
+        content: [{ type: "text", text: JSON.stringify({
+          remembered: true,
+          id: remembered.id,
+          basis: "inferred",
+        }) }],
         details: { namespace: definition.namespace },
       };
     },
   };
-  return [recall, remember];
-}
-
-function tokenize(value: string): string[] {
-  return value.toLowerCase().match(/[a-z0-9]{2,}/g) ?? [];
+  const sessionSearch: AgentTool<TSchema> = {
+    name: "cave_memory_session_search",
+    label: "cave_memory_session_search",
+    description: "Search bounded prior local session turns in declared namespace.",
+    parameters: Type.Object({ query: Type.String() }),
+    executionMode: "parallel",
+    async execute(_toolCallId, params) {
+      const hits = await engine.searchSessions((params as { query: string }).query);
+      return {
+        content: [{ type: "text", text: JSON.stringify({
+          hits,
+          basis: "inferred",
+          namespace: definition.namespace,
+        }) }],
+        details: { namespace: definition.namespace, hits: hits.length },
+      };
+    },
+  };
+  return [recall, remember, sessionSearch];
 }
 
 function bytesEqual(first: Uint8Array, second: Uint8Array): boolean {
@@ -5017,6 +5404,28 @@ function raceToolTimeout<T>(work: Promise<T>, timeoutMs: number): Promise<T> {
   });
 }
 
+async function boundedSettlement(
+  work: readonly Promise<unknown>[],
+  graceMs: number,
+): Promise<boolean> {
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<false>((resolve) => {
+    timer = setTimeout(() => resolve(false), graceMs);
+  });
+  try {
+    return await Promise.race([
+      Promise.allSettled(work).then(() => true as const),
+      timeout,
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
+function abortSignalError(signal: AbortSignal, fallback: string): Error {
+  return signal.reason instanceof Error ? signal.reason : new Error(fallback);
+}
+
 function toPiTool(
   definition: ToolDefinition,
   sandboxExecute?: (params: unknown, signal?: AbortSignal) => Promise<unknown>,
@@ -5024,6 +5433,14 @@ function toPiTool(
   engineBin?: string,
   providerDefinition?: { description: string; input: TSchema },
   deferLockedToolResult = false,
+  nestedDispatch?: (input: {
+    parentToolCallId: string;
+    name: string;
+    args: unknown;
+    options: NestedToolDispatchOptions | undefined;
+    parentSignal: AbortSignal;
+  }) => Promise<unknown>,
+  nestedFinalize?: (parentToolCallId: string) => Promise<void> | undefined,
 ): AgentTool<TSchema> {
   return {
     name: definition.name,
@@ -5031,21 +5448,71 @@ function toPiTool(
     description: providerDefinition?.description ?? definition.description,
     parameters: providerDefinition?.input ?? definition.input,
     executionMode: definition.effect === "read" ? "parallel" : "sequential",
-    async execute(_toolCallId, params, signal) {
+    async execute(toolCallId, params, signal) {
       const timeout = AbortSignal.timeout(definition.timeoutMs);
       const combined = signal ? AbortSignal.any([signal, timeout]) : timeout;
-      // The worker path is bounded by killing its process; the IN-PROCESS
-      // (host/fixture) path is a closure this process cannot preempt, so a
-      // closure that ignores `combined` would hang the run forever. Race it
-      // against a hard deadline so the run stops waiting at timeoutMs with
-      // cave_tool_timeout (the closure keeps running in the background — JS
-      // cannot preempt it — but it no longer blocks the run).
-      const value = sandboxExecute
-        ? await sandboxExecute(params, combined)
-        : await raceToolTimeout(
-          Promise.resolve(definition.execute(params, combined)),
-          definition.timeoutMs,
-        );
+      // Direct in-process closures are bounded by the outer race. Composite
+      // tools additionally drain admitted nested work below: finite writes
+      // cannot mutate after settlement, while a non-cooperative nested closure
+      // honestly remains unquiesced instead of reporting false completion.
+      const nestedInvocations: Promise<unknown>[] = [];
+      let acceptingNestedCalls = true;
+      const context: ToolExecutionContext | undefined = definition.nestedTools === undefined
+        ? undefined
+        : Object.freeze({
+          parentToolCallId: toolCallId,
+          dispatch(name: string, args: unknown, options?: NestedToolDispatchOptions) {
+            let pending: Promise<unknown>;
+            try {
+              if (!acceptingNestedCalls) {
+                throw new Error("cave_nested_tool_parent_inactive");
+              }
+              if (nestedDispatch === undefined) {
+                throw new Error("cave_nested_tool_dispatch_unavailable");
+              }
+              pending = nestedDispatch({
+                parentToolCallId: toolCallId,
+                name,
+                args,
+                options,
+                parentSignal: combined,
+              });
+            } catch (error) {
+              pending = Promise.reject(error);
+            }
+            nestedInvocations.push(pending);
+            void pending.catch(() => undefined);
+            return pending;
+          },
+        });
+      let value: unknown;
+      let executionError: unknown;
+      let executionFailed = false;
+      try {
+        value = sandboxExecute
+          ? await sandboxExecute(params, combined)
+          : await raceToolTimeout(
+            Promise.resolve(definition.execute(params, combined, context)),
+            definition.timeoutMs,
+          );
+      } catch (error) {
+        executionFailed = true;
+        executionError = error;
+      }
+      acceptingNestedCalls = false;
+      // A composite cannot settle while nested mutations remain in flight.
+      // Program-owned error handling decides whether a nested rejection is
+      // recovered; kernel still waits for every admitted call to quiesce.
+      const finalize = nestedFinalize?.(toolCallId);
+      if (finalize !== undefined) {
+        nestedInvocations.push(finalize);
+        void finalize.catch(() => undefined);
+      }
+      if (nestedInvocations.length > 0) {
+        const quiesced = await boundedSettlement(nestedInvocations, 1_000);
+        if (!quiesced) throw new Error("cave_program_nested_calls_unquiesced");
+      }
+      if (executionFailed) throw executionError;
       const text = typeof value === "string" ? value : JSON.stringify(value);
       const raw = new TextEncoder().encode(text ?? "null");
       const maxInlineBytes = definition.artifact === undefined
@@ -5491,6 +5958,8 @@ async function compactContext(input: {
   const config = input.meter.compaction;
   const accountingAt = new Date();
   const plan = planCompaction(input.messages, config);
+  const summarySources = contextSummarySources(input.messages, plan.summarizable);
+  const previousSummary = input.previousSummary ?? latestContextSummary(input.messages);
   const preTokens = messagesTokens(input.messages);
   const elidedDigests: string[] = [];
   const evictable = new Set(plan.evictable);
@@ -5528,7 +5997,7 @@ async function compactContext(input: {
       cacheState: input.cacheState,
       meteredCost: 0,
       });
-    return { messages: evicted, summary: input.previousSummary };
+    return { messages: evicted, summary: previousSummary };
   }
 
   const recentSet = new Set(plan.recent);
@@ -5544,7 +6013,7 @@ async function compactContext(input: {
     ...evicted,
     {
       role: "user",
-      content: summarizationInstruction(input.previousSummary),
+      content: summarizationInstruction(previousSummary, summarySources),
       timestamp: Date.now(),
     } as AgentMessage,
   ];
@@ -5731,6 +6200,10 @@ async function compactContext(input: {
   const summary = parseContextSummary(assistantText(assistant));
   // A summary that does not validate is discarded, never shipped.
   if (summary === undefined) return evictionHelped ? finishEviction(metered) : undefined;
+  const transition = validateContextSummaryTransition(
+    summary, previousSummary, summarySources,
+  );
+  if (!transition.ok) return evictionHelped ? finishEviction(metered) : undefined;
   const compacted = [...head, summaryMessage(renderSummary(summary)), ...tail];
   const postTokens = messagesTokens(compacted);
   // Pinned survival is STRUCTURAL here, not something to re-assert: `head` and
@@ -5766,7 +6239,7 @@ async function compactContext(input: {
       cacheState: input.cacheState,
       meteredCost,
       });
-    return { messages: evicted, summary: input.previousSummary };
+    return { messages: evicted, summary: previousSummary };
   }
 }
 
@@ -5788,13 +6261,19 @@ function summaryMessage(body: Record<string, unknown>): AgentMessage {
   return {
     role: "user",
     content: `<cave-context-summary>\n${JSON.stringify(body)}\n</cave-context-summary>`,
+    caveContextSummary: true,
     timestamp: Date.now(),
   } as AgentMessage;
 }
 
 /** Worst-case summary body used to model the post-compaction context before paying for one. */
 function placeholderSummary(summaryMaxTokens: number): Record<string, unknown> {
-  return { schema_version: SUMMARY_SCHEMA_VERSION, objective: "x".repeat(summaryMaxTokens * 4) };
+  return {
+    schema_version: SUMMARY_SCHEMA_VERSION,
+    generation: 1,
+    anchors: [],
+    objective: "x".repeat(summaryMaxTokens * 4),
+  };
 }
 
 async function retryModelCall(
@@ -6330,15 +6809,18 @@ function requiresSandboxEntry(
 ): boolean {
   const sandboxRequired = inheritedRequired || definition.sandbox === "required";
   for (const declared of definition.tools) {
-    if (declared.runtime?.kind !== "subagent") {
-      if (sandboxRequired) return true;
-      continue;
-    }
-    const child = declared.runtime.definition;
-    if (child !== null && typeof child === "object" &&
-        (child as { kind?: unknown }).kind === "agent" &&
-        requiresSandboxEntry(child as AgentDefinition, sandboxRequired)) {
-      return true;
+    const candidates = [declared, ...(declared.nestedTools ?? [])];
+    for (const candidate of candidates) {
+      if (candidate.runtime?.kind !== "subagent") {
+        if (candidate === declared && sandboxRequired) return true;
+        continue;
+      }
+      const child = candidate.runtime.definition;
+      if (child !== null && typeof child === "object" &&
+          (child as { kind?: unknown }).kind === "agent" &&
+          requiresSandboxEntry(child as AgentDefinition, sandboxRequired)) {
+        return true;
+      }
     }
   }
   return false;

@@ -103,6 +103,24 @@ export class PebbleEventEncoder {
     } as TurnEvent;
   }
 
+  nestedToolStart(id: string, name: string, args: unknown): TurnEvent {
+    return this.event({
+      kind: "tool.start",
+      id,
+      name,
+      argsSummary: shortJson(args),
+    });
+  }
+
+  nestedToolEnd(id: string, isError: boolean, result: unknown): TurnEvent {
+    return this.event({
+      kind: "tool.end",
+      id,
+      status: isError ? "failed" : "completed",
+      detail: shortJson(result),
+    });
+  }
+
   pi(event: AgentEvent): TurnEvent[] {
     switch (event.type) {
       case "message_update": {
@@ -121,12 +139,7 @@ export class PebbleEventEncoder {
         return usage === undefined ? [] : [this.event(usage)];
       }
       case "tool_execution_start":
-        return [this.event({
-          kind: "tool.start",
-          id: event.toolCallId,
-          name: event.toolName,
-          argsSummary: shortJson(event.args),
-        })];
+        return [this.nestedToolStart(event.toolCallId, event.toolName, event.args)];
       case "tool_execution_update":
         return [this.event({
           kind: "tool.update",
@@ -157,4 +170,3 @@ export class PebbleEventEncoder {
     return [this.event({ kind: "turn.end", stopReason: protocolStopReason(event.result) })];
   }
 }
-

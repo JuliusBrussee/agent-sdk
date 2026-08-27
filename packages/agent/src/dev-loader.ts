@@ -116,8 +116,10 @@ export function agentFileSourcePaths(definition: AgentDefinition): string[] {
       if (typeof context.source !== "string") paths.add(context.source.path);
     }
     for (const declared of current.tools) {
-      if (declared.runtime?.kind === "subagent") {
-        visit(declared.runtime.definition as AgentDefinition);
+      for (const candidate of [declared, ...(declared.nestedTools ?? [])]) {
+        if (candidate.runtime?.kind === "subagent") {
+          visit(candidate.runtime.definition as AgentDefinition);
+        }
       }
     }
   };

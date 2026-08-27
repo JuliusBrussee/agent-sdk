@@ -1,8 +1,37 @@
 import type { AgentDefinition } from "./index.js";
+import type { ToolDefinition } from "./primitives.js";
 
 const TOOL_IMPLEMENTATION_SOURCE = Symbol.for(
   "@caveman-ai/agent:tool-implementation-source",
 );
+
+function subagentChildren(tool: ToolDefinition): AgentDefinition[] {
+  const children: AgentDefinition[] = [];
+  if (tool.runtime?.kind === "subagent") {
+    children.push(tool.runtime.definition as AgentDefinition);
+  }
+  for (const nested of tool.nestedTools ?? []) {
+    if (nested.runtime?.kind === "subagent") {
+      children.push(nested.runtime.definition as AgentDefinition);
+    }
+  }
+  return children;
+}
+
+export function agentGraphHasSubagents(root: AgentDefinition): boolean {
+  const visited = new Set<AgentDefinition>();
+  const visit = (definition: AgentDefinition): boolean => {
+    if (!definition || visited.has(definition)) return false;
+    visited.add(definition);
+    for (const declared of definition.tools ?? []) {
+      const children = subagentChildren(declared);
+      if (children.length > 0) return true;
+      if (children.some(visit)) return true;
+    }
+    return false;
+  };
+  return visit(root);
+}
 
 export function validateAgentGraph(root: AgentDefinition): void {
   // Memoize per inherited containment posture: the same child definition
@@ -32,22 +61,26 @@ export function validateAgentGraph(root: AgentDefinition): void {
     const childSandboxRequired = sandboxRequired ||
       definition.sandbox === "required";
     const names = new Set<string>();
-    for (const declared of definition.tools) {
+    const validateTool = (declared: ToolDefinition): void => {
       if (!declared || declared.kind !== "tool" ||
           typeof declared.name !== "string") {
         throw new Error("cave_tool_definition_invalid");
       }
-      if (names.has(declared.name)) throw new Error("cave_duplicate_tool_name");
-      names.add(declared.name);
       if (declared.name.startsWith("cave_")) {
         throw new Error(`cave_reserved_tool_name:${declared.name}`);
       }
       if (typeof Reflect.get(declared, TOOL_IMPLEMENTATION_SOURCE) !== "string") {
         throw new Error(`cave_untrusted_tool_definition:${declared.name}`);
       }
-      if (declared.runtime?.kind !== "subagent") continue;
-      const child = declared.runtime.definition as AgentDefinition;
-      visit(child, depth + 1, childSandboxRequired);
+      for (const nested of declared.nestedTools ?? []) validateTool(nested);
+      for (const child of subagentChildren(declared)) {
+        visit(child, depth + 1, childSandboxRequired);
+      }
+    };
+    for (const declared of definition.tools) {
+      if (names.has(declared.name)) throw new Error("cave_duplicate_tool_name");
+      names.add(declared.name);
+      validateTool(declared);
     }
     active.delete(definition);
     memo.add(definition);
@@ -77,8 +110,9 @@ export function graphUsesHostSandbox(root: AgentDefinition): boolean {
     if (definition.sandbox === "host") return true;
     if (!Array.isArray(definition.tools)) return false;
     for (const declared of definition.tools) {
-      if (declared?.runtime?.kind !== "subagent") continue;
-      if (visit(declared.runtime.definition as AgentDefinition)) return true;
+      for (const child of subagentChildren(declared)) {
+        if (visit(child)) return true;
+      }
     }
     return false;
   };

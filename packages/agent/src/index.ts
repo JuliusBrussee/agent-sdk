@@ -14,6 +14,10 @@ export * from "./trajectory-ir.js";
 export * from "./profile.js";
 export * from "./compiler.js";
 export * from "./primitives.js";
+export * from "./programmatic-tools.js";
+export * from "./agent-environment.js";
+export * from "./memory.js";
+export * from "./memory-adapters.js";
 export { agent, type AgentDefinition } from "./definition.js";
 export {
   AGENT_RUN_RECEIPT_SCHEMA,
@@ -21,8 +25,27 @@ export {
   createBudgetController,
 } from "./budget.js";
 export type { BreakerEvent, RunBreakers } from "./breakers.js";
-export { SUMMARY_SCHEMA_VERSION } from "./compaction.js";
-export type { CompactionOptions, ContextSummary } from "./compaction.js";
+export {
+  SUMMARY_SCHEMA_VERSION,
+  contextSummarySources,
+  latestContextSummary,
+  normalizeCompaction,
+  parseContextSummary,
+  renderSummary,
+  summarizationInstruction,
+  validateContextSummaryTransition,
+} from "./compaction.js";
+export type {
+  CompactionOptions,
+  ContextAnchor,
+  ContextAnchorKind,
+  ContextSummary,
+  ContextSummarySource,
+  ContextSummaryValidation,
+  NormalizedCompaction,
+} from "./compaction.js";
+export * from "./compaction-eval.js";
+export * from "./compaction-harness.js";
 export type {
   BudgetController,
   BudgetDenomination,
@@ -54,7 +77,10 @@ export {
   createConversation,
   verifySandboxConformance,
 } from "./runtime.js";
-export type { MemoryStoreConfig } from "./memory-store.js";
+export {
+  createFileMemoryAdapter,
+  type MemoryStoreConfig,
+} from "./memory-store.js";
 export {
   AGENT_DIR_ENTRY,
   composeAgentDir,

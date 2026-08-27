@@ -202,6 +202,10 @@ baseline.
 Direct `runClaudeAgent` remains unlocked, and every Claude v3 compile refuses
 pending source, budget, recovery, cache, and replay evidence.
 
+Context compaction uses the public, modular `@caveman-ai/agent/compaction`
+surface. See [`docs/compaction.md`](docs/compaction.md) for runtime setup,
+capsule validation, deterministic stability tests, and live-model adapters.
+
 Adapter frameworks ship as separate exact-pinned packages; install only lane used:
 
 ```bash
@@ -401,6 +405,84 @@ schema validator before tool code, including async validation and transforms.
 
 Effects: `read`, `write`, `idempotent`, `external`.
 
+### AGENTS.md, Agent Skills, and Agent Plugins
+
+One environment loader supports repository instructions, standard Agent Skills,
+Agent Plugins v1, and Vercel OpenPlugin packages:
+
+```ts
+import {
+  applyAgentEnvironment,
+  expandAgentEnvironmentSlashCommand,
+  loadAgentEnvironment,
+} from "@caveman-ai/agent/plugins";
+import { agent } from "@caveman-ai/agent";
+
+const environment = await loadAgentEnvironment({ cwd: process.cwd() });
+const definition = applyAgentEnvironment(agent({
+  id: "reviewer",
+  instructions: "Review requested changes.",
+  model: "openai/gpt-5.4",
+  sandbox: "host",
+}), environment);
+const prompt = expandAgentEnvironmentSlashCommand(
+  "/vercel-plugin:deploy preview",
+  environment,
+);
+```
+
+Loader reads AGENTS.md from repository root through current directory, scans
+project then user `.agents/skills/<name>/SKILL.md`, and discovers plugins under
+`.agents/plugins/<plugin>`. Both Agent Plugins v1 root `plugin.json` and
+OpenPlugin `.plugin/plugin.json` manifests work; Claude and Cursor compatibility
+manifests are accepted too. Explicit roots are available for product wrappers.
+Plugin skills and commands use qualified IDs such as `vercel-plugin:nextjs` and
+`vercel-plugin:deploy`. Metadata enters stable prefix; full SKILL.md, contained
+resources, and markdown command bodies enter model context only after activation.
+`$ARGUMENTS` and `$1` through `$9` expand for plugin commands. Coding agents accept same preloaded
+`environment`; programmatic mode nests loader behind its one composite tool.
+
+Agent Plugins v1 and OpenPlugin support currently implements declarative skills
+and markdown commands. `mcp.json`/`.mcp.json`, hooks, and custom-agent presence
+is reported but not launched. SDK does not inherit ambient secrets or execute
+plugin subprocesses.
+
+### Programmatic tools and speculative reads
+
+Coding sessions need one option; transport wrapping is automatic:
+
+```ts
+import {
+  createCodingAgent,
+  runCodingTurn,
+  startCodingSession,
+} from "@caveman-ai/agent/code";
+
+const agent = createCodingAgent({
+  workspace: process.cwd(),
+  toolMode: "programmatic",
+});
+const session = await startCodingSession(agent);
+await runCodingTurn(session, "inspect failures and fix root cause");
+```
+
+Programmatic mode replaces ordinary provider-visible tools with one bounded
+`caveman_code` cell. Nested calls still pass through runtime's canonical tool
+budget, breaker, validation, receipt, timeout, and abort path; receipts expose
+both composite call and each nested call. Complete literal `effect: "read"`
+calls may start while model streams cell source. Writes, idempotent operations,
+external calls, variable-dependent arguments, and reads after possible writes
+never speculate. Set `speculativeToolCalls: false` to retain programmatic mode
+without early reads, or `toolMode: "direct"` for ordinary JSON tool calls.
+
+Declaring `effect: "read"` in this mode means work is safe to start and abandon:
+it may run even when generated cell is later discarded. Unknown or ambiguous
+stream provenance executes fresh work instead of reusing stale speculation.
+Programmatic mode supports host agents only. Host execution and code-cell Worker
+are not isolation boundaries; use normal required-sandbox agents when containment
+is needed. Generic host-agent embedders can use
+`createProgrammaticToolRuntime` from `@caveman-ai/agent/programmatic-tools`.
+
 Result policies:
 
 - `auto` lets locked plan choose inline, paging, compression, or exact CCR.
@@ -470,14 +552,30 @@ provider-visible bytes on drift or transform failure. Cave Build binds static
 Context IR only; eval inputs, user turns, history, and tool results remain
 runtime evidence and never make lock depend on one fixture prompt.
 
-`memory()` is a **durable, tenant-scoped local store**, so `ttl: "30d"` is a real
-30-day promise — entries persist across process restarts, not just for the life
-of one process. It is deliberately dep-free: a per-namespace JSON file written
-with an atomic temp-write + rename (no SQLite driver pulled into the package's
-tight dependency surface). The `cave_memory_remember` / `cave_memory_search`
-tools read and write it, and a memory past its declared `ttl` is evicted on read
-(purged from disk, not just filtered from the response). Recalled memory stays
-basis `inferred` — nothing here is ever a saving.
+`memory()` defaults to `ttl: "30d"`, an 800-token recall budget, and ambient
+policy. Coding agents and Pebble need one option: `memory: true`. They create one
+durable tenant/agent/namespace-scoped engine and reuse it across turns. Generic
+agents pass reusable engine through `RunOptions.memory`. One-shot run without
+one keeps explicit tools only and never leaves background work alive.
+
+Passive recall is asynchronous: turn N starts retrieval while main model runs,
+then turn N+1 consumes ready results without waiting. Retrieved memory enters
+live context immediately before current user turn, never stable system prefix or
+append-only conversation history. `cave_memory_remember`, `cave_memory_search`,
+and `cave_memory_session_search` provide explicit store, recall, and prior-turn
+RAG paths.
+
+Default retrieval uses dependency-free sparse cosine plus lexical ranking. It is
+not claimed semantic. `@caveman-ai/agent/memory` exposes compact vector, graph,
+storage, embedding, workflow, and sidecar adapters. Semantic embedding and
+model-backed extraction/relevance/consolidation run only when explicitly
+supplied; no hidden per-turn model call exists. See
+[`docs/memory.md`](docs/memory.md).
+
+Local persistence stays private per-namespace JSON written with atomic
+temp-write + rename. Vectors are normalized int8/base64, not floating-point JSON
+arrays. Expired records become inactive reversible evidence. Recalled memory
+stays basis `inferred` — nothing here is ever a saving.
 
 Entries are keyed by **(tenant, agentId, namespace)**, so two `AgentDefinition`s
 declaring the same namespace in one process never see each other's memories, and
@@ -486,8 +584,9 @@ whom: `root` (default `CAVE_AGENT_MEMORY_ROOT`, else `~/.caveman/agent-memory`)
 points at your own location, and `tenant` (default single-tenant) scopes per
 tenant. Only `provenance: "local"` + `consent: "local_only"` are supported — a
 shared-backend config is refused at `memory()` construction, never at tool-call
-time. In-process writes are serialized per file; across processes an atomic
-rename prevents a torn file, with last-writer-wins on a concurrent update.
+time. In-process writes are serialized per file; across processes atomic rename
+prevents torn files, with last-writer-wins on concurrent update. Server
+deployments needing multi-writer transactions supply storage adapter.
 
 ## The coding agent (`@caveman-ai/coding-agent`)
 
@@ -659,6 +758,7 @@ Claude locked execution rejects before SDK/MCP launch until all named gaps close
 - `agent`, `run`, `stream`, `createConversation`, `auto`
 - `tool`, `schema`, `artifact`, `subagent`
 - `context`, `file`, `memory`, `output`
+- `createMemoryEngine`, `createMemoryWorkflow`, storage/embedding/sidecar adapters
 - `eval`
 - Context IR types and lowering helpers
 - `verifySandboxConformance`
@@ -666,6 +766,8 @@ Claude locked execution rejects before SDK/MCP launch until all named gaps close
   (unlocked/inferred only)
 - `createCodingAgent`, `startCodingSession`, `runCodingTurn`, `runCodingSession`,
   `defaultCodingPlan`, `proveRecovery` from `@caveman-ai/coding-agent`
+- `createProgrammaticToolRuntime`, `programmaticToolInstructions`,
+  `PROGRAMMATIC_TOOL_NAME`
 - `createAdapter` plus capability manifest from each
   `@caveman-ai/adapter-*` package
 

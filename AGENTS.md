@@ -22,6 +22,13 @@ must never land here. Only Apache-2.0 protocol remains in this repository.
 - Host sandbox means uncontained host execution. Never describe it as isolation.
 - Generated `packages/agent/src/catalog.ts` changes only through
   `node scripts/generate-agent-catalog.mjs`.
+- Agent Skills, AGENTS.md, and Agent Plugins parsing/discovery live once in
+  `packages/agent/src/agent-environment.ts`. Product wrappers may add search
+  roots, but must not fork validation, containment, precedence, or invocation.
+- Agent Plugins v1 and OpenPlugin support is declarative-only: skills and
+  markdown slash commands. Recognize MCP, hooks, and custom agents, but never
+  execute them until permission, environment allowlist, and lifecycle contracts
+  exist.
 
 ## Checks
 

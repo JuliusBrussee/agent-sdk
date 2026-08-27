@@ -33,6 +33,7 @@ import {
 } from "./build.js";
 import { sha256, stableStringify } from "./context-ir.js";
 import { contextIRIsContentBlind, createNativePiEvalRunner } from "./compile-runner.js";
+import { agentGraphHasSubagents } from "./definition-graph.js";
 import { parseWorkloadProfile, type WorkloadPartition, type WorkloadProfile } from "./profile.js";
 import type { ContextKind, EvalDefinition, ToolDefinition } from "./primitives.js";
 import { verifySandboxConformance } from "./runtime.js";
@@ -270,7 +271,7 @@ async function compileProfiledCore(
       "cave_compiler_tool_effect_coverage_unavailable",
     );
   }
-  if (lane === "generic" && input.agent.tools.some((tool) => tool.runtime?.kind === "subagent")) {
+  if (lane === "generic" && agentGraphHasSubagents(input.agent)) {
     return emptyProfiled(
       "capability_refused",
       "cave_compiler_subagent_cost_attribution_unavailable",

@@ -15,6 +15,7 @@ import { ReceiptRecorder } from "./budget.js";
 import { contextBill, sha256, stableStringify } from "./context-ir.js";
 import { lowerAgentContext, validateProviderUsage } from "./execution-kernel.js";
 import { catalogModelFacts, type CatalogModelFacts } from "./catalog.js";
+import { agentGraphHasSubagents } from "./definition-graph.js";
 import {
   assembleSystemPrompt,
   CavemanRunError,
@@ -96,7 +97,7 @@ async function runClaudeAgentWithOptions(
   if (definition.memory !== undefined) {
     throw new Error("cave_claude_memory_bridge_unavailable");
   }
-  if (definition.tools.some((item) => item.runtime?.kind === "subagent")) {
+  if (agentGraphHasSubagents(definition)) {
     throw new Error("cave_claude_subagent_bridge_unavailable");
   }
   const unsupportedTool = definition.tools.find((item) =>

@@ -2,7 +2,7 @@ import { mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { catalogCost, catalogPriceFingerprint, catalogSearchCeiling } from "./catalog.js";
 import type { AgentDefinition } from "./index.js";
-import { graphUsesHostSandbox } from "./definition-graph.js";
+import { agentGraphHasSubagents, graphUsesHostSandbox } from "./definition-graph.js";
 import type { ContextIR } from "./context-ir.js";
 import { contextIRToWire, sha256, stableStringify } from "./context-ir.js";
 import type { ContextKind, EvalDefinition, ToolDefinition } from "./primitives.js";
@@ -409,7 +409,7 @@ export async function compile(input: CompileInput): Promise<CompileResult> {
   }
   // RunResult currently rolls descendant usage into root provider/model totals.
   // Refuse until compiler evidence prices every nested receipt call separately.
-  if (input.agent.tools.some((tool) => tool.runtime?.kind === "subagent")) {
+  if (agentGraphHasSubagents(input.agent)) {
     throw new Error("cave_compiler_subagent_cost_attribution_unavailable");
   }
   const baselinePlan = freezeBuildValue(

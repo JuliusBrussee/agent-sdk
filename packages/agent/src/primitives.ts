@@ -3,6 +3,7 @@ import type {
   StandardJSONSchemaV1,
   StandardSchemaV1,
 } from "@standard-schema/spec";
+import type { MemoryAmbientOptions } from "./memory.js";
 
 const TOOL_IMPLEMENTATION_SOURCE = Symbol.for(
   "@caveman-ai/agent:tool-implementation-source",
@@ -49,6 +50,28 @@ export const schema = {
 export type ToolEffect = "read" | "write" | "idempotent" | "external";
 export type ToolResultPolicy = "auto" | "inline" | "page" | "compress" | "exact_ccr";
 
+export interface NestedToolDispatchOptions {
+  /** Additional cancellation owned by the composite program. */
+  readonly signal?: AbortSignal;
+  /**
+   * Claim a matching read that this run's kernel already admitted while the
+   * provider streamed the composite call. Missing or ambiguous provenance
+   * fails closed and executes the call normally.
+   */
+  readonly claimSpeculation?: boolean;
+}
+
+export interface ToolExecutionContext {
+  /** Provider identity of the composite call containing these nested calls. */
+  readonly parentToolCallId: string;
+  /** Dispatch one declared nested tool through the run's canonical kernel. */
+  dispatch(
+    name: string,
+    input: unknown,
+    options?: NestedToolDispatchOptions,
+  ): Promise<unknown>;
+}
+
 export interface SubagentRuntimeDefinition {
   readonly kind: "subagent";
   readonly definition: unknown;
@@ -81,10 +104,20 @@ export interface ToolDefinition<TInput = unknown, TResult = unknown> {
    * waiting on a build, re-reading a file that changes underneath.
    */
   readonly allowRepeat?: boolean;
+  /** Explicit opt-in for kernel-owned streaming speculation. Read tools only. */
+  readonly speculative?: boolean;
   readonly timeoutMs: number;
   readonly runtime?: SubagentRuntimeDefinition;
+  /** Flat, kernel-dispatched tools available only inside this composite tool. */
+  readonly nestedTools?: readonly ToolDefinition[];
+  /** Nested read tools whose already-started result may be consumed safely. */
+  readonly speculativeTools?: readonly string[];
   readonly execute: {
-    bivarianceHack(input: TInput, signal?: AbortSignal): TResult | Promise<TResult>;
+    bivarianceHack(
+      input: TInput,
+      signal?: AbortSignal,
+      context?: ToolExecutionContext,
+    ): TResult | Promise<TResult>;
   }["bivarianceHack"];
 }
 
@@ -96,9 +129,17 @@ export interface ToolOptions<TInput extends TSchema, TResult> {
   result?: ToolResultPolicy | ArtifactDefinition;
   /** See {@link ToolDefinition.allowRepeat}. */
   allowRepeat?: boolean;
+  /** See {@link ToolDefinition.speculative}. */
+  speculative?: boolean;
   timeoutMs?: number;
   runtime?: SubagentRuntimeDefinition;
-  execute: (input: Static<TInput>, signal?: AbortSignal) => TResult | Promise<TResult>;
+  nestedTools?: readonly ToolDefinition[];
+  speculativeTools?: readonly string[];
+  execute: (
+    input: Static<TInput>,
+    signal?: AbortSignal,
+    context?: ToolExecutionContext,
+  ) => TResult | Promise<TResult>;
 }
 
 export interface StandardToolOptions<Input, Output, TResult> {
@@ -110,9 +151,17 @@ export interface StandardToolOptions<Input, Output, TResult> {
   result?: ToolResultPolicy | ArtifactDefinition;
   /** See {@link ToolDefinition.allowRepeat}. */
   allowRepeat?: boolean;
+  /** See {@link ToolDefinition.speculative}. */
+  speculative?: boolean;
   timeoutMs?: number;
   runtime?: SubagentRuntimeDefinition;
-  execute: (input: Output, signal?: AbortSignal) => TResult | Promise<TResult>;
+  nestedTools?: readonly ToolDefinition[];
+  speculativeTools?: readonly string[];
+  execute: (
+    input: Output,
+    signal?: AbortSignal,
+    context?: ToolExecutionContext,
+  ) => TResult | Promise<TResult>;
 }
 
 export interface StandardJSONToolOptions<Input, Output, TResult>
@@ -141,6 +190,9 @@ export function tool(
   if (!["read", "write", "idempotent", "external"].includes(options.effect)) {
     throw new Error(`caveman agent: unknown tool effect ${JSON.stringify(options.effect)}`);
   }
+  if (options.speculative === true && options.effect !== "read") {
+    throw new Error("caveman agent: speculative tool must be read-only");
+  }
   const result = typeof options.result === "object"
     ? artifactResultPolicy(options.result)
     : options.result ?? "auto";
@@ -150,6 +202,48 @@ export function tool(
   const timeoutMs = options.timeoutMs ?? 30_000;
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) {
     throw new Error("caveman agent: tool timeoutMs must be a positive integer");
+  }
+  const nestedTools = options.nestedTools === undefined
+    ? undefined
+    : Object.freeze([...options.nestedTools]);
+  if (nestedTools !== undefined) {
+    if (options.runtime !== undefined) {
+      throw new Error("caveman agent: composite tool runtime unsupported");
+    }
+    if (options.effect === "read" && nestedTools.some((nested) => nested.effect !== "read")) {
+      throw new Error("caveman agent: read composite cannot contain effectful nested tools");
+    }
+    const names = new Set<string>();
+    for (const nested of nestedTools) {
+      if (nested.runtime !== undefined && nested.runtime.kind !== "subagent") {
+        throw new Error(`caveman agent: nested tool runtime unsupported ${JSON.stringify(nested.name)}`);
+      }
+      if (nested.nestedTools !== undefined) {
+        throw new Error(`caveman agent: nested tools must be flat ${JSON.stringify(nested.name)}`);
+      }
+      if (nested.name === options.name || names.has(nested.name)) {
+        throw new Error(`caveman agent: duplicate nested tool ${JSON.stringify(nested.name)}`);
+      }
+      names.add(nested.name);
+    }
+  }
+  const speculativeTools = options.speculativeTools === undefined
+    ? undefined
+    : Object.freeze([...options.speculativeTools]);
+  if (speculativeTools !== undefined) {
+    if (nestedTools === undefined) {
+      throw new Error("caveman agent: speculativeTools requires nestedTools");
+    }
+    const nestedByName = new Map(nestedTools.map((nested) => [nested.name, nested]));
+    const seen = new Set<string>();
+    for (const name of speculativeTools) {
+      const nested = nestedByName.get(name);
+      if (nested === undefined || nested.effect !== "read" || nested.speculative !== true ||
+          seen.has(name)) {
+        throw new Error(`caveman agent: invalid speculative nested tool ${JSON.stringify(name)}`);
+      }
+      seen.add(name);
+    }
   }
   const standard = standardToolSchema(options.input);
   let input: TSchema;
@@ -187,17 +281,20 @@ export function tool(
     result,
     ...(typeof options.result === "object" ? { artifact: options.result } : {}),
     ...(options.allowRepeat === undefined ? {} : { allowRepeat: options.allowRepeat }),
+    ...(options.speculative === undefined ? {} : { speculative: options.speculative }),
     timeoutMs,
     ...(options.runtime === undefined ? {} : { runtime: options.runtime }),
-    async execute(value: unknown, signal?: AbortSignal) {
+    ...(nestedTools === undefined ? {} : { nestedTools }),
+    ...(speculativeTools === undefined ? {} : { speculativeTools }),
+    async execute(value: unknown, signal?: AbortSignal, context?: ToolExecutionContext) {
       if (standard === undefined) {
-        return options.execute(value as never, signal);
+        return options.execute(value as never, signal, context);
       }
       const validated = await standard.validate(value);
       if (validated.issues) {
         throw new Error(`cave_tool_input_schema_mismatch:${options.name}`);
       }
-      return options.execute(validated.value, signal);
+      return options.execute(validated.value, signal, context);
     },
   } as const;
   // A wrapper (`routine()`) whose own `execute` source is identical for every
@@ -264,6 +361,8 @@ export interface MemoryDefinition {
   readonly ttl: string;
   readonly recallBudget: number;
   readonly consent: "local_only" | "project_shared";
+  /** Async passive recall/extraction policy. False keeps explicit tools only. */
+  readonly ambient: false | MemoryAmbientOptions;
 }
 
 export function memoryTTLMilliseconds(value: string): number {
@@ -281,18 +380,21 @@ export function memoryTTLMilliseconds(value: string): number {
 export function memory(options: {
   namespace: string;
   provenance?: MemoryDefinition["provenance"];
-  ttl: string;
-  recallBudget: number;
+  ttl?: string;
+  recallBudget?: number;
   consent?: MemoryDefinition["consent"];
+  ambient?: false | MemoryAmbientOptions;
 }): MemoryDefinition {
   if (!/^[a-z0-9][a-z0-9_-]{0,95}$/.test(options.namespace)) {
     throw new Error(`caveman agent: invalid memory namespace ${JSON.stringify(options.namespace)}`);
   }
-  if (!Number.isSafeInteger(options.recallBudget) || options.recallBudget < 0) {
+  const recallBudget = options.recallBudget ?? 800;
+  if (!Number.isSafeInteger(recallBudget) || recallBudget < 0) {
     throw new Error("caveman agent: memory recallBudget must be a non-negative integer");
   }
+  const ttl = options.ttl ?? "30d";
   try {
-    memoryTTLMilliseconds(options.ttl);
+    memoryTTLMilliseconds(ttl);
   } catch {
     throw new Error("caveman agent: memory ttl must use positive m, h, or d duration");
   }
@@ -313,9 +415,10 @@ export function memory(options: {
     kind: "memory",
     namespace: options.namespace,
     provenance,
-    ttl: options.ttl,
-    recallBudget: options.recallBudget,
+    ttl,
+    recallBudget,
     consent,
+    ambient: options.ambient ?? {},
   });
 }
 

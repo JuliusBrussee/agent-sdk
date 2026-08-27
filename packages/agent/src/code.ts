@@ -31,7 +31,28 @@ import {
   analyzeProviderCachePerformance,
 } from "./cache-planner/performance.js";
 import { agent, type AgentDefinition } from "./definition.js";
-import { output, schema, tool, type ToolDefinition } from "./primitives.js";
+import {
+  applyAgentEnvironment,
+  type AgentEnvironment,
+} from "./agent-environment.js";
+import {
+  memory as defineMemory,
+  memoryTTLMilliseconds,
+  output,
+  schema,
+  tool,
+  type MemoryDefinition,
+  type ToolDefinition,
+} from "./primitives.js";
+import {
+  createMemoryEngine,
+  type MemoryRuntimeConfig,
+} from "./memory.js";
+import { createFileMemoryAdapter } from "./memory-store.js";
+import {
+  createProgrammaticToolRuntime,
+  type ProgrammaticToolRuntime,
+} from "./programmatic-tools.js";
 import { hostShellInvocation, killProcessTree, portableInvocation } from "./portable-process.js";
 import {
   createConversation,
@@ -55,6 +76,13 @@ import {
 import { PebbleEventEncoder } from "./pebble-stream.js";
 
 export { AgentRunController };
+export {
+  PROGRAMMATIC_TOOL_NAME,
+  createProgrammaticToolRuntime,
+  programmaticToolInstructions,
+  type ProgrammaticToolRuntime,
+  type ProgrammaticToolStats,
+} from "./programmatic-tools.js";
 
 /**
  * The only transforms a default coding plan may route. Every one of them is
@@ -166,6 +194,7 @@ function codingInstructions(toolSet: CodingToolSet): string {
 }
 
 export type CodingToolSet = "full" | "pebble-v1";
+export type CodingToolMode = "direct" | "programmatic";
 
 export interface CodingAgentOptions {
   /** Workspace root. Tools refuse to read or write outside it. */
@@ -180,6 +209,16 @@ export interface CodingAgentOptions {
   outputCaps?: Partial<typeof CODING_TOOL_OUTPUT_CAPS>;
   /** Provider-visible coding tools. Generic SDK default remains the full six-tool surface. */
   toolSet?: CodingToolSet;
+  /** `programmatic` collapses ordinary tools into one bounded code-cell tool. */
+  toolMode?: CodingToolMode;
+  /** Safe read speculation in programmatic mode. Defaults on; ignored by direct mode. */
+  speculativeToolCalls?: boolean;
+  /** Preloaded AGENTS.md, Agent Skills, and Agent Plugins environment. */
+  environment?: AgentEnvironment;
+  /** Provider-visible composite tool name. Product wrappers may brand it; default `caveman_code`. */
+  programmaticToolName?: string;
+  /** `true` enables durable ambient memory with safe local defaults. */
+  memory?: boolean | MemoryDefinition;
 }
 
 export interface CodingAgent {
@@ -188,6 +227,9 @@ export interface CodingAgent {
   readonly plan: CavePlan;
   readonly workspace: string;
   readonly modelID: string;
+  readonly toolMode: CodingToolMode;
+  /** Present only in programmatic mode. Session APIs wire its transport automatically. */
+  readonly programmaticTools?: ProgrammaticToolRuntime;
   /** Largest raw tool outputs seen this process, kept for the recovery proof. */
   readonly samples: ToolOutputSample[];
 }
@@ -276,6 +318,10 @@ export function createCodingAgent(options: CodingAgentOptions = {}): CodingAgent
   const modelID = resolveCodingModelID(options.model);
   const toolSet = options.toolSet ?? "full";
   if (toolSet !== "full" && toolSet !== "pebble-v1") throw new Error(`coding_tool_set_invalid:${toolSet}`);
+  const toolMode = options.toolMode ?? "direct";
+  if (toolMode !== "direct" && toolMode !== "programmatic") {
+    throw new Error(`coding_tool_mode_invalid:${toolMode}`);
+  }
   const caps = { ...CODING_TOOL_OUTPUT_CAPS, ...options.outputCaps };
   const samples: ToolOutputSample[] = [];
   const record = (label: string, text: string) => {
@@ -283,7 +329,7 @@ export function createCodingAgent(options: CodingAgentOptions = {}): CodingAgent
     samples.sort((left, right) => right.text.length - left.text.length);
     samples.length = Math.min(samples.length, MAX_SAMPLES);
   };
-  const definition = agent({
+  const baseDefinition = agent({
     id,
     instructions: options.instructions === undefined
       ? codingInstructions(toolSet)
@@ -292,13 +338,33 @@ export function createCodingAgent(options: CodingAgentOptions = {}): CodingAgent
     reasoning: "off",
     sandbox: "host",
     output: output({ maxTokens: OUTPUT_MAX_TOKENS }),
+    ...(options.memory === undefined || options.memory === false
+      ? {}
+      : {
+          memory: options.memory === true
+            ? defineMemory({ namespace: id })
+            : options.memory,
+        }),
     tools: codingTools(workspace, caps, record, toolSet),
   });
+  const directDefinition = options.environment === undefined
+    ? baseDefinition
+    : applyAgentEnvironment(baseDefinition, options.environment);
+  const programmaticTools = toolMode === "programmatic"
+    ? createProgrammaticToolRuntime(directDefinition, {
+      speculate: options.speculativeToolCalls ?? true,
+      ...(options.programmaticToolName === undefined
+        ? {}
+        : { toolName: options.programmaticToolName }),
+    })
+    : undefined;
   return Object.freeze({
-    definition,
+    definition: programmaticTools?.definition ?? directDefinition,
     plan: defaultCodingPlan(modelID, id),
     workspace,
     modelID,
+    toolMode,
+    ...(programmaticTools === undefined ? {} : { programmaticTools }),
     samples,
   });
 }
@@ -335,6 +401,10 @@ function codingTools(
       limit: schema.optional(schema.integer()),
     }),
     effect: "read",
+    // Safe to overlap with generation only when each concurrent coding agent
+    // owns an isolated worktree. A shared mutable workspace can make any
+    // filesystem read stale between launch and claim.
+    speculative: true,
     result: "inline",
     timeoutMs: READ_TIMEOUT_MS,
     async execute(input) {
@@ -373,6 +443,7 @@ function codingTools(
       glob: schema.optional(schema.string()),
     }),
     effect: "read",
+    speculative: true,
     result: "inline",
     timeoutMs: READ_TIMEOUT_MS,
     async execute(input, signal) {
@@ -1027,6 +1098,8 @@ export interface CodingSessionOptions {
   /** Test seam: passed through to the gateway readiness probe. */
   fetch?: typeof globalThis.fetch;
   ensureRuntime?: boolean;
+  /** Runtime memory adapters. Session creates/reuses local engine when omitted. */
+  memory?: MemoryRuntimeConfig;
 }
 
 export interface TurnBill {
@@ -1097,6 +1170,41 @@ export interface CodingSession {
   proofShown: boolean;
 }
 
+function codingMemoryRuntime(
+  codingAgent: CodingAgent,
+  config: MemoryRuntimeConfig | undefined,
+): MemoryRuntimeConfig | undefined {
+  const definition = codingAgent.definition.memory;
+  if (definition === undefined) {
+    if (config !== undefined) throw new Error("cave_memory_definition_required");
+    return undefined;
+  }
+  if (config?.engine !== undefined) return config;
+  const tenant = config?.tenant ?? "_";
+  const engine = createMemoryEngine({
+    scope: {
+      tenant,
+      agentId: codingAgent.definition.id,
+      namespace: definition.namespace,
+    },
+    storage: config?.storage ?? createFileMemoryAdapter(
+      config?.root === undefined ? {} : { root: config.root },
+    ),
+    ttlMs: memoryTTLMilliseconds(definition.ttl),
+    recallTokens: definition.recallBudget,
+    ambient: definition.ambient,
+    ...(config?.embedding === undefined ? {} : { embedding: config.embedding }),
+    ...(config?.sidecar === undefined ? {} : { sidecar: config.sidecar }),
+    ...(config?.onError === undefined ? {} : { onError: config.onError }),
+    ...(config?.allowStore === undefined ? {} : { allowStore: config.allowStore }),
+  });
+  return Object.freeze({
+    ...(config ?? {}),
+    tenant,
+    engine,
+  });
+}
+
 /**
  * Start a session in the best mode this machine can actually deliver.
  *
@@ -1121,10 +1229,14 @@ export async function startCodingSession(
     ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
     billingProofRequired: options.maxCostUsd !== undefined || options.budget?.maxUsd !== undefined,
   }, false);
+  const memory = codingMemoryRuntime(codingAgent, options.memory);
+  const normalizedOptions: CodingSessionOptions = memory === undefined
+    ? options
+    : { ...options, memory };
   const session: CodingSession = {
     agent: codingAgent,
-    conversation: options.conversation ?? createConversation(),
-    options,
+    conversation: normalizedOptions.conversation ?? createConversation(),
+    options: normalizedOptions,
     gatewayURL,
     route,
     mode: "optimized",
@@ -1168,6 +1280,21 @@ export function classifyTurnFailure(error: unknown): "degrade_to_observe_only" |
     : "fatal";
 }
 
+function withProgrammaticTransport(
+  codingAgent: CodingAgent,
+  options: RunOptions,
+): RunOptions {
+  const runtime = codingAgent.programmaticTools;
+  if (runtime === undefined) return options;
+  if (options.streamFn !== undefined) {
+    return { ...options, streamFn: runtime.wrapStreamFn(options.streamFn) };
+  }
+  return {
+    ...options,
+    models: runtime.wrapModels(options.models ?? builtinModels()),
+  };
+}
+
 export async function runCodingTurn(
   session: CodingSession,
   input: string,
@@ -1194,29 +1321,31 @@ export async function runCodingTurn(
     ...(session.options.ensureRuntime === undefined
       ? {}
       : { ensureRuntime: session.options.ensureRuntime }),
+    ...(session.options.memory === undefined ? {} : { memory: session.options.memory }),
     ...overrides,
     // Last, so the session's route wins over anything an override says about
     // routing: the session probed once and its mode governs from then on.
     caveRoute: turnRoute(session),
   };
+  const prepared = withProgrammaticTransport(session.agent, base);
   const startedOptimized = session.mode === "optimized";
   let result: RunResult;
   if (startedOptimized) {
     try {
       result = await runAgentInternal(session.agent.definition, input, {
-        ...base,
+        ...prepared,
         candidatePlan: session.agent.plan,
       });
     } catch (error) {
       if (classifyTurnFailure(error) === "fatal") throw error;
       degrade(session);
       result = await runAgentInternal(session.agent.definition, input, {
-        ...base,
+        ...prepared,
         caveRoute: turnRoute(session),
       });
     }
   } else {
-    result = await runAgentInternal(session.agent.definition, input, base);
+    result = await runAgentInternal(session.agent.definition, input, prepared);
   }
   // The run itself is the authority on whether the gateway optimized this
   // traffic: a reachable gateway that does not proxy this model's provider
@@ -1321,12 +1450,14 @@ export async function* streamCodingTurn(
         ...(session.options.ensureRuntime === undefined
           ? {}
           : { ensureRuntime: session.options.ensureRuntime }),
+        ...(session.options.memory === undefined ? {} : { memory: session.options.memory }),
         ...overrides,
         caveRoute: turnRoute(session),
         controller,
       };
+      const prepared = withProgrammaticTransport(session.agent, base);
       const runtime = streamAgentInternalOptions(session.agent.definition, input, {
-        ...base,
+        ...prepared,
         ...(session.mode === "optimized" && attempt === 0 && !durable
           ? { candidatePlan: session.agent.plan }
           : {}),
@@ -1389,6 +1520,14 @@ export async function* streamCodingTurn(
         const event = signal.event;
         if (event.type === "pi") {
           for (const translated of encoder.pi(event.event)) yield translated;
+          continue;
+        }
+        if (event.type === "nested_tool_start") {
+          yield encoder.nestedToolStart(event.id, event.name, event.args);
+          continue;
+        }
+        if (event.type === "nested_tool_end") {
+          yield encoder.nestedToolEnd(event.id, event.isError, event.result);
           continue;
         }
         if (event.type === "model_route") {
@@ -1711,6 +1850,7 @@ export async function runCodingSession(
     ...(options.breakers === undefined ? {} : { breakers: options.breakers }),
     ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
     ...(options.ensureRuntime === undefined ? {} : { ensureRuntime: options.ensureRuntime }),
+    ...(options.memory === undefined ? {} : { memory: options.memory }),
     onNotice: (line) => {
       notice.write(`${line}\n`);
       options.onNotice?.(line);
@@ -1765,6 +1905,7 @@ export async function runCodingSession(
     }
   } finally {
     rl.close();
+    await session.options.memory?.engine?.endSession(session.conversation.sessionId);
   }
   const final = sessionBill(session);
   write("");

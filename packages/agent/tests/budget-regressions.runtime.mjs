@@ -1387,8 +1387,10 @@ test("B3: workingCallsAfter counts only the calls that followed the rewrite", as
 
 export function validSummaryJSON() {
   return JSON.stringify({
-    schema_version: 1,
+    schema_version: 2,
+    generation: 1,
     objective: "Answer the user's question.",
+    anchors: [],
     constraints_restated: ["reply in one word"],
     decisions: [{ decision: "polled", why: "pending" }],
     artifacts: [{ path: "queue", change: "observed" }],
