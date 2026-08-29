@@ -16,6 +16,7 @@ import {
   RECOVERABLE_CODING_TRANSFORMS,
   classifyTurnFailure,
   codingModelsAtProviderBaseURL,
+  createCommandSessionRuntime,
   createCodingAgent,
   defaultCodingPlan,
   formatRecoveryProof,
@@ -714,6 +715,448 @@ test("a backgrounded child does not hold the bash tool past its timeout", async 
     const elapsed = performance.now() - startedAt;
     assert.equal(elapsed < 10_000, true, `bash took ${Math.round(elapsed)} ms to settle`);
     assert.match(text, /hi/);
+  });
+});
+
+test("bash without yieldTimeMs keeps foreground behavior", async () => {
+  await withWorkspace(async (workspace) => {
+    const codingAgent = createCodingAgent({ workspace, model: "anthropic/faux-1" });
+    try {
+      const bash = codingAgent.definition.tools.find((item) => item.name === "bash");
+      const text = await bash.execute({ command: "printf foreground-ok" });
+      assert.match(text, /^exit 0\nforeground-ok$/);
+      assert.doesNotMatch(text, /session cmd_/);
+    } finally {
+      await codingAgent.close();
+    }
+  });
+});
+
+test("foreground bash closes stdin so readers observe EOF instead of timing out", async () => {
+  await withWorkspace(async (workspace) => {
+    const codingAgent = createCodingAgent({ workspace, model: "anthropic/faux-1" });
+    try {
+      const bash = codingAgent.definition.tools.find((item) => item.name === "bash");
+      const text = await bash.execute({
+        command:
+          "node -e 'process.stdin.on(\"end\",()=>process.stdout.write(\"stdin-eof\"));" +
+          "process.stdin.resume()'",
+        timeoutMs: 1_000,
+      });
+      assert.match(text, /^exit 0\nstdin-eof$/);
+    } finally {
+      await codingAgent.close();
+    }
+  });
+});
+
+test("bash yields one live session and absolute cursor reads never rerun its command", async () => {
+  await withWorkspace(async (workspace) => {
+    const codingAgent = createCodingAgent({ workspace, model: "anthropic/faux-1" });
+    try {
+      const bash = codingAgent.definition.tools.find((item) => item.name === "bash");
+      const started = await bash.execute({
+        command: [
+          "node -e '",
+          'const fs=require("fs");',
+          'fs.appendFileSync("runs.txt","x");',
+          'process.stdout.write("first\\n");',
+          'setTimeout(()=>process.stdout.write("second\\n"),200)',
+          "'",
+        ].join(""),
+        yieldTimeMs: 25,
+      });
+      const sessionId = started.match(/session (cmd_[a-f0-9]{32})/)?.[1];
+      let cursor = Number(started.match(/next cursor (\d+)/)?.[1]);
+      assert.equal(typeof sessionId, "string");
+      assert.equal(Number.isSafeInteger(cursor), true);
+      assert.match(started, /running/);
+      let transcript = started;
+      for (let reads = 0; reads < 3 && !transcript.includes("second"); reads++) {
+        const resumed = await bash.execute({
+          sessionId,
+          action: "read",
+          cursor,
+          waitMs: 2_000,
+        });
+        transcript += `\n${resumed}`;
+        const nextCursor = Number(resumed.match(/next cursor (\d+)/)?.[1]);
+        assert.equal(nextCursor >= cursor, true);
+        cursor = nextCursor;
+      }
+      assert.match(transcript, /first/);
+      assert.match(transcript, /second/);
+      assert.equal(await readFile(resolve(workspace, "runs.txt"), "utf8"), "x");
+    } finally {
+      await codingAgent.close();
+    }
+  });
+});
+
+test("caveman_code drives command sessions through canonical nested dispatch", async () => {
+  await withWorkspace(async (workspace) => {
+    const codingAgent = createCodingAgent({
+      workspace,
+      model: "anthropic/faux-1",
+      toolSet: "pebble-v1",
+      toolMode: "programmatic",
+    });
+    try {
+      const session = await startCodingSession(codingAgent, { cave: "off" });
+      const faux = fauxAnthropic();
+      const command = [
+        "node -e '",
+        'const fs=require("fs");',
+        'fs.appendFileSync("programmatic-runs.txt","x");',
+        'process.stdout.write("nested-first\\n");',
+        'setTimeout(()=>process.stdout.write("nested-second\\n"),150)',
+        "'",
+      ].join("");
+      const code = [
+        `const started=await bash(${JSON.stringify({ command, yieldTimeMs: 10 })});`,
+        "const sessionId=started.match(/session (cmd_[a-f0-9]{32})/)?.[1];",
+        "let cursor=Number(started.match(/next cursor (\\d+)/)?.[1]);",
+        'if(!sessionId)throw new Error("missing command session");',
+        "let transcript=started;",
+        "for(let reads=0;reads<3&&!transcript.includes('nested-second');reads++){",
+        "const page=await bash({sessionId,action:'read',cursor,waitMs:1000});",
+        "transcript+='\\n'+page;",
+        "cursor=Number(page.match(/next cursor (\\d+)/)?.[1]);",
+        "}",
+        "if(!transcript.includes('nested-second'))throw new Error('missing resumed output');",
+        "print(transcript);",
+      ].join("");
+      faux.setResponses([
+        fauxAssistantMessage(fauxToolCall("caveman_code", { code }, { id: "code-session" })),
+        fauxAssistantMessage("done"),
+      ]);
+      const model = { ...faux.getModel(), api: "anthropic-messages", provider: "anthropic" };
+      const turn = await runCodingTurn(session, "run and resume one command", {
+        model,
+        streamFn: payloadStreamFn(faux),
+        providerPayloadContract: "pi-on-payload-v1",
+      });
+      assert.equal(turn.text, "done");
+      assert.equal(turn.toolCalls.filter((name) => name === "bash").length >= 2, true);
+      assert.equal(turn.toolCalls.includes("caveman_code"), true);
+      assert.equal(
+        await readFile(resolve(workspace, "programmatic-runs.txt"), "utf8"),
+        "x",
+      );
+    } finally {
+      await codingAgent.close();
+    }
+  });
+});
+
+test("bash writes stdin into its existing command session", async () => {
+  await withWorkspace(async (workspace) => {
+    const codingAgent = createCodingAgent({ workspace, model: "anthropic/faux-1" });
+    try {
+      const bash = codingAgent.definition.tools.find((item) => item.name === "bash");
+      const started = await bash.execute({
+        command:
+          "node -e 'process.stdin.once(\"data\",d=>{" +
+          "process.stdout.write(\"stdin:\"+d);process.exit(0)});setTimeout(()=>{},10000)'",
+        yieldTimeMs: 20,
+      });
+      const sessionId = started.match(/session (cmd_[a-f0-9]{32})/)?.[1];
+      const cursor = Number(started.match(/next cursor (\d+)/)?.[1]);
+      const written = await bash.execute({
+        sessionId,
+        action: "write",
+        input: "hello-session\n",
+        cursor,
+        waitMs: 2_000,
+      });
+      assert.match(written, /stdin accepted 14 bytes/);
+      assert.match(written, /stdin:hello-session/);
+    } finally {
+      await codingAgent.close();
+    }
+  });
+});
+
+test("bash session kill, timeout, and unknown-after-restart states fail closed", async () => {
+  await withWorkspace(async (workspace) => {
+    const codingAgent = createCodingAgent({ workspace, model: "anthropic/faux-1" });
+    try {
+      const bash = codingAgent.definition.tools.find((item) => item.name === "bash");
+      const live = await bash.execute({
+        command: "node -e 'setInterval(()=>{},1000)'",
+        yieldTimeMs: 10,
+      });
+      const liveId = live.match(/session (cmd_[a-f0-9]{32})/)?.[1];
+      const killed = await bash.execute({ sessionId: liveId, action: "kill" });
+      assert.match(killed, /· killed · killed/);
+
+      const expiring = await bash.execute({
+        command: "node -e 'setInterval(()=>{},1000)'",
+        timeoutMs: 80,
+        yieldTimeMs: 10,
+      });
+      const expiringId = expiring.match(/session (cmd_[a-f0-9]{32})/)?.[1];
+      const expiringCursor = Number(expiring.match(/next cursor (\d+)/)?.[1]);
+      const timedOut = await bash.execute({
+        sessionId: expiringId,
+        action: "read",
+        cursor: expiringCursor,
+        waitMs: 1_000,
+      });
+      assert.match(timedOut, /timed_out · hard timeout/);
+
+      const unknown = await bash.execute({
+        sessionId: "cmd_00000000000000000000000000000000",
+        action: "read",
+      });
+      assert.match(unknown, /unknown_after_restart/);
+      assert.match(unknown, /process adoption is disabled/);
+    } finally {
+      await codingAgent.close();
+    }
+  });
+});
+
+test("resumed bash read and write abort promptly without killing session", async () => {
+  await withWorkspace(async (workspace) => {
+    const codingAgent = createCodingAgent({ workspace, model: "anthropic/faux-1" });
+    try {
+      const bash = codingAgent.definition.tools.find((item) => item.name === "bash");
+      const started = await bash.execute({
+        command: "node -e 'process.stdin.resume();setInterval(()=>{},1000)'",
+        yieldTimeMs: 10,
+      });
+      const sessionId = started.match(/session (cmd_[a-f0-9]{32})/)?.[1];
+      const cursor = Number(started.match(/next cursor (\d+)/)?.[1]);
+      const readAbort = new AbortController();
+      setTimeout(() => readAbort.abort(), 25);
+      const began = performance.now();
+      await assert.rejects(
+        () => bash.execute({
+          sessionId,
+          action: "read",
+          cursor,
+          waitMs: 1_000,
+        }, readAbort.signal),
+        /command_session_operation_aborted/,
+      );
+      assert.equal(performance.now() - began < 500, true);
+
+      const stillRunning = await bash.execute({ sessionId, action: "read", cursor });
+      assert.match(stillRunning, /· running/);
+      const writeAbort = new AbortController();
+      writeAbort.abort();
+      await assert.rejects(
+        () => bash.execute({
+          sessionId,
+          action: "write",
+          input: "must-not-block",
+          cursor,
+        }, writeAbort.signal),
+        /command_session_operation_aborted/,
+      );
+      const afterWriteAbort = await bash.execute({ sessionId, action: "read", cursor });
+      assert.match(afterWriteAbort, /· running/);
+      await bash.execute({ sessionId, action: "kill" });
+    } finally {
+      await codingAgent.close();
+    }
+  });
+});
+
+test("CodingAgent.close kills live command groups before delayed side effects", async () => {
+  await withWorkspace(async (workspace) => {
+    const codingAgent = createCodingAgent({ workspace, model: "anthropic/faux-1" });
+    const bash = codingAgent.definition.tools.find((item) => item.name === "bash");
+    const started = await bash.execute({
+      command:
+        "node -e 'const fs=require(\"fs\");" +
+        "setTimeout(()=>fs.writeFileSync(\"late.txt\",\"escaped\"),400);" +
+        "setInterval(()=>{},1000)'",
+      yieldTimeMs: 20,
+    });
+    assert.match(started, /session cmd_[a-f0-9]{32} · running/);
+    const sessionId = started.match(/session (cmd_[a-f0-9]{32})/)?.[1];
+    await Promise.all([codingAgent.close(), codingAgent.close()]);
+    const afterClose = await bash.execute({ sessionId, action: "read" });
+    assert.match(afterClose, /unknown_after_restart/);
+    await new Promise((accept) => setTimeout(accept, 550));
+    await assert.rejects(() => readFile(resolve(workspace, "late.txt"), "utf8"), /ENOENT/);
+  });
+});
+
+test("command session runtime retains bounded output with absolute byte cursors", async () => {
+  await withWorkspace(async (workspace) => {
+    const runtime = createCommandSessionRuntime({
+      maxOutputBytes: 64,
+      maxReadBytes: 32,
+      maxInputBytes: 16,
+      maxTimeoutMs: 2_000,
+      maxWaitMs: 1_000,
+    });
+    try {
+      const started = await runtime.start({
+        command: process.execPath,
+        args: [
+          "-e",
+          [
+            "let index=0;",
+            "const emit=()=>{",
+            "if(index===200)return;",
+            "process.stdout.write(String(index%10).repeat(7));",
+            "index++;setImmediate(emit)",
+            "};emit()",
+          ].join(""),
+        ],
+        cwd: workspace,
+        env: {},
+        timeoutMs: 2_000,
+      });
+      let state = await runtime.read({
+        sessionId: started.sessionId,
+        cursor: 0,
+        limit: 1,
+        waitMs: 1_000,
+      });
+      while (state.state === "running") {
+        state = await runtime.read({
+          sessionId: started.sessionId,
+          cursor: state.availableTo,
+          limit: 1,
+          waitMs: 1_000,
+        });
+      }
+      const first = await runtime.read({ sessionId: started.sessionId, cursor: 0, limit: 32 });
+      const expected = Array.from(
+        { length: 200 },
+        (_, index) => String(index % 10).repeat(7),
+      ).join("").slice(-64);
+      assert.equal(first.state, "exited");
+      assert.equal(first.availableFrom, 1_336);
+      assert.equal(first.availableTo, 1_400);
+      assert.equal(first.outputStart, 1_336);
+      assert.equal(first.nextCursor, 1_368);
+      assert.equal(first.output, expected.slice(0, 32));
+      assert.equal(first.outputEncoding, "utf8");
+      assert.equal(first.truncatedBeforeCursor, true);
+      const second = await runtime.read({
+        sessionId: started.sessionId,
+        cursor: first.nextCursor,
+        limit: 32,
+      });
+      assert.equal(second.nextCursor, 1_400);
+      assert.equal(second.output, expected.slice(32));
+      await assert.rejects(
+        () => runtime.read({ sessionId: started.sessionId, limit: 33 }),
+        /command_session_limit_invalid/,
+      );
+    } finally {
+      await runtime.close();
+    }
+  });
+});
+
+test("command session emoji paging and eviction preserve absolute UTF-8 bytes", async () => {
+  await withWorkspace(async (workspace) => {
+    const runtime = createCommandSessionRuntime({
+      maxOutputBytes: 8,
+      maxReadBytes: 5,
+      maxTimeoutMs: 2_000,
+      maxWaitMs: 1_000,
+    });
+    try {
+      const text = "A😀B😀C";
+      const bytes = Buffer.from(text);
+      const started = await runtime.start({
+        command: process.execPath,
+        args: ["-e", `process.stdout.write(${JSON.stringify(text)})`],
+        cwd: workspace,
+        env: {},
+        timeoutMs: 2_000,
+      });
+      let settled = await runtime.read({
+        sessionId: started.sessionId,
+        cursor: 0,
+        limit: 1,
+        waitMs: 1_000,
+      });
+      while (settled.state === "running") {
+        settled = await runtime.read({
+          sessionId: started.sessionId,
+          cursor: settled.availableTo,
+          limit: 1,
+          waitMs: 1_000,
+        });
+      }
+      // Eight-byte cap cuts inside first emoji at byte 3. Runtime drops its two
+      // remaining continuation bytes, making retained text begin at byte 5.
+      const first = await runtime.read({ sessionId: started.sessionId, cursor: 0, limit: 2 });
+      assert.equal(first.availableFrom, 5);
+      assert.equal(first.availableTo, bytes.byteLength);
+      assert.equal(first.outputStart, 5);
+      assert.equal(first.nextCursor, 6);
+      assert.equal(first.outputEncoding, "utf8");
+      assert.equal(first.output, "B");
+      assert.doesNotMatch(first.output, /�/);
+      const second = await runtime.read({
+        sessionId: started.sessionId,
+        cursor: first.nextCursor,
+        limit: 5,
+      });
+      assert.equal(second.nextCursor, bytes.byteLength);
+      assert.equal(second.outputEncoding, "utf8");
+      assert.equal(second.output, "😀C");
+      assert.equal(first.output + second.output, "B😀C");
+
+      // Explicit mid-codepoint cursor uses byte-safe representation instead of
+      // replacement characters or cursor drift.
+      const split = await runtime.read({
+        sessionId: started.sessionId,
+        cursor: 7,
+        limit: 1,
+      });
+      assert.equal(split.outputEncoding, "base64");
+      assert.deepEqual(Buffer.from(split.output, "base64"), bytes.subarray(7, 8));
+      assert.equal(split.nextCursor, 8);
+    } finally {
+      await runtime.close();
+    }
+  });
+});
+
+test("bash base64 fallback never advances past recoverable displayed bytes", async () => {
+  await withWorkspace(async (workspace) => {
+    const codingAgent = createCodingAgent({
+      workspace,
+      model: "anthropic/faux-1",
+      outputCaps: { bash: 600 },
+    });
+    try {
+      const bash = codingAgent.definition.tools.find((item) => item.name === "bash");
+      const started = await bash.execute({
+        command: "node -e 'process.stdout.write(Buffer.alloc(100,255));setInterval(()=>{},1000)'",
+        yieldTimeMs: 10,
+      });
+      const sessionId = started.match(/session (cmd_[a-f0-9]{32})/)?.[1];
+      const page = await bash.execute({
+        sessionId,
+        action: "read",
+        cursor: 0,
+        waitMs: 1_000,
+      });
+      assert.doesNotMatch(page, /output capped/);
+      const range = page.match(/\[base64 bytes (\d+)-(\d+)\]\n([A-Za-z0-9+/=]+)/);
+      assert.equal(range !== null, true);
+      const start = Number(range?.[1]);
+      const end = Number(range?.[2]);
+      const displayed = Buffer.from(range?.[3] ?? "", "base64");
+      assert.equal(displayed.byteLength, end - start);
+      assert.equal(Number(page.match(/next cursor (\d+)/)?.[1]), end);
+      assert.deepEqual(displayed, Buffer.alloc(displayed.byteLength, 255));
+      await bash.execute({ sessionId, action: "kill" });
+    } finally {
+      await codingAgent.close();
+    }
   });
 });
 

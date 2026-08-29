@@ -15,6 +15,7 @@
  *   so nothing a session does can become a Cave Build.
  */
 import { spawn } from "node:child_process";
+import { isUtf8 } from "node:buffer";
 import { randomUUID } from "node:crypto";
 import { readFile, realpath, stat, writeFile } from "node:fs/promises";
 import { createInterface } from "node:readline/promises";
@@ -53,6 +54,11 @@ import {
   createProgrammaticToolRuntime,
   type ProgrammaticToolRuntime,
 } from "./programmatic-tools.js";
+import {
+  createCommandSessionRuntime,
+  type CommandSessionReadResult,
+  type CommandSessionRuntime,
+} from "./command-session.js";
 import { hostShellInvocation, killProcessTree, portableInvocation } from "./portable-process.js";
 import {
   createConversation,
@@ -76,6 +82,18 @@ import {
 import { PebbleEventEncoder } from "./pebble-stream.js";
 
 export { AgentRunController };
+export {
+  createCommandSessionRuntime,
+  type CommandSessionReadOptions,
+  type CommandSessionReadResult,
+  type CommandSessionRuntime,
+  type CommandSessionRuntimeOptions,
+  type CommandSessionStartOptions,
+  type CommandSessionStartResult,
+  type CommandSessionState,
+  type CommandSessionWriteOptions,
+  type CommandSessionWriteResult,
+} from "./command-session.js";
 export {
   PROGRAMMATIC_TOOL_NAME,
   createProgrammaticToolRuntime,
@@ -130,6 +148,10 @@ export const CODING_RUN_BREAKERS: RunBreakers = Object.freeze({
 
 const GREP_MAX_MATCHES = 200;
 const BASH_TIMEOUT_MS = 120_000;
+const BASH_SESSION_MAX_SESSIONS = 8;
+const BASH_SESSION_MAX_WAIT_MS = 30_000;
+const BASH_SESSION_MAX_INPUT_BYTES = 64 * 1024;
+const BASH_SESSION_READ_CHUNK_BYTES = 64 * 1024;
 const READ_TIMEOUT_MS = 30_000;
 const PROCESS_CAPTURE_MAX_BYTES = 4 * 1024 * 1024;
 const STORED_TOOL_OUTPUT_MAX_BYTES = 8 * 1024 * 1024;
@@ -232,6 +254,8 @@ export interface CodingAgent {
   readonly programmaticTools?: ProgrammaticToolRuntime;
   /** Largest raw tool outputs seen this process, kept for the recovery proof. */
   readonly samples: ToolOutputSample[];
+  /** Kill live command sessions owned by this agent. Idempotent. */
+  close(): Promise<void>;
 }
 
 export interface ToolOutputSample {
@@ -329,6 +353,14 @@ export function createCodingAgent(options: CodingAgentOptions = {}): CodingAgent
     samples.sort((left, right) => right.text.length - left.text.length);
     samples.length = Math.min(samples.length, MAX_SAMPLES);
   };
+  const commandSessions = createCommandSessionRuntime({
+    maxSessions: BASH_SESSION_MAX_SESSIONS,
+    maxOutputBytes: PROCESS_CAPTURE_MAX_BYTES,
+    maxReadBytes: BASH_SESSION_READ_CHUNK_BYTES,
+    maxInputBytes: BASH_SESSION_MAX_INPUT_BYTES,
+    maxTimeoutMs: BASH_TIMEOUT_MS,
+    maxWaitMs: BASH_SESSION_MAX_WAIT_MS,
+  });
   const baseDefinition = agent({
     id,
     instructions: options.instructions === undefined
@@ -345,7 +377,7 @@ export function createCodingAgent(options: CodingAgentOptions = {}): CodingAgent
             ? defineMemory({ namespace: id })
             : options.memory,
         }),
-    tools: codingTools(workspace, caps, record, toolSet),
+    tools: codingTools(workspace, caps, record, toolSet, commandSessions),
   });
   const directDefinition = options.environment === undefined
     ? baseDefinition
@@ -358,6 +390,14 @@ export function createCodingAgent(options: CodingAgentOptions = {}): CodingAgent
         : { toolName: options.programmaticToolName }),
     })
     : undefined;
+  let closing: Promise<void> | undefined;
+  const close = () => (closing ??= (async () => {
+    try {
+      await programmaticTools?.close();
+    } finally {
+      await commandSessions.close();
+    }
+  })());
   return Object.freeze({
     definition: programmaticTools?.definition ?? directDefinition,
     plan: defaultCodingPlan(modelID, id),
@@ -366,6 +406,7 @@ export function createCodingAgent(options: CodingAgentOptions = {}): CodingAgent
     toolMode,
     ...(programmaticTools === undefined ? {} : { programmaticTools }),
     samples,
+    close,
   });
 }
 
@@ -379,6 +420,7 @@ function codingTools(
   caps: typeof CODING_TOOL_OUTPUT_CAPS,
   record: (label: string, text: string) => void,
   toolSet: CodingToolSet,
+  commandSessions: CommandSessionRuntime,
 ): ToolDefinition[] {
   const storedOutputs = new ToolOutputStore();
   // The workspace is canonicalized once, then every candidate path is
@@ -480,37 +522,134 @@ function codingTools(
   const bashTool = tool({
     name: "bash",
     description:
-      "Run one shell command in the workspace and return its combined stdout and stderr. " +
-      `Times out after ${BASH_TIMEOUT_MS} ms; output is capped at ${caps.bash} bytes.`,
-    input: schema.object({
-      command: schema.string(),
-      timeoutMs: schema.optional(schema.integer()),
-    }),
+      "Run one shell command in the workspace and return combined stdout/stderr. " +
+      "Set yieldTimeMs to keep a still-running command as an inspectable session. " +
+      "Resume that same process with sessionId plus action read, write, or kill; read cursors " +
+      "are absolute bytes and never rerun the command. " +
+      `Hard timeout is ${BASH_TIMEOUT_MS} ms; output is capped at ${caps.bash} bytes.`,
+    input: schema.union([
+      schema.object({
+        command: schema.string(),
+        timeoutMs: schema.optional(schema.integer()),
+        yieldTimeMs: schema.optional(schema.integer()),
+      }),
+      schema.object({
+        sessionId: schema.string(),
+        action: schema.literal("read"),
+        cursor: schema.optional(schema.integer()),
+        limit: schema.optional(schema.integer()),
+        waitMs: schema.optional(schema.integer()),
+      }),
+      schema.object({
+        sessionId: schema.string(),
+        action: schema.literal("write"),
+        input: schema.string(),
+        cursor: schema.optional(schema.integer()),
+        limit: schema.optional(schema.integer()),
+        waitMs: schema.optional(schema.integer()),
+      }),
+      schema.object({
+        sessionId: schema.string(),
+        action: schema.literal("kill"),
+        cursor: schema.optional(schema.integer()),
+        limit: schema.optional(schema.integer()),
+      }),
+    ]),
     effect: "external",
     result: "inline",
     timeoutMs: BASH_TIMEOUT_MS,
     async execute(input, signal) {
-      const timeoutMs = Math.min(input.timeoutMs ?? BASH_TIMEOUT_MS, BASH_TIMEOUT_MS);
-      const shell = hostShellInvocation(input.command, process.platform, buildCodingProcessEnv());
-      const run = await runProcess(
-        shell.command,
-        shell.args,
-        await workspaceRoot(),
-        timeoutMs,
-        signal,
-      );
-      if (run.spawnFailed) throw new Error("caveman-code: host command shell is not available");
-      const status = `exit ${run.timedOut ? `timeout after ${timeoutMs}ms` : run.code}`;
-      const output = run.output.trim() === "" ? "(no output)" : run.output;
-      const text = `${status}\n${capToolOutput({
-        text: output,
-        maxBytes: Math.max(1, caps.bash - Buffer.byteLength(`${status}\n`, "utf8")),
-        direction: "tail",
-        ...(toolSet === "full" ? { store: storedOutputs } : {}),
-        label: `bash:${input.command.slice(0, 60)}`,
-        complete: run.captureComplete,
-      })}`;
-      record(`bash:${input.command.slice(0, 60)}`, text);
+      if ("command" in input) {
+        const timeoutMs = Math.min(input.timeoutMs ?? BASH_TIMEOUT_MS, BASH_TIMEOUT_MS);
+        const yieldTimeMs = input.yieldTimeMs;
+        validateBashWait(yieldTimeMs, "yieldTimeMs");
+        const shell = hostShellInvocation(input.command, process.platform, buildCodingProcessEnv());
+        let started;
+        try {
+          started = await commandSessions.start({
+            command: shell.command,
+            args: shell.args,
+            cwd: await workspaceRoot(),
+            env: buildCodingProcessEnv(),
+            stdin: yieldTimeMs === undefined ? "closed" : "pipe",
+            timeoutMs,
+            ...(signal === undefined ? {} : { signal }),
+          });
+        } catch (error) {
+          throw new Error(
+            `caveman-code: host command shell is not available: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        }
+        const waited = await waitForCommandSession(
+          commandSessions,
+          started.sessionId,
+          yieldTimeMs ?? timeoutMs + 1_000,
+          signal,
+        );
+        if (waited.state === "running") {
+          const page = await commandSessions.read({
+            sessionId: started.sessionId,
+            cursor: 0,
+            limit: bashSessionPageLimit(caps.bash),
+            ...(signal === undefined ? {} : { signal }),
+          });
+          const text = formatCommandSessionPage(page, caps.bash);
+          record(`bash:${input.command.slice(0, 60)}`, text);
+          return text;
+        }
+        const capture = await captureCommandSession(commandSessions, started.sessionId, signal);
+        if (capture.spawnError !== undefined) {
+          throw new Error("caveman-code: host command shell is not available");
+        }
+        const status = capture.state === "timed_out"
+          ? `exit timeout after ${timeoutMs}ms`
+          : capture.state === "killed"
+            ? "exit killed"
+            : `exit ${capture.exitCode}`;
+        const output = capture.output.trim() === ""
+          ? "(no output)"
+          : capture.outputEncoding === "base64"
+            ? `[base64 command output]\n${capture.output}`
+            : capture.output;
+        const text = `${status}\n${capToolOutput({
+          text: output,
+          maxBytes: Math.max(1, caps.bash - Buffer.byteLength(`${status}\n`, "utf8")),
+          direction: "tail",
+          ...(toolSet === "full" ? { store: storedOutputs } : {}),
+          label: `bash:${input.command.slice(0, 60)}`,
+          complete: capture.availableFrom === 0,
+        })}`;
+        record(`bash:${input.command.slice(0, 60)}`, text);
+        return text;
+      }
+
+      validateBashSessionReadInput(input, caps.bash);
+      let prefix: string | undefined;
+      if (input.action === "write") {
+        const write = await commandSessions.write({
+          sessionId: input.sessionId,
+          input: input.input,
+          ...(signal === undefined ? {} : { signal }),
+        });
+        prefix = write.accepted
+          ? `stdin accepted ${write.bytes} bytes`
+          : `stdin not accepted · ${write.state}`;
+      } else if (input.action === "kill") {
+        await commandSessions.kill(input.sessionId);
+      }
+      const page = await commandSessions.read({
+        sessionId: input.sessionId,
+        ...(input.cursor === undefined ? {} : { cursor: input.cursor }),
+        limit: input.limit ?? bashSessionPageLimit(caps.bash),
+        ...(input.action === "kill" || input.waitMs === undefined
+          ? {}
+          : { waitMs: input.waitMs }),
+        ...(signal === undefined ? {} : { signal }),
+      });
+      const text = formatCommandSessionPage(page, caps.bash, prefix);
+      record(`bash:${input.action}:${input.sessionId}`, text);
       return text;
     },
   });
@@ -642,6 +781,143 @@ function codingTools(
   return toolSet === "pebble-v1"
     ? [readFileTool, bashTool, writeTool, editTool]
     : [readFileTool, grepTool, bashTool, writeTool, editTool, readToolOutput];
+}
+
+type BashSessionReadInput = {
+  readonly cursor?: number;
+  readonly limit?: number;
+  readonly waitMs?: number;
+};
+
+function validateBashWait(value: number | undefined, name: string): void {
+  if (value === undefined) return;
+  if (!Number.isSafeInteger(value) || value < 0 || value > BASH_SESSION_MAX_WAIT_MS) {
+    throw new Error(`caveman-code: ${name} must be an integer from 0 to ${BASH_SESSION_MAX_WAIT_MS}`);
+  }
+}
+
+function validateBashSessionReadInput(input: BashSessionReadInput, outputCap: number): void {
+  if (input.cursor !== undefined && (!Number.isSafeInteger(input.cursor) || input.cursor < 0)) {
+    throw new Error("caveman-code: bash session cursor must be a non-negative integer");
+  }
+  const maxLimit = bashSessionPageLimit(outputCap);
+  if (input.limit !== undefined &&
+      (!Number.isSafeInteger(input.limit) || input.limit <= 0 || input.limit > maxLimit)) {
+    throw new Error(`caveman-code: bash session limit must be an integer from 1 to ${maxLimit}`);
+  }
+  validateBashWait(input.waitMs, "waitMs");
+}
+
+function bashSessionPageLimit(outputCap: number): number {
+  // Base64 is worst-case 4/3 expansion. Reserve metadata first so a byte-safe
+  // fallback never advances cursor past bytes omitted by final output capping.
+  const encodedBudget = Math.max(1, outputCap - 512);
+  const rawBudget = Math.max(1, Math.floor(encodedBudget * 3 / 4));
+  return Math.min(BASH_SESSION_READ_CHUNK_BYTES, rawBudget);
+}
+
+async function waitForCommandSession(
+  runtime: CommandSessionRuntime,
+  sessionId: string,
+  maximumWaitMs: number,
+  signal?: AbortSignal,
+): Promise<CommandSessionReadResult> {
+  const deadline = Date.now() + maximumWaitMs;
+  let cursor = 0;
+  for (;;) {
+    const remaining = Math.max(0, deadline - Date.now());
+    const result = await runtime.read({
+      sessionId,
+      cursor,
+      limit: 1,
+      waitMs: Math.min(remaining, BASH_SESSION_MAX_WAIT_MS),
+      ...(signal === undefined ? {} : { signal }),
+    });
+    if (result.state !== "running" || remaining === 0) return result;
+    cursor = result.availableTo;
+  }
+}
+
+async function captureCommandSession(
+  runtime: CommandSessionRuntime,
+  sessionId: string,
+  signal?: AbortSignal,
+): Promise<CommandSessionReadResult> {
+  const snapshot = await runtime.read({
+    sessionId,
+    cursor: 0,
+    limit: 1,
+    ...(signal === undefined ? {} : { signal }),
+  });
+  let cursor = snapshot.availableFrom;
+  const chunks: Buffer[] = [];
+  while (cursor < snapshot.availableTo) {
+    const page = await runtime.read({
+      sessionId,
+      cursor,
+      limit: BASH_SESSION_READ_CHUNK_BYTES,
+      ...(signal === undefined ? {} : { signal }),
+    });
+    chunks.push(Buffer.from(page.output, page.outputEncoding));
+    if (page.nextCursor <= cursor) break;
+    cursor = page.nextCursor;
+  }
+  const captured = Buffer.concat(chunks);
+  const outputEncoding = isUtf8(captured) ? "utf8" : "base64";
+  return Object.freeze({
+    ...snapshot,
+    outputEncoding,
+    output: captured.toString(outputEncoding),
+  });
+}
+
+function formatCommandSessionPage(
+  page: CommandSessionReadResult,
+  outputCap: number,
+  prefix?: string,
+): string {
+  if (page.state === "unknown_after_restart") {
+    return capOutput(
+      [
+        `session ${page.sessionId} · unknown_after_restart`,
+        "session belongs to another or closed runtime; process adoption is disabled",
+      ].join("\n"),
+      outputCap,
+    );
+  }
+  const exit = page.state === "exited"
+    ? ` · exit ${page.exitCode}`
+    : page.state === "timed_out"
+      ? " · hard timeout"
+      : page.state === "killed"
+        ? " · killed"
+        : "";
+  const position = [
+    `bytes ${page.outputStart}-${page.nextCursor} of ${page.availableTo}`,
+    `next cursor ${page.nextCursor}`,
+    ...(page.truncatedBeforeCursor
+      ? [`older output discarded before absolute byte ${page.availableFrom}`]
+      : []),
+  ].join(" · ");
+  const continuation = page.hasMore
+    ? `[continue at cursor ${page.nextCursor}]`
+    : page.state === "running"
+      ? `[still running; read again at cursor ${page.nextCursor}]`
+      : undefined;
+  return capOutput(
+    [
+      `session ${page.sessionId} · ${page.state}${exit}`,
+      ...(prefix === undefined ? [] : [prefix]),
+      position,
+      page.output === ""
+        ? "(no new output)"
+        : page.outputEncoding === "base64"
+          ? `[base64 bytes ${page.outputStart}-${page.nextCursor}]\n${page.output}`
+          : page.output,
+      ...(continuation === undefined ? [] : [continuation]),
+    ].join("\n"),
+    outputCap,
+  );
 }
 
 /**
@@ -1836,6 +2112,7 @@ export async function runCodingSession(
   const out = options.output ?? process.stdout;
   const notice = options.notice ?? process.stderr;
   const write = (value: string) => out.write(`${value}\n`);
+  const ownsCodingAgent = options.agent === undefined;
   const codingAgent = options.agent ?? createCodingAgent(options.agentOptions ?? {});
   const sessionOptions: CodingSessionOptions = {
     ...(options.conversation === undefined ? {} : { conversation: options.conversation }),
@@ -1905,7 +2182,11 @@ export async function runCodingSession(
     }
   } finally {
     rl.close();
-    await session.options.memory?.engine?.endSession(session.conversation.sessionId);
+    try {
+      await session.options.memory?.engine?.endSession(session.conversation.sessionId);
+    } finally {
+      if (ownsCodingAgent) await codingAgent.close();
+    }
   }
   const final = sessionBill(session);
   write("");

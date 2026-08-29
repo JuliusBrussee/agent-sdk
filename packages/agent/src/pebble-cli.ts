@@ -60,15 +60,19 @@ export async function runPebbleSpine(argv: readonly string[]): Promise<number> {
     workspace: process.cwd(),
     ...(args.model === undefined ? {} : { model: args.model }),
   });
-  const session = await startCodingSession(agent, { cave: args.cave });
-  let code = 1;
-  for await (const event of streamCodingTurn(session, args.prompt)) {
-    if (args.json) process.stdout.write(`${JSON.stringify(event)}\n`);
-    else if (event.kind === "delta.text") process.stdout.write(event.text);
-    if (event.kind === "turn.end") code = exitCode(event.stopReason);
+  try {
+    const session = await startCodingSession(agent, { cave: args.cave });
+    let code = 1;
+    for await (const event of streamCodingTurn(session, args.prompt)) {
+      if (args.json) process.stdout.write(`${JSON.stringify(event)}\n`);
+      else if (event.kind === "delta.text") process.stdout.write(event.text);
+      if (event.kind === "turn.end") code = exitCode(event.stopReason);
+    }
+    if (!args.json) process.stdout.write("\n");
+    return code;
+  } finally {
+    await agent.close();
   }
-  if (!args.json) process.stdout.write("\n");
-  return code;
 }
 
 const isMain = process.argv[1] !== undefined &&
@@ -84,4 +88,3 @@ if (isMain) {
     },
   );
 }
-
