@@ -52,6 +52,10 @@
       "types": "./dist/code.d.ts",
       "import": "./dist/code.js"
     },
+    "./catalog": {
+      "types": "./dist/catalog.d.ts",
+      "import": "./dist/catalog.js"
+    },
     "./programmatic-tools": {
       "types": "./dist/programmatic-tools.d.ts",
       "import": "./dist/programmatic-tools.js"

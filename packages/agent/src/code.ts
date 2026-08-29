@@ -1246,15 +1246,28 @@ export interface CodingTaskEconomics {
   issues: readonly string[];
 }
 
+export interface CodingTaskEconomicsOptions {
+  /** Planned attempts for this arm. Missing or extra attempts fail metrics closed. */
+  expectedAttempts?: number;
+}
+
 /**
  * Honest harness metric: all attempt spend divided by externally verified
  * completions. Unknown or mixed evidence produces null, never a favorable zero.
  */
 export function summarizeCodingTaskAttempts(
   attempts: readonly CodingTaskAttemptEvidence[],
+  options: CodingTaskEconomicsOptions = {},
 ): CodingTaskEconomics {
+  if (options.expectedAttempts !== undefined &&
+      (!Number.isSafeInteger(options.expectedAttempts) || options.expectedAttempts < 1)) {
+    throw new Error("coding_task_expected_attempts_invalid");
+  }
   const issues = new Set<string>();
   if (attempts.length === 0) issues.add("no_attempts");
+  if (options.expectedAttempts !== undefined && attempts.length !== options.expectedAttempts) {
+    issues.add("attempt_cardinality_mismatch");
+  }
   const identities = new Set<string>();
   const attemptIDs = new Set<string>();
   const pricedBases = new Set<Exclude<CodingTaskPriceBasis, "unpriced">>();
@@ -1313,6 +1326,7 @@ export function summarizeCodingTaskAttempts(
     issues.add("price_basis_mixed");
   }
   const denominatorKnown = completionEvidenceComplete && identities.size === 1 && attempts.length > 0 &&
+    !issues.has("attempt_cardinality_mismatch") &&
     !issues.has("attempt_identity_missing") && !issues.has("attempt_identity_duplicate") &&
     !issues.has("runtime_identity_missing") && !issues.has("runtime_identity_drift");
   const metricAvailable = denominatorKnown && completed > 0;

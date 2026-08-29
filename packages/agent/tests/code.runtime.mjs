@@ -1218,6 +1218,26 @@ test("task economics charges failed attempts to externally verified completions"
   assert.equal(report.priceBasis, "provider_invoice");
 });
 
+test("task economics fails an interrupted attempt schedule closed", () => {
+  const report = summarizeCodingTaskAttempts([{
+    taskId: "task-a",
+    attemptId: "1",
+    provider: "zai",
+    model: "glm-5.2-fp8",
+    completed: true,
+    completionBasis: "external_verifier",
+    costUsd: 0.3,
+    priceBasis: "provider_invoice",
+    tokens: 300,
+    usageBasis: "provider_reported",
+  }], { expectedAttempts: 2 });
+  assert.equal(report.status, "incomplete_evidence");
+  assert.equal(report.completionRate, null);
+  assert.equal(report.costPerCompletedTaskUsd, null);
+  assert.equal(report.tokensPerCompletedTask, null);
+  assert.deepEqual(report.issues, ["attempt_cardinality_mismatch"]);
+});
+
 test("task economics refuses favorable numbers from missing or mixed evidence", () => {
   const missing = summarizeCodingTaskAttempts([{
     taskId: "task-a",
