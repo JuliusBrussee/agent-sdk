@@ -353,10 +353,24 @@ async function feedCodeStream(
 
 test("coding agent exposes programmatic mode with speculation enabled by default", () => {
   const model = "openai/gpt-5.4";
-  assert.equal(createCodingAgent({ model }).toolMode, "direct");
+  const direct = createCodingAgent({ model });
+  assert.equal(direct.toolMode, "direct");
   const programmatic = createCodingAgent({ model, toolMode: "programmatic" });
   assert.equal(programmatic.toolMode, "programmatic");
   assert.deepEqual(programmatic.definition.tools.map((item) => item.name), [PROGRAMMATIC_TOOL_NAME]);
+  const directInstructions = String(direct.definition.instructions);
+  const programmaticInstructions = String(programmatic.definition.instructions);
+  assert.equal(
+    programmaticInstructions.match(/You are a coding agent working inside one workspace directory\./g)?.length,
+    1,
+  );
+  assert.equal(
+    programmaticInstructions.match(/Say what you changed and why\./g)?.length,
+    1,
+  );
+  assert.ok(
+    Buffer.byteLength(programmaticInstructions) - Buffer.byteLength(directInstructions) <= 900,
+  );
   assert.throws(
     () => createCodingAgent({ model, toolMode: "other" as "programmatic" }),
     /coding_tool_mode_invalid:other/,

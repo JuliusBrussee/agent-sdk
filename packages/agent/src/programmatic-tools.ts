@@ -22,10 +22,6 @@ const SPECULATION_MAX_INFLIGHT = 4;
 const SPECULATION_MAX_DISPATCHES = 8;
 
 const PROGRAMMATIC_BASE_INSTRUCTIONS = [
-  "You are a coding agent working inside one workspace directory.",
-  "",
-  "Work like an engineer: read before editing, make the smallest correct change, and verify it.",
-  "",
   `Use ${PROGRAMMATIC_TOOL_NAME} for ordinary tool work. One async code cell can call several typed tools,`,
   "run independent calls with Promise.all, inspect or filter their results locally, and print or return only",
   "the evidence needed for the next model step. Intermediate tool results stay outside model context.",
@@ -36,8 +32,6 @@ const PROGRAMMATIC_BASE_INSTRUCTIONS = [
   "",
   "Older turns and tool results may contain <cave-compressed> markers. Use cave_retrieve with their",
   "recovery_handle before guessing. cave_retrieve remains a framework tool when recovery is active.",
-  "",
-  "Say what changed and why. Never claim a command passed unless it ran.",
 ].join("\n");
 
 const PROGRAMMATIC_WORKER_SOURCE = String.raw`
