@@ -58,6 +58,7 @@ import {
   createCommandSessionRuntime,
   type CommandSessionReadResult,
   type CommandSessionRuntime,
+  type CommandSessionSpillOptions,
   type CommandSessionSummary,
 } from "./command-session.js";
 import { hostShellInvocation, killProcessTree, portableInvocation } from "./portable-process.js";
@@ -89,6 +90,7 @@ export {
   type CommandSessionReadResult,
   type CommandSessionRuntime,
   type CommandSessionRuntimeOptions,
+  type CommandSessionSpillOptions,
   type CommandSessionStartOptions,
   type CommandSessionStartResult,
   type CommandSessionState,
@@ -237,6 +239,8 @@ export interface CodingAgentOptions {
   toolMode?: CodingToolMode;
   /** Safe read speculation in programmatic mode. Defaults on; ignored by direct mode. */
   speculativeToolCalls?: boolean;
+  /** Optional bounded disk retention for command output evicted from memory. */
+  commandSessionSpill?: CommandSessionSpillOptions;
   /** Preloaded AGENTS.md, Agent Skills, and Agent Plugins environment. */
   environment?: AgentEnvironment;
   /** Provider-visible composite tool name. Product wrappers may brand it; default `caveman_code`. */
@@ -362,6 +366,9 @@ export function createCodingAgent(options: CodingAgentOptions = {}): CodingAgent
     maxInputBytes: BASH_SESSION_MAX_INPUT_BYTES,
     maxTimeoutMs: BASH_TIMEOUT_MS,
     maxWaitMs: BASH_SESSION_MAX_WAIT_MS,
+    ...(options.commandSessionSpill === undefined
+      ? {}
+      : { spill: options.commandSessionSpill }),
   });
   const baseDefinition = agent({
     id,

@@ -1,7 +1,15 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { isUtf8 } from "node:buffer";
 import { randomUUID } from "node:crypto";
-import { isAbsolute } from "node:path";
+import {
+  closeSync,
+  fstatSync,
+  openSync,
+  readSync,
+  unlinkSync,
+  writeSync,
+} from "node:fs";
+import { isAbsolute, join } from "node:path";
 import { killProcessTree, portableInvocation } from "./portable-process.js";
 
 export type CommandSessionState =
@@ -14,8 +22,10 @@ export type CommandSessionState =
 export interface CommandSessionRuntimeOptions {
   /** Maximum simultaneously retained sessions. Completed sessions are evicted first. */
   maxSessions?: number;
-  /** Maximum retained output bytes per session. Older bytes are discarded first. */
+  /** Maximum in-memory output bytes per session. Older bytes spill or discard first. */
   maxOutputBytes?: number;
+  /** Optional bounded exact-output recovery for bytes evicted from memory. */
+  spill?: CommandSessionSpillOptions;
   /** Maximum bytes returned by one read. */
   maxReadBytes?: number;
   /** Maximum bytes accepted by one stdin write. */
@@ -24,6 +34,13 @@ export interface CommandSessionRuntimeOptions {
   maxTimeoutMs?: number;
   /** Maximum long-poll duration for one read. */
   maxWaitMs?: number;
+}
+
+export interface CommandSessionSpillOptions {
+  /** Existing absolute directory for private spill files. */
+  directory: string;
+  /** Maximum additional retained bytes per session. */
+  maxBytes: number;
 }
 
 export interface CommandSessionStartOptions {
@@ -127,10 +144,17 @@ class BoundedByteRing {
     return this.length;
   }
 
-  append(input: Buffer): number {
+  append(input: Buffer, onEvict?: (bytes: Buffer) => void): number {
     if (input.byteLength === 0) return 0;
     const previousLength = this.length;
     if (input.byteLength >= this.maximum) {
+      if (onEvict !== undefined && this.length > 0) {
+        onEvict(this.slice(0, this.length));
+      }
+      const inputPrefix = input.byteLength - this.maximum;
+      if (onEvict !== undefined && inputPrefix > 0) {
+        onEvict(input.subarray(0, inputPrefix));
+      }
       this.ensureCapacity(this.maximum);
       input.copy(this.storage, 0, input.byteLength - this.maximum);
       this.head = 0;
@@ -140,6 +164,7 @@ class BoundedByteRing {
     this.ensureCapacity(Math.min(this.maximum, this.length + input.byteLength));
     const overflow = Math.max(0, this.length + input.byteLength - this.maximum);
     if (overflow > 0) {
+      onEvict?.(this.slice(0, overflow));
       this.head = (this.head + overflow) % this.storage.byteLength;
       this.length -= overflow;
     }
@@ -152,14 +177,17 @@ class BoundedByteRing {
   }
 
   /** Drop an incomplete UTF-8 prefix left by byte-cap eviction. */
-  alignUtf8Start(): number {
+  alignUtf8Start(onEvict?: (bytes: Buffer) => void): number {
     let dropped = 0;
     while (this.length > 0 && dropped < 3) {
-      const byte = this.storage[this.head]!;
+      const byte = this.storage[(this.head + dropped) % this.storage.byteLength]!;
       if ((byte & 0xc0) !== 0x80) break;
-      this.head = (this.head + 1) % this.storage.byteLength;
-      this.length--;
       dropped++;
+    }
+    if (dropped > 0) {
+      onEvict?.(this.slice(0, dropped));
+      this.head = (this.head + dropped) % this.storage.byteLength;
+      this.length -= dropped;
     }
     return dropped;
   }
@@ -204,6 +232,150 @@ class BoundedByteRing {
   }
 }
 
+/** Lazily opened bounded circular file. No path crosses the runtime API. */
+class BoundedSpillFile {
+  private fileDescriptor: number | undefined;
+  private filePath: string | undefined;
+  private head = 0;
+  private length = 0;
+  private disabled = false;
+
+  constructor(
+    private readonly directory: string,
+    private readonly maximum: number,
+    private readonly sessionId: string,
+  ) {}
+
+  get byteLength(): number {
+    return this.length;
+  }
+
+  append(input: Buffer): void {
+    if (input.byteLength === 0 || this.disabled || !this.ensureOpen()) return;
+    try {
+      // Synchronous bounded I/O preserves data-callback order and makes reads
+      // immediately consistent. Callers should choose a local spill directory.
+      if (input.byteLength >= this.maximum) {
+        this.writeAt(0, input.subarray(input.byteLength - this.maximum));
+        this.head = 0;
+        this.length = this.maximum;
+        return;
+      }
+      const overflow = Math.max(0, this.length + input.byteLength - this.maximum);
+      if (overflow > 0) {
+        this.head = (this.head + overflow) % this.maximum;
+        this.length -= overflow;
+      }
+      const tail = (this.head + this.length) % this.maximum;
+      const first = Math.min(input.byteLength, this.maximum - tail);
+      this.writeAt(tail, input.subarray(0, first));
+      if (first < input.byteLength) this.writeAt(0, input.subarray(first));
+      this.length += input.byteLength;
+    } catch {
+      this.disable();
+    }
+  }
+
+  slice(start: number, end: number): Buffer {
+    if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) ||
+        start < 0 || end < start || end > this.length) {
+      throw new Error("command_session_spill_range_invalid");
+    }
+    if (start === end) return Buffer.alloc(0);
+    if (this.fileDescriptor === undefined) {
+      throw new Error("command_session_spill_read_failed");
+    }
+    const result = Buffer.allocUnsafe(end - start);
+    try {
+      const physical = (this.head + start) % this.maximum;
+      const first = Math.min(result.byteLength, this.maximum - physical);
+      this.readAt(result, 0, physical, first);
+      if (first < result.byteLength) {
+        this.readAt(result, first, 0, result.byteLength - first);
+      }
+      return result;
+    } catch {
+      throw new Error("command_session_spill_read_failed");
+    }
+  }
+
+  clear(): void {
+    const descriptor = this.fileDescriptor;
+    const path = this.filePath;
+    this.fileDescriptor = undefined;
+    this.filePath = undefined;
+    this.head = 0;
+    this.length = 0;
+    if (descriptor !== undefined) {
+      try { closeSync(descriptor); } catch { /* already closed */ }
+    }
+    if (path !== undefined) {
+      try { unlinkSync(path); } catch { /* already removed */ }
+    }
+  }
+
+  private ensureOpen(): boolean {
+    if (this.fileDescriptor !== undefined) return true;
+    const path = join(
+      this.directory,
+      `.command-session-${this.sessionId}-${randomUUID()}.spill`,
+    );
+    let descriptor: number | undefined;
+    try {
+      descriptor = openSync(path, "wx+", 0o600);
+      if (!fstatSync(descriptor).isFile()) throw new Error("spill_not_regular_file");
+      // POSIX keeps the regular file alive through its descriptor. Removing
+      // its name now prevents crash residue without exposing a recovery path.
+      if (process.platform !== "win32") unlinkSync(path);
+      this.fileDescriptor = descriptor;
+      this.filePath = process.platform === "win32" ? path : undefined;
+      return true;
+    } catch {
+      if (descriptor !== undefined) {
+        try { closeSync(descriptor); } catch { /* best effort */ }
+        try { unlinkSync(path); } catch { /* best effort */ }
+      }
+      this.disabled = true;
+      return false;
+    }
+  }
+
+  private writeAt(position: number, input: Buffer): void {
+    let offset = 0;
+    while (offset < input.byteLength) {
+      const written = writeSync(
+        this.fileDescriptor!,
+        input,
+        offset,
+        input.byteLength - offset,
+        position + offset,
+      );
+      if (written <= 0) throw new Error("spill_write_failed");
+      offset += written;
+    }
+  }
+
+  private readAt(target: Buffer, targetStart: number, position: number, length: number): void {
+    let offset = 0;
+    while (offset < length) {
+      const read = readSync(
+        this.fileDescriptor!,
+        target,
+        targetStart + offset,
+        length - offset,
+        position + offset,
+      );
+      if (read <= 0) throw new Error("spill_read_failed");
+      offset += read;
+    }
+  }
+
+  private disable(): void {
+    this.clear();
+    this.disabled = true;
+  }
+}
+
 type CommandSession = {
   readonly id: string;
   readonly child: ChildProcessWithoutNullStreams;
@@ -213,6 +385,7 @@ type CommandSession = {
   readonly abortSignal?: AbortSignal;
   abortListener?: () => void;
   readonly output: BoundedByteRing;
+  readonly spill?: BoundedSpillFile;
   availableTo: number;
   state: CommandSessionState;
   requestedState?: Extract<TerminalState, "timed_out" | "killed">;
@@ -235,9 +408,10 @@ const FORCE_FINISH_MS = 500;
 const SESSION_ID = /^cmd_[a-f0-9]{32}$/;
 
 /**
- * Create an in-memory command-session owner. IDs deliberately name only this
- * runtime's children: unknown IDs are reported as `unknown_after_restart` and
- * are never adopted from operating-system process state.
+ * Create a command-session owner. Output stays memory-only unless bounded
+ * spill is explicitly configured. IDs deliberately name only this runtime's
+ * children: unknown IDs are reported as `unknown_after_restart` and are never
+ * adopted from operating-system process state.
  */
 export function createCommandSessionRuntime(
   options: CommandSessionRuntimeOptions = {},
@@ -260,6 +434,7 @@ export function createCommandSessionRuntime(
     "maxTimeoutMs",
   );
   const maxWaitMs = positiveLimit(options.maxWaitMs, DEFAULT_MAX_WAIT_MS, "maxWaitMs");
+  const spillOptions = validateSpillOptions(options.spill);
   const sessions = new Map<string, CommandSession>();
   let closed = false;
   let closing: Promise<void> | undefined;
@@ -273,8 +448,11 @@ export function createCommandSessionRuntime(
     if (session.finalized) return;
     const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
     session.availableTo += bytes.byteLength;
-    const evicted = session.output.append(bytes);
-    if (evicted > 0) session.output.alignUtf8Start();
+    const retain = session.spill === undefined
+      ? undefined
+      : (evictedBytes: Buffer) => session.spill!.append(evictedBytes);
+    const evicted = session.output.append(bytes, retain);
+    if (evicted > 0) session.output.alignUtf8Start(retain);
     notify(session);
   };
 
@@ -317,7 +495,7 @@ export function createCommandSessionRuntime(
       if (completed === undefined) {
         throw new Error("command_session_limit_reached");
       }
-      completed[1].output.clear();
+      clearRetainedOutput(completed[1]);
       sessions.delete(completed[0]);
     }
   };
@@ -336,10 +514,14 @@ export function createCommandSessionRuntime(
     if (waitMs > 0 && session.state === "running" && cursor >= session.availableTo) {
       await waitForChange(session, cursor, waitMs, input.signal);
     }
-    const availableFrom = session.availableTo - session.output.byteLength;
+    const availableFrom = retainedAvailableFrom(session);
     const outputStart = Math.max(cursor, availableFrom);
     let nextCursor = Math.min(session.availableTo, outputStart + limit);
-    let page = session.output.slice(outputStart - availableFrom, nextCursor - availableFrom);
+    let page = retainedSlice(
+      session,
+      outputStart - availableFrom,
+      nextCursor - availableFrom,
+    );
     let outputEncoding: "utf8" | "base64" = isUtf8(page) ? "utf8" : "base64";
     // Normal text pages should not become base64 because `limit` cut through
     // their final code point. Move end back by at most UTF-8's three trailing
@@ -377,7 +559,7 @@ export function createCommandSessionRuntime(
       return Object.freeze([...sessions.values()].map((session) => Object.freeze({
         sessionId: session.id,
         state: session.state,
-        availableFrom: session.availableTo - session.output.byteLength,
+        availableFrom: retainedAvailableFrom(session),
         availableTo: session.availableTo,
         stdinOpen: session.state === "running" &&
           !session.child.stdin.destroyed && !session.child.stdin.writableEnded,
@@ -424,6 +606,9 @@ export function createCommandSessionRuntime(
         resolveDone,
         ...(input.signal === undefined ? {} : { abortSignal: input.signal }),
         output: new BoundedByteRing(maxOutputBytes),
+        ...(spillOptions === undefined ? {} : {
+          spill: new BoundedSpillFile(spillOptions.directory, spillOptions.maxBytes, id),
+        }),
         availableTo: 0,
         state: "running",
         exitCode: null,
@@ -541,7 +726,7 @@ export function createCommandSessionRuntime(
         const live = [...sessions.values()].filter((session) => !session.finalized);
         for (const session of live) requestStop(session, "killed");
         await Promise.all(live.map((session) => session.done));
-        for (const session of sessions.values()) session.output.clear();
+        for (const session of sessions.values()) clearRetainedOutput(session);
         sessions.clear();
       })();
       return closing;
@@ -549,6 +734,28 @@ export function createCommandSessionRuntime(
   };
 
   return Object.freeze(runtime);
+}
+
+function retainedAvailableFrom(session: CommandSession): number {
+  return session.availableTo - session.output.byteLength - (session.spill?.byteLength ?? 0);
+}
+
+function retainedSlice(session: CommandSession, start: number, end: number): Buffer {
+  if (start === end) return Buffer.alloc(0);
+  const spillLength = session.spill?.byteLength ?? 0;
+  if (end <= spillLength) return session.spill!.slice(start, end);
+  if (start >= spillLength) {
+    return session.output.slice(start - spillLength, end - spillLength);
+  }
+  return Buffer.concat([
+    session.spill!.slice(start, spillLength),
+    session.output.slice(0, end - spillLength),
+  ], end - start);
+}
+
+function clearRetainedOutput(session: CommandSession): void {
+  session.output.clear();
+  session.spill?.clear();
 }
 
 function waitForChange(
@@ -641,6 +848,24 @@ function validateSessionId(sessionId: string): void {
   if (typeof sessionId !== "string" || !SESSION_ID.test(sessionId)) {
     throw new Error("command_session_id_invalid");
   }
+}
+
+function validateSpillOptions(
+  options: CommandSessionSpillOptions | undefined,
+): Readonly<CommandSessionSpillOptions> | undefined {
+  if (options === undefined) return undefined;
+  if (options === null || Array.isArray(options) || typeof options !== "object") {
+    throw new Error("command_session_spill_invalid");
+  }
+  if (typeof options.directory !== "string" ||
+      !isAbsolute(options.directory) ||
+      options.directory.includes("\0")) {
+    throw new Error("command_session_spill_directory_invalid");
+  }
+  return Object.freeze({
+    directory: options.directory,
+    maxBytes: positiveLimit(options.maxBytes, 0, "spill_maxBytes"),
+  });
 }
 
 function positiveLimit(value: number | undefined, fallback: number, name: string): number {

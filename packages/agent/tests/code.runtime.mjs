@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import {
@@ -1200,6 +1200,279 @@ test("command session runtime retains bounded output with absolute byte cursors"
     }
   });
 });
+
+test("command session spill stays lazy below the in-memory limit", async () => {
+  await withWorkspace(async (workspace) => {
+    const spillDirectory = resolve(workspace, "spill");
+    await mkdir(spillDirectory);
+    const runtime = createCommandSessionRuntime({
+      maxOutputBytes: 16,
+      spill: { directory: spillDirectory, maxBytes: 32 },
+      maxTimeoutMs: 2_000,
+      maxWaitMs: 1_000,
+    });
+    try {
+      const started = await runtime.start({
+        command: process.execPath,
+        args: ["-e", 'process.stdout.write("fits")'],
+        cwd: workspace,
+        env: {},
+        stdin: "closed",
+        timeoutMs: 2_000,
+      });
+      await settleCommandSession(runtime, started.sessionId);
+      const captured = await runtime.read({
+        sessionId: started.sessionId,
+        cursor: 0,
+        limit: 16,
+      });
+      assert.equal(captured.output, "fits");
+      assert.equal(captured.availableFrom, 0);
+      assert.deepEqual(await readdir(spillDirectory), []);
+    } finally {
+      await runtime.close();
+    }
+  });
+});
+
+test("command session spill recovers exact UTF-8 and binary bytes from cursor zero", async () => {
+  await withWorkspace(async (workspace) => {
+    const spillDirectory = resolve(workspace, "spill");
+    await mkdir(spillDirectory);
+    const payload = Buffer.concat([
+      Buffer.from("prefix-🙂-middle-", "utf8"),
+      Buffer.from([0xff, 0x00, 0x80, 0x7f]),
+      Buffer.from("-suffix-αβγ", "utf8"),
+    ]);
+    const runtime = createCommandSessionRuntime({
+      maxOutputBytes: 7,
+      spill: { directory: spillDirectory, maxBytes: 128 },
+      maxReadBytes: 5,
+      maxTimeoutMs: 2_000,
+      maxWaitMs: 1_000,
+    });
+    try {
+      const started = await runtime.start({
+        command: process.execPath,
+        args: [
+          "-e",
+          `process.stdout.write(Buffer.from(${JSON.stringify(payload.toString("base64"))},"base64"))`,
+        ],
+        cwd: workspace,
+        env: {},
+        stdin: "closed",
+        timeoutMs: 2_000,
+      });
+      await settleCommandSession(runtime, started.sessionId);
+      const captured = await readCommandSessionBytes(runtime, started.sessionId, 5);
+      assert.equal(captured.availableFrom, 0);
+      assert.equal(captured.availableTo, payload.byteLength);
+      assert.deepEqual(captured.output, payload);
+
+      const files = await readdir(spillDirectory);
+      if (process.platform === "win32") {
+        assert.equal(files.length, 1);
+        const spillFile = await stat(resolve(spillDirectory, files[0]));
+        assert.equal(spillFile.isFile(), true);
+        assert.equal(spillFile.size <= 128, true);
+      } else {
+        assert.deepEqual(files, []);
+      }
+    } finally {
+      await runtime.close();
+    }
+  });
+});
+
+test("command session spill cap falls back to a truthful retained suffix", async () => {
+  await withWorkspace(async (workspace) => {
+    const spillDirectory = resolve(workspace, "spill");
+    await mkdir(spillDirectory);
+    const payload = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    const chunks = payload.match(/.{1,4}/g);
+    const runtime = createCommandSessionRuntime({
+      maxOutputBytes: 8,
+      spill: { directory: spillDirectory, maxBytes: 10 },
+      maxReadBytes: 64,
+      maxTimeoutMs: 2_000,
+      maxWaitMs: 1_000,
+    });
+    try {
+      const started = await runtime.start({
+        command: process.execPath,
+        args: [
+          "-e",
+          [
+            `const chunks=${JSON.stringify(chunks)};let index=0;`,
+            "const emit=()=>{",
+            "if(index===chunks.length)return;",
+            "process.stdout.write(chunks[index++]);",
+            "setTimeout(emit,12)",
+            "};emit()",
+          ].join(""),
+        ],
+        cwd: workspace,
+        env: {},
+        stdin: "closed",
+        timeoutMs: 2_000,
+      });
+      await settleCommandSession(runtime, started.sessionId);
+      const captured = await runtime.read({
+        sessionId: started.sessionId,
+        cursor: 0,
+        limit: 64,
+      });
+      assert.equal(captured.availableFrom, payload.length - 18);
+      assert.equal(captured.availableTo, payload.length);
+      assert.equal(captured.outputStart, payload.length - 18);
+      assert.equal(captured.output, payload.slice(-18));
+      assert.equal(captured.truncatedBeforeCursor, true);
+      const files = await readdir(spillDirectory);
+      if (process.platform === "win32") {
+        assert.equal(files.length, 1);
+        assert.equal((await stat(resolve(spillDirectory, files[0]))).size <= 10, true);
+      } else {
+        assert.deepEqual(files, []);
+      }
+    } finally {
+      await runtime.close();
+    }
+  });
+});
+
+test("command session spill open failure degrades to truthful ring-only output", async () => {
+  await withWorkspace(async (workspace) => {
+    const missingDirectory = resolve(workspace, "missing-spill-directory");
+    const payload = "spill-unavailable";
+    const runtime = createCommandSessionRuntime({
+      maxOutputBytes: 5,
+      spill: { directory: missingDirectory, maxBytes: 32 },
+      maxReadBytes: 32,
+      maxTimeoutMs: 2_000,
+      maxWaitMs: 1_000,
+    });
+    try {
+      const started = await runtime.start({
+        command: process.execPath,
+        args: ["-e", `process.stdout.write(${JSON.stringify(payload)})`],
+        cwd: workspace,
+        env: {},
+        stdin: "closed",
+        timeoutMs: 2_000,
+      });
+      await settleCommandSession(runtime, started.sessionId);
+      const captured = await runtime.read({
+        sessionId: started.sessionId,
+        cursor: 0,
+        limit: 32,
+      });
+      assert.equal(captured.availableFrom, payload.length - 5);
+      assert.equal(captured.outputStart, payload.length - 5);
+      assert.equal(captured.output, payload.slice(-5));
+      assert.equal(captured.truncatedBeforeCursor, true);
+    } finally {
+      await runtime.close();
+    }
+  });
+});
+
+test("command session spill files clean up on completed eviction and runtime close", async () => {
+  await withWorkspace(async (workspace) => {
+    const spillDirectory = resolve(workspace, "spill");
+    await mkdir(spillDirectory);
+    const runtime = createCommandSessionRuntime({
+      maxSessions: 1,
+      maxOutputBytes: 4,
+      spill: { directory: spillDirectory, maxBytes: 32 },
+      maxTimeoutMs: 2_000,
+      maxWaitMs: 1_000,
+    });
+    try {
+      const first = await runtime.start({
+        command: process.execPath,
+        args: ["-e", 'process.stdout.write("first-overflow")'],
+        cwd: workspace,
+        env: {},
+        stdin: "closed",
+        timeoutMs: 2_000,
+      });
+      await settleCommandSession(runtime, first.sessionId);
+      const firstFiles = await readdir(spillDirectory);
+      if (process.platform === "win32") assert.equal(firstFiles.length, 1);
+      else assert.deepEqual(firstFiles, []);
+
+      const second = await runtime.start({
+        command: process.execPath,
+        args: [
+          "-e",
+          'process.stdout.write("second-overflow");setInterval(()=>{},1000)',
+        ],
+        cwd: workspace,
+        env: {},
+        stdin: "closed",
+        timeoutMs: 2_000,
+      });
+      let observed = await runtime.read({
+        sessionId: second.sessionId,
+        cursor: 0,
+        limit: 1,
+        waitMs: 1_000,
+      });
+      while (observed.availableTo < "second-overflow".length) {
+        observed = await runtime.read({
+          sessionId: second.sessionId,
+          cursor: observed.availableTo,
+          limit: 1,
+          waitMs: 1_000,
+        });
+      }
+      assert.equal(observed.state, "running");
+      const secondFiles = await readdir(spillDirectory);
+      if (process.platform === "win32") {
+        assert.equal(secondFiles.length, 1);
+        assert.notEqual(secondFiles[0], firstFiles[0]);
+      } else {
+        assert.deepEqual(secondFiles, []);
+      }
+    } finally {
+      await runtime.close();
+      assert.deepEqual(await readdir(spillDirectory), []);
+    }
+  });
+});
+
+async function settleCommandSession(runtime, sessionId) {
+  let state = await runtime.read({ sessionId, cursor: 0, limit: 1, waitMs: 1_000 });
+  while (state.state === "running") {
+    state = await runtime.read({
+      sessionId,
+      cursor: state.availableTo,
+      limit: 1,
+      waitMs: 1_000,
+    });
+  }
+  return state;
+}
+
+async function readCommandSessionBytes(runtime, sessionId, limit) {
+  const chunks = [];
+  let cursor = 0;
+  let first;
+  while (true) {
+    const page = await runtime.read({ sessionId, cursor, limit });
+    first ??= page;
+    assert.equal(page.outputStart, cursor);
+    assert.equal(page.nextCursor > cursor || !page.hasMore, true);
+    chunks.push(Buffer.from(page.output, page.outputEncoding));
+    cursor = page.nextCursor;
+    if (!page.hasMore) break;
+  }
+  return {
+    availableFrom: first.availableFrom,
+    availableTo: first.availableTo,
+    output: Buffer.concat(chunks),
+  };
+}
 
 test("command session runtime lists immutable retained-state snapshots", async () => {
   await withWorkspace(async (workspace) => {
