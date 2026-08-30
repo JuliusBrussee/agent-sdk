@@ -123,6 +123,37 @@ sync, and action identifiers are exact allowlists. `models` is exact when
 configured; omit it only when every record model under allowed connection may
 be read.
 
+## Bound action arguments
+
+An allowlisted action name still leaves every argument to the model, so
+`post-message` can reach any channel the connection can reach. Fix the
+destination in configuration instead:
+
+```ts
+actions: [{ name: "post-message", bind: { channel: "C0456" } }]
+```
+
+Bound keys are set from config after model input. Model input that sets a bound
+key fails with `cave_connect_action_bind_conflict` rather than being silently
+overridden, so a redirect attempt fails instead of appearing to succeed
+somewhere else. Bind values stay serializable scalars (string, number, boolean,
+null), at most 32 keys, and never carry credentials — Connect owns those. The
+tool description and `sources` name each bound key so the model omits it.
+
+## Action retries after unknown outcome
+
+A timeout, an abort, or a result that exceeded `maxResultBytes` leaves the side
+effect possibly applied. The runtime derives a key from source, provider,
+action, and the exact merged arguments, and refuses an identical repeat with
+`cave_connect_action_outcome_unknown`. Verify whether the earlier call ran
+before repeating it; a different payload is a different call and still
+executes. Only a daemon-reported failure is known not to have applied and stays
+retryable.
+
+This guard is process-scoped and bounded to the 256 most recent unknown
+outcomes. `cave-connectd` owns action execution, so the SDK does not claim
+daemon-side deduplication.
+
 ## Honest efficiency test
 
 Compare matched baseline and connected runs using same task cases and grader:

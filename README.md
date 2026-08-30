@@ -66,9 +66,8 @@ Requires Node.js 22.19+ and one supported provider credential.
 ```bash
 git clone https://github.com/JuliusBrussee/agent-sdk.git
 cd agent-sdk
-npm ci --prefix packages/pebble-protocol
-npm ci --prefix packages/agent
-npm ci --prefix packages/create-caveman-agent
+npm ci
+npm --prefix packages/pebble-protocol run build
 npm ci --prefix examples/coding-agent --ignore-scripts
 npm test
 ```
@@ -321,6 +320,26 @@ registry performs discovery only. Candidate conformance never grants execution
 or mints release certification. Adapter presence never implies behavioral
 compiler support or live provider certification.
 
+### Portable optimizations
+
+Adapters carry lifecycle, usage observation, and a model boundary. The
+economics — request ceiling, exact accounting, provider-native cache hints —
+attach one layer lower, at the provider `fetch`, so they need no per-framework
+code and work even where an adapter declares `modelInterception` unsupported:
+
+```ts
+import { createAnthropic } from "@ai-sdk/anthropic";
+import { createCavemanTransport } from "@caveman-ai/agent/wire";
+
+const caveman = createCavemanTransport({ budget: { maxTokens: 2_000_000 } });
+const anthropic = createAnthropic({ fetch: caveman.fetch });
+```
+
+Compaction and routing stay on the adapter boundary because they rewrite what
+the framework believes it sent. Cache hints stay on the same live-path gate the
+native runtime uses. Boundary rationale, current scope, and limits:
+[docs/PORTABILITY.md](./docs/PORTABILITY.md).
+
 ## Optional workspace compatibility
 
 Core runtime accepts explicit instructions, contexts, tools, and definition
@@ -343,7 +362,7 @@ const reviewer = applyAgentEnvironment(agent({
 }), environment);
 ```
 
-Optional adapter supports hierarchical `AGENTS.md`, Agent Skills, declarative
+Optional adapter supports Agent Skills, declarative
 Agent Plugins v1, Vercel OpenPlugin, and compatible Claude/Cursor manifests.
 MCP, hooks, custom agents, plugin subprocesses, and ambient-secret inheritance
 remain disabled.
@@ -357,6 +376,8 @@ remain disabled.
 - `packages/adapters/*` — exact-pinned framework integrations.
 - `packages/coding-agent` — `@caveman-ai/coding-agent` and `caveman-code` CLI.
 - `packages/create-caveman-agent` — zero-runtime-dependency initializer.
+- `packages/react` — `@caveman-ai/react`, a `useAgent` hook over the server's
+  Server-Sent Events stream. Holds no token; talks to a route your app proxies.
 - `packages/pebble-protocol` — frozen Apache-2.0 wire and session contract.
   Proprietary Pebble implementation lives outside this repository.
 - `packages/shared` — pinned wire schemas and provider-catalog snapshot used to
@@ -364,15 +385,16 @@ remain disabled.
 - `internal/agentbench/corpus` — pinned Apache-2.0 deterministic compiler
   replay corpus.
 
+Full documentation — guides, concepts, and a generated API reference for every
+published entrypoint: [caveman-docs/](./caveman-docs/README.md).
 Detailed SDK API: [packages/agent/README.md](./packages/agent/README.md).
 Monorepo boundaries: [docs/MONOREPO.md](./docs/MONOREPO.md).
 
 ## Develop
 
 ```bash
-npm ci --prefix packages/agent
-npm ci --prefix packages/pebble-protocol
-npm ci --prefix packages/create-caveman-agent
+npm ci
+npm --prefix packages/pebble-protocol run build
 npm ci --prefix examples/coding-agent --ignore-scripts
 npm test
 npm run license:check

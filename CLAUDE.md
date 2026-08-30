@@ -8,6 +8,7 @@
   - `@caveman-ai/adapter-kit`: fail-closed adapter manifest + registry contract.
   - `@caveman-ai/coding-agent`: interactive coding agent and `caveman-code` CLI.
   - `@caveman-ai/create-agent`: zero-runtime-dependency project scaffold.
+  - `@caveman-ai/react`: `useAgent` hook over the agent server's SSE stream.
   - `@pebble-agent/protocol`: frozen Apache-2.0 Pebble wire/session protocol.
 - Also contains framework adapters under `packages/adapters/*` and an example coding agent under `examples/coding-agent`.
 - This repo must not absorb proprietary Pebble runtime/session/TUI implementation; only the public protocol belongs here.
@@ -26,6 +27,7 @@
 - `packages/adapters/*`: exact-pinned adapters for Pi, Claude Agent SDK, Vercel AI SDK, Eve, Mastra.
 - `packages/coding-agent`: coding-agent package + CLI.
 - `packages/create-caveman-agent`: initializer templates and CLI.
+- `packages/react`: browser client for `@caveman-ai/agent/serve`; peer-depends on React, never holds the server token.
 - `packages/pebble-protocol`: frozen JSONL framing, turn events, ACP mapping, session entry contract.
 - `packages/shared`: shared contracts/provider catalog snapshot used by generation/verification.
 - `examples/coding-agent`: runnable example built on `@caveman-ai/coding-agent`.
@@ -44,10 +46,11 @@ Follow these even if a local change seems harmless:
 - Tool/subprocess environments must use explicit allowlists, never ambient secret inheritance.
 - Generated `packages/agent/src/catalog.ts` changes only via:
   - `node scripts/generate-agent-catalog.mjs`
-- Optional Agent Skills / `AGENTS.md` / plugin compatibility lives in one place:
+- Optional Agent Skills / plugin compatibility lives in one place:
   - `packages/agent/src/agent-environment.ts`
   - core runtime never discovers workspace files automatically
   - wrappers may add roots, but must not fork validation/precedence/invocation behavior.
+- Never rebuild what exact-pinned Pi already provides (tool loop, `beforeToolCall`/`afterToolCall`/`shouldStopAfterTurn`/`transformContext`, steering and follow-up queues, event stream). Check `node_modules/@earendil-works/pi-agent-core/dist/types.d.ts` before adding a runtime capability. Consuming a Pi hook to enforce an invariant Pi lacks (budget, breakers, deadlines, durability) is the product; re-exposing Pi's surface under a Caveman name is duplication and is refused.
 - Agent Plugins v1 / OpenPlugin support is declarative-only; do not add execution for MCP/hooks/custom agents. Executable integrations stay host-owned and require separate environment-allowlist and lifecycle contracts.
 - `@pebble-agent/protocol` is frozen and byte-sensitive. Be careful with event shapes, framing, ordering, enums, and fixtures.
 
@@ -59,9 +62,7 @@ Run from repo root unless noted.
 
 ```bash
 npm ci
-npm ci --prefix packages/pebble-protocol
-npm ci --prefix packages/agent
-npm ci --prefix packages/create-caveman-agent
+npm --prefix packages/pebble-protocol run build
 npm ci --prefix examples/coding-agent --ignore-scripts
 ```
 
@@ -72,6 +73,14 @@ npm test
 npm run license:check
 npm run pack:check
 ```
+
+`npm test` includes two ratchets that fail until you shrink or deliberately
+re-baseline: `check:api` (published export surface of `@caveman-ai/agent`, golden
+file `packages/agent/api-surface.txt`, re-baseline with `npm run api:update`) and
+`check:size` (source line-count caps in `size-budget.json`, re-baseline with
+`node scripts/size-budget.mjs --update`). Re-baselining is a reviewed diff, not a
+routine step. `npm run check:drift` reports moved upstream pins; it needs network
+and runs weekly in CI, not in `npm test`.
 
 ### Build
 

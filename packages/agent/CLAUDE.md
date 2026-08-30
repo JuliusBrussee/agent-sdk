@@ -12,7 +12,17 @@
 > do not add new framework/product surface there when it can live in its package.
 
 `@caveman-ai/agent`: opinionated TypeScript efficiency framework over exact-pinned
-Pi. `src/runtime.ts` owns agent execution, cache safety, tool isolation, runtime
+Pi. Pi is a complete agent core and this package never rebuilds it: Pi owns
+the tool loop, its lifecycle hooks (`beforeToolCall`, `afterToolCall`,
+`shouldStopAfterTurn`, post-turn injection, `transformContext`), the steering
+and follow-up queues, and the event stream — read
+`node_modules/@earendil-works/pi-agent-core/dist/types.d.ts` before adding any
+runtime capability. `runtime.ts` CONSUMES those hooks to enforce what Pi has no
+opinion about (budget reserve/settle, breakers, deadlines, durable journaling);
+that enforcement is the product. A parallel Caveman-named re-export of a Pi
+surface is not, and is refused. The seams this package does own point OUTWARD at
+frameworks it does not control (`src/wire.ts`, `src/model-boundary.ts`), never
+inward at Pi. `src/runtime.ts` owns agent execution, cache safety, tool isolation, runtime
 supervision, and content-blind evidence. Loopback runtime readiness requires
 health identity plus proxy-validated run-state/PID/executable ownership.
 `src/build.ts` owns finite candidate search, eval-complete selection, immutable
@@ -250,6 +260,30 @@ Public entry points:
   `build` BEFORE the eval gate; renderers are snapshot-tested byte-exact
   against `goldens/failures/`, and wire codes appear only under
   `caveman-agent build --verbose`;
+- `src/wire.ts` — the portable provider-wire transport (`@caveman-ai/agent/wire`).
+  `createCavemanTransport({ budget, cache })` returns a `fetch` for any provider
+  client that accepts one, so the request ceiling, exact provider-reported usage,
+  and native cache hints reach EVERY framework adapter without per-framework
+  code — this layer scales by provider, not by framework. Anthropic
+  `/v1/messages` and OpenAI `/v1/chat/completions` + `/v1/responses` only, matched
+  on host AND path; every other target, non-POST, or unparseable body passes
+  through unmetered and unedited. Cache release carries the SAME #225 live-path
+  gate as `runtime.ts` (OpenAI affinity routing key only); `cache: "all"` is an
+  explicit opt-in to unproven-live grammars and is never a default. The cache
+  epoch digests the stable slice (`system`/`tools`/`instructions`/`toolConfig`) so
+  changed instructions open a new epoch instead of permanently tripping prefix
+  drift. Usage merges across Anthropic's split `message_start`/`message_delta`
+  and OpenAI's final chunk; a response whose usage cannot be measured settles at
+  the FULL reserve, never zero, and a transport error cancels the reservation.
+  `ModelUsage.cost` follows the model-usage contract (priced only when every
+  count including reasoning is known, so Anthropic records are honestly
+  `unknown`), while the METER settles on a separately derived exact figure when
+  both extremes of an unknown reasoning split price identically. OpenAI's absent
+  cache-write count is the one field defaulted to zero, because OpenAI has no
+  cache-write class (`cacheWritePerMillion: null`). Compaction and routing
+  deliberately do NOT live here: they rewrite what the framework believes it
+  sent, so they stay on the adapter `modelBoundary` seam. Positioning and limits:
+  `docs/PORTABILITY.md`;
 - `src/claude.ts` — public unlocked Claude Agent SDK facade;
 - `src/claude-runtime.ts` — exact-pinned public Claude executor. Public calls
   cannot inject build identity. Every locked/candidate call rejects before SDK
@@ -348,9 +382,48 @@ Public entry points:
   `previousSummary` restart on resume. Synthesized refusal and error/aborted
   turns are never journaled as state, and an error turn without a live
   reservation journals no settle — a phantom zero settle would hide the
-  double-count. `tests/durable.runtime.mjs` covers crash-mid-call resume,
+  double-count.
+  Out-of-band control lives in `src/durable-control.ts`, as journal events
+  rather than process state, so it survives a restart and reaches a run this
+  process is not driving. `cancel_requested` is Temporal's CANCEL not its
+  TERMINATE: cooperative, idempotent, and it never rewrites a settled run — a
+  cancelled run settles as `run_failed` with `cave_durable_run_cancelled` (not a
+  fourth terminal shape, which would read as "pending" to every reader not
+  taught about it), and a sweep settles it with NO provider call.
+  `sleep_scheduled` is the cost primitive: an absolute, last-write-wins wake
+  time after which the run is eligible again, so a wait costs a date instead of
+  a process (no `sleep_settled` — once `wakeAt` passes the sleep is over by
+  definition). `nextDurableWake` / `server.nextWakeAt()` expose the earliest due
+  instant so a host can scale to zero; an overdue sleeper means "work now", and
+  a store that cannot enumerate means "unknown", never "nothing pending".
+  Storage is split into `src/durable-stores.ts` (bytes) and
+  `src/durable-limits.ts` (the shapes both halves must agree on).
+  `tests/durable.runtime.mjs` covers crash-mid-call resume,
   lost-turn restart, idempotent replay, identity refusals, the lock, and
   subagent settles landing path-tagged in the root journal;
+- `src/serve.ts` — the deployable target (`@caveman-ai/agent/serve`).
+  `createAgentServer({ definition, token, store })` puts ONE agent behind
+  `POST /runs` + `GET /runs/{runId}` + `/healthz` + `/readyz`, with every run
+  journaled through `src/durable.ts`. It adds exactly three things to the
+  journal and no scheduler, queue, or orchestration beyond them: an idempotent
+  submit (`runId` IS the durable idempotency key, so a settled run replays its
+  journaled outcome and spends nothing), recovery (boot plus a 60s sweep
+  re-drives every journal with no terminal event — the periodic pass is what
+  reclaims a run stranded by a PEER instance's death, which a boot-only sweep
+  would leave forever), and a SIGTERM drain (best effort; unfinished runs are
+  journaled and resumed by the next instance, so the drain is never the
+  correctness boundary). Fail-closed at the trust boundary: no unauthenticated
+  mode (a bearer token under 16 chars refuses at construction, compared
+  length-independently), text input only (multimodal journals a digest, which
+  no unattended resume could reconstruct), 1 MiB body cap, and `durable` in
+  caller `runOptions` is refused because the server owns it. A store that
+  cannot enumerate reports `listable: false` rather than an empty sweep.
+  `caveman-agent serve [dir] [--port] [--host] [--locked]` is the CLI lane;
+  `hosting/` ships the Dockerfile plus a complete Cloudflare Container +
+  Durable-Object-journal recipe, because Workers has no `node:child_process`
+  and container disk does not survive the instance. `tests/serve.runtime.mjs`
+  covers idempotent replay, boot recovery of a crashed run, auth refusal, and
+  submission validation;
 - `src/cli.ts` — `dev`, `build`, `check`, zero-spend `doctor`, `register`;
   bare `dev` and `defineBuild({ entry: "." })` resolve to the directory
   convention when `instructions.md` exists at the root, and markdown joins
@@ -519,9 +592,13 @@ Public entry points:
   keeps the REAL metered cost and the MODELED effect in separate fields with
   separate bases; the word "saved" appears nowhere.
 
-`doctor` is framework readiness truth surface: Node, sandbox, engine registry,
-runtime CLI, project/Context IR, lock drift, provider selection, and per-harness
-locked-execution state. It also recognizes a vercel/eve agent directory (F7:
+`doctor` is framework readiness truth surface: Node, sandbox, optional peers,
+engine registry, runtime CLI, project/Context IR, lock drift, provider
+selection, and per-harness locked-execution state. Optional peers
+(`src/optional-peers.ts`) are read off this package's own
+`peerDependenciesMeta`, never hardcoded: each backs a subpath export only, so a
+default install never downloads it, and doctor names the lane plus the exact
+install command rather than letting it surface as `ERR_MODULE_NOT_FOUND`. It also recognizes a vercel/eve agent directory (F7:
 nested `agent/` layout, or flat with eve-only `channels/`/`schedules/`/
 `connections/`/`hooks/`; suppressed whenever `caveman.config.ts` exists) and
 prints what maps, what needs a rewrite, and what has no v1 equivalent —

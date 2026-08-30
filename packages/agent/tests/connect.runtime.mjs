@@ -119,7 +119,7 @@ if (name === "caveman_connection_list") {
 } else if (name === "caveman_tool_search") {
   data = { tools: [{ name: "get-issue" }], next_offset: null };
 } else if (name === "caveman_tool_call") {
-  data = { ok: true, action: input.action };
+  data = { ok: true, action: input.action, input: input.input };
 } else {
   process.exit(8);
 }
@@ -478,4 +478,77 @@ test("Connect efficiency gate rejects cheaper incomplete or lower-quality runs",
   });
   assert.equal(rejected.accepted, false);
   assert.deepEqual(rejected.reasons, ["connected_data_incomplete", "quality_regressed"]);
+});
+
+test("Connect actions bind destinations in config and refuse unknown-outcome repeats", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cave-connect-action-"));
+  try {
+    const binary = await fakeConnectBinary(root);
+    const bound = createConnect({
+      binary,
+      sources: [{
+        id: "work-github",
+        provider: "github",
+        actions: [{ name: "get-issue", bind: { repo: "caveman/agent-sdk" } }],
+      }],
+    });
+
+    assert.match(bound.tool.description, /get-issue\(fixed:repo\)/);
+    const listed = await executeConnectTool(bound.tool.runtime, { operation: "sources" });
+    assert.deepEqual(listed.sources[0].actions, ["get-issue(fixed:repo)"]);
+
+    const called = await executeConnectTool(bound.tool.runtime, {
+      operation: "call_action",
+      source: "work-github",
+      action: "get-issue",
+      input: { number: 4 },
+    });
+    assert.deepEqual(called.input, { number: 4, repo: "caveman/agent-sdk" });
+
+    // The model may not choose the bound destination, even to the same value.
+    for (const repo of ["attacker/private", "caveman/agent-sdk"]) {
+      await assert.rejects(
+        executeConnectTool(bound.tool.runtime, {
+          operation: "call_action",
+          source: "work-github",
+          action: "get-issue",
+          input: { repo },
+        }),
+        /cave_connect_action_bind_conflict:repo/,
+      );
+    }
+
+    // An action that ran but whose result broke the byte cap must not re-fire.
+    const capped = createConnect({
+      binary,
+      sources: [{ id: "work-github", provider: "github", actions: ["get-issue"] }],
+      quality: { maxResultBytes: 16 },
+    });
+    const repeat = {
+      operation: "call_action",
+      source: "work-github",
+      action: "get-issue",
+      input: { number: 9, note: "same call" },
+    };
+    await assert.rejects(
+      executeConnectTool(capped.tool.runtime, repeat),
+      /cave_connect_result_too_large/,
+    );
+    await assert.rejects(
+      executeConnectTool(capped.tool.runtime, { ...repeat, input: { note: "same call", number: 9 } }),
+      /cave_connect_action_outcome_unknown:get-issue/,
+    );
+    // A different payload is a different call and stays executable.
+    await assert.rejects(
+      executeConnectTool(capped.tool.runtime, { ...repeat, input: { number: 10 } }),
+      /cave_connect_result_too_large/,
+    );
+
+    assert.throws(
+      () => createConnect({ binary, sources: [{ id: "s", provider: "github", actions: [{ name: "a", bind: { at: new Date() } }] }] }),
+      /cave_connect_action_bind_invalid/,
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });

@@ -15,6 +15,7 @@ packages/
 │   └── mastra/                    @caveman-ai/adapter-mastra
 ├── coding-agent/                  @caveman-ai/coding-agent
 ├── create-caveman-agent/          @caveman-ai/create-agent
+├── react/                         @caveman-ai/react
 └── pebble-protocol/               @pebble-agent/protocol (Apache-2.0)
 ```
 
@@ -41,6 +42,12 @@ path.
 
 `create-caveman-agent` owns project generation only.
 
+`react` owns one browser client for the event stream `@caveman-ai/agent/serve`
+emits, and nothing else: it holds no credential, opens no provider connection,
+and interprets the frozen Pebble event shapes rather than defining them. It
+depends on `react` as a peer and on no Caveman package at runtime, so installing
+core never installs React.
+
 `pebble-protocol` owns only frozen public wire, event, and session contracts.
 Pebble runtime, policy, sessions, TUI, distribution, and conformance code live
 in private sibling repository `caveman-coding-agent`.
@@ -52,6 +59,7 @@ adapter-kit <── adapter-* ──peer──> agent
                                   
 coding-agent ──peer───────────────> agent
 create-agent ──generated project──> agent
+react ────────HTTP/SSE only───────> agent/serve
 ```
 
 Core never imports adapter packages. Adapter packages may use documented core

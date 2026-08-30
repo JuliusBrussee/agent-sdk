@@ -82,7 +82,7 @@ import {
   type SegmentRecoveryProof,
   type TransformTrace,
 } from "./runtime.js";
-import { PebbleEventEncoder } from "./pebble-stream.js";
+import { encodeRunEvent, PebbleEventEncoder } from "./pebble-stream.js";
 
 export { AgentRunController };
 export {
@@ -1935,27 +1935,6 @@ export async function* streamCodingTurn(
           return undefined;
         }
         const event = signal.event;
-        if (event.type === "pi") {
-          for (const translated of encoder.pi(event.event)) yield translated;
-          continue;
-        }
-        if (event.type === "nested_tool_start") {
-          yield encoder.nestedToolStart(event.id, event.name, event.args);
-          continue;
-        }
-        if (event.type === "nested_tool_end") {
-          yield encoder.nestedToolEnd(event.id, event.isError, event.result);
-          continue;
-        }
-        if (event.type === "model_route") {
-          yield encoder.event({
-            kind: "route.decided",
-            model: event.decision.model,
-            reason: event.decision.reason,
-            signals: [...event.decision.signals],
-          });
-          continue;
-        }
         if (event.type === "run_error") {
           if (attempt === 0 && startedOptimized &&
               classifyTurnFailure(event.message) === "degrade_to_observe_only") {
@@ -1964,13 +1943,15 @@ export async function* streamCodingTurn(
             attempt++;
             break;
           }
-          for (const translated of encoder.terminal(event)) yield translated;
+          for (const translated of encodeRunEvent(encoder, event)) yield translated;
           return { failed: true, receipt: event.receipt };
         }
-        if (event.type !== "run_end") continue;
-        if (event.result.mode === "observe-only") degrade(session);
-        for (const translated of encoder.terminal(event)) yield translated;
-        return recordCodingTurn(session, input, event.result, startedOptimized);
+        if (event.type === "run_end") {
+          if (event.result.mode === "observe-only") degrade(session);
+          for (const translated of encodeRunEvent(encoder, event)) yield translated;
+          return recordCodingTurn(session, input, event.result, startedOptimized);
+        }
+        for (const translated of encodeRunEvent(encoder, event)) yield translated;
       }
       if (!retry) return undefined;
     }

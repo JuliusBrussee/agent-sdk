@@ -1,0 +1,116 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: "List what would publish without publishing"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  id-token: write # npm provenance
+
+# Two tags pushed close together would both see "not published" and race into
+# publishing the same version.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.19.0
+          registry-url: https://registry.npmjs.org
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - run: npm --prefix packages/pebble-protocol run build
+      - run: npm ci --prefix examples/coding-agent --ignore-scripts
+      - run: npm run build
+      - run: npm test
+      - run: npm run license:check
+      - run: npm run pack:check
+      # The merge gate also proves the tarballs install and import outside the
+      # checkout. Repeat it here: `pack:check` packs with --ignore-scripts and
+      # never asserts that an `exports` target is actually inside the archive.
+      - name: Clean-room install of the packed tarballs
+        run: |
+          npm pack --workspaces --pack-destination "$RUNNER_TEMP/tgz"
+          mkdir -p "$RUNNER_TEMP/clean-room" && cd "$RUNNER_TEMP/clean-room"
+          npm init -y >/dev/null
+          # `react` is @caveman-ai/react's peer; without it the install is ERESOLVE.
+          npm install "$RUNNER_TEMP"/tgz/*.tgz react
+          node --input-type=module -e '
+            await import("@caveman-ai/agent");
+            await import("@pebble-agent/protocol");
+          '
+
+      # Publish only the workspaces whose version is not already on the
+      # registry, so a tag is safe to push when a single package moved.
+      - name: Publish changed workspaces
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry-run }}
+        run: |
+          npm pkg get name version private dependencies peerDependencies --workspaces --json > /tmp/workspaces.json
+          node --input-type=module -e '
+            import { readFileSync } from "node:fs";
+            import { execFileSync } from "node:child_process";
+            const dryRun = process.env.DRY_RUN === "true";
+            const workspaces = JSON.parse(readFileSync("/tmp/workspaces.json", "utf8"));
+            const names = new Set(Object.values(workspaces).map((pkg) => pkg.name));
+
+            // Publish dependencies before dependents. Workspace order is an
+            // install order, not a release order: following it puts a package
+            // on the registry before the siblings it declares, and anyone who
+            // installs in that window gets an unresolvable dependency.
+            const ordered = [];
+            const placed = new Set();
+            const visit = (key, pkg, seen) => {
+              if (placed.has(key)) return;
+              if (seen.has(pkg.name)) throw new Error(`workspace_dependency_cycle:${pkg.name}`);
+              seen.add(pkg.name);
+              const required = [
+                ...Object.keys(pkg.dependencies ?? {}),
+                ...Object.keys(pkg.peerDependencies ?? {}),
+              ].filter((name) => names.has(name));
+              // `npm pkg get --workspaces` keys by package name, not directory.
+              for (const name of required) visit(name, workspaces[name], seen);
+              seen.delete(pkg.name);
+              placed.add(key);
+              ordered.push(pkg);
+            };
+            for (const [key, pkg] of Object.entries(workspaces)) visit(key, pkg, new Set());
+
+            for (const pkg of ordered) {
+              if (pkg.private === true) continue;
+              const spec = `${pkg.name}@${pkg.version}`;
+              let published = true;
+              try {
+                execFileSync("npm", ["view", spec, "version"], { stdio: "pipe" });
+              } catch (error) {
+                // Only a genuine 404 means "not published". A 401, a 5xx, or a
+                // DNS failure must abort: swallowing those turns a registry
+                // blip into a publish attempt against an unknown state.
+                const output = `${error.stdout ?? ""}${error.stderr ?? ""}${error.message ?? ""}`;
+                if (!output.includes("E404") && !output.includes("404 Not Found")) throw error;
+                published = false;
+              }
+              if (published) {
+                console.log(`skip ${spec} (already published)`);
+                continue;
+              }
+              if (dryRun) { console.log(`would publish ${spec}`); continue; }
+              console.log(`publish ${spec}`);
+              execFileSync("npm", ["publish", "--workspace", pkg.name, "--provenance", "--access", "public"], { stdio: "inherit" });
+            }
+          '

@@ -355,6 +355,17 @@ test("every discovered adapter package has a valid manifest aligned with exact p
     assert.equal(defined.packageName, packageJSON.name);
     assert.equal(defined.adapterVersion, packageJSON.version);
     assert.equal(packageJSON.peerDependencies[defined.upstream.package], defined.upstream.version);
+    // An adapter that also carries the upstream as a devDependency is testing
+    // against that copy. Dependabot bumps devDependencies and cannot see
+    // peerDependencies, so without this the conformance suite silently starts
+    // proving a version the published contract does not permit.
+    for (const [name, range] of Object.entries(packageJSON.peerDependencies ?? {})) {
+      const dev = packageJSON.devDependencies?.[name];
+      if (dev !== undefined) {
+        assert.equal(dev, range,
+          `${packageJSON.name}: devDependency ${name}@${dev} must match peerDependency ${range}`);
+      }
+    }
     assert.equal(ids.has(defined.id), false, `duplicate adapter id ${defined.id}`);
     ids.add(defined.id);
   }

@@ -18,7 +18,6 @@ test("agent environment can disable every implicit workspace source", async () =
   ]);
   try {
     await Promise.all([
-      writeFile(join(root, "AGENTS.md"), "workspace instruction\n"),
       writeFile(join(root, "plugin.json"), JSON.stringify({
         $schema: AGENT_PLUGINS_SCHEMA,
         name: "workspace-plugin",
@@ -35,18 +34,15 @@ test("agent environment can disable every implicit workspace source", async () =
     ]);
 
     const discovered = await loadAgentEnvironment({ cwd: root, homeDir: home });
-    assert.equal(discovered.instructions.length, 1);
     assert.equal(discovered.skills.length, 1);
     assert.equal(discovered.plugins.length, 1);
 
     const disabled = await loadAgentEnvironment({
       cwd: root,
       homeDir: home,
-      includeAgentInstructions: false,
       includeDefaultRoots: false,
       includeWorkspacePlugin: false,
     });
-    assert.deepEqual(disabled.instructions, []);
     assert.deepEqual(disabled.skills, []);
     assert.deepEqual(disabled.commands, []);
     assert.deepEqual(disabled.plugins, []);

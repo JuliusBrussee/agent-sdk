@@ -73,8 +73,18 @@ export type {
   RunReceipt,
   RunStopReason,
 } from "./budget.js";
-export { DiskDurableStore } from "./durable.js";
-export type { DurableRunOptions, DurableStore } from "./durable.js";
+export {
+  DiskDurableStore,
+  durableInputIsReplayable,
+  durableRunSummary,
+  HttpDurableStore,
+} from "./durable.js";
+export type {
+  DurableRunOptions,
+  DurableRunSummary,
+  DurableStore,
+  HttpDurableStoreOptions,
+} from "./durable.js";
 export type {
   CavemanRunEvent,
   ConversationState,
@@ -90,6 +100,17 @@ export {
   createConversation,
   verifySandboxConformance,
 } from "./runtime.js";
+// The scoped-egress contract is public because it is what a caller writes in
+// `RunOptions.sandboxProfile.network`. `egressAllowed` is exported alongside it
+// so the exact rule a deployment will be held to can be asserted in that
+// deployment's own tests, rather than inferred from documentation.
+export {
+  egressAllowed,
+  resolveEgressPolicy,
+  type ResolvedEgressPolicy,
+  type SandboxEgress,
+  type SandboxEgressPolicy,
+} from "./sandbox/policy.js";
 export {
   createFileMemoryAdapter,
   type MemoryStoreConfig,

@@ -6,6 +6,10 @@ conventions overlap on purpose, so the migration is mostly a move. Eve is a
 good framework; this page is for when you want the receipt, the budget, and
 the build gate, not an argument for leaving.
 
+For the general case, including the one-line `fetch` option that needs no
+move at all, see [`migrate.md`](./migrate.md). This page is the eve-specific
+directory map.
+
 `caveman-agent doctor`, run inside an eve directory, recognizes the layout
 and prints the short version of this table.
 
