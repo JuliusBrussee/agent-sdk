@@ -67,7 +67,7 @@ export interface CommandSessionReadOptions {
   /** Case-sensitive literal UTF-8 byte query. Returns the first retained match. */
   query?: string;
   limit?: number;
-  /** Wait until bytes after `cursor` arrive or the process stops. */
+  /** Query reads wait for a match; other reads wait for bytes after `cursor`. */
   waitMs?: number;
   /** Cancels this read only. It never kills the session. */
   signal?: AbortSignal;
@@ -527,15 +527,33 @@ export function createCommandSessionRuntime(
     if (cursor > session.availableTo) {
       throw new Error("command_session_cursor_beyond_output");
     }
-    if (waitMs > 0 && session.state === "running" && cursor >= session.availableTo) {
-      await waitForChange(session, cursor, waitMs, input.signal);
+    let match: number | null | undefined;
+    let queryNextCursor: number | undefined;
+    if (query === undefined) {
+      if (waitMs > 0 && session.state === "running" && cursor >= session.availableTo) {
+        await waitForChange(session, cursor, waitMs, input.signal);
+      }
+    } else {
+      const scan = createLiteralQueryScan(cursor, retainedAvailableFrom(session), query.byteLength);
+      const deadline = Date.now() + waitMs;
+      for (;;) {
+        match = continueLiteralMatch(session, scan, cursor, query, input.signal);
+        queryNextCursor = scan.position;
+        if (match !== null ||
+            scan.scannedBytes >= MAX_QUERY_SCAN_BYTES ||
+            scan.position < session.availableTo ||
+            session.state !== "running" ||
+            waitMs === 0) {
+          break;
+        }
+        const remaining = deadline - Date.now();
+        if (remaining <= 0) break;
+        await waitForChange(session, scan.position, remaining, input.signal);
+      }
     }
     const availableFrom = retainedAvailableFrom(session);
-    const match = query === undefined
-      ? undefined
-      : findLiteralMatch(session, cursor, availableFrom, query, input.signal);
     if (query !== undefined && match === null) {
-      const nextCursor = queryScanEnd(cursor, availableFrom, session.availableTo, query.byteLength);
+      const nextCursor = queryNextCursor!;
       return Object.freeze({
         sessionId: session.id,
         state: session.state,
@@ -797,31 +815,59 @@ function retainedSlice(session: CommandSession, start: number, end: number): Buf
   ], end - start);
 }
 
-function findLiteralMatch(
-  session: CommandSession,
+type LiteralQueryScan = {
+  position: number;
+  scannedBytes: number;
+  carry: Buffer;
+};
+
+function createLiteralQueryScan(
   cursor: number,
   availableFrom: number,
+  queryBytes: number,
+): LiteralQueryScan {
+  const logicalStart = Math.max(cursor, availableFrom);
+  const overlap = Math.min(queryBytes - 1, logicalStart - availableFrom);
+  return {
+    position: logicalStart - overlap,
+    scannedBytes: 0,
+    carry: Buffer.alloc(0),
+  };
+}
+
+function continueLiteralMatch(
+  session: CommandSession,
+  scan: LiteralQueryScan,
+  cursor: number,
   query: Buffer,
   signal?: AbortSignal,
 ): number | null {
-  const logicalStart = Math.max(cursor, availableFrom);
-  const overlap = Math.min(query.byteLength - 1, logicalStart - availableFrom);
-  const scanStart = logicalStart - overlap;
-  const scanEnd = queryScanEnd(cursor, availableFrom, session.availableTo, query.byteLength);
-  let carry = Buffer.alloc(0);
-  let position = scanStart;
-  while (position < scanEnd) {
+  const availableFrom = retainedAvailableFrom(session);
+  if (availableFrom >= scan.position) {
+    scan.position = availableFrom;
+    scan.carry = Buffer.alloc(0);
+  } else {
+    const carryStart = scan.position - scan.carry.byteLength;
+    if (availableFrom > carryStart) {
+      scan.carry = Buffer.from(scan.carry.subarray(availableFrom - carryStart));
+    }
+  }
+  while (scan.position < session.availableTo && scan.scannedBytes < MAX_QUERY_SCAN_BYTES) {
     throwIfOperationAborted(signal);
-    const chunkEnd = Math.min(scanEnd, position + QUERY_SCAN_CHUNK_BYTES);
+    const chunkEnd = Math.min(
+      session.availableTo,
+      scan.position + QUERY_SCAN_CHUNK_BYTES,
+      scan.position + MAX_QUERY_SCAN_BYTES - scan.scannedBytes,
+    );
     const chunk = retainedSlice(
       session,
-      position - availableFrom,
+      scan.position - availableFrom,
       chunkEnd - availableFrom,
     );
-    const searchable = carry.byteLength === 0
+    const searchable = scan.carry.byteLength === 0
       ? chunk
-      : Buffer.concat([carry, chunk], carry.byteLength + chunk.byteLength);
-    const searchableStart = position - carry.byteLength;
+      : Buffer.concat([scan.carry, chunk], scan.carry.byteLength + chunk.byteLength);
+    const searchableStart = scan.position - scan.carry.byteLength;
     let offset = 0;
     for (;;) {
       const relativeMatch = searchable.indexOf(query, offset);
@@ -831,24 +877,14 @@ function findLiteralMatch(
       offset = relativeMatch + 1;
     }
     const carryBytes = Math.min(query.byteLength - 1, searchable.byteLength);
-    carry = carryBytes === 0
+    scan.carry = carryBytes === 0
       ? Buffer.alloc(0)
       : Buffer.from(searchable.subarray(searchable.byteLength - carryBytes));
-    position = chunkEnd;
+    scan.scannedBytes += chunk.byteLength;
+    scan.position = chunkEnd;
   }
   throwIfOperationAborted(signal);
   return null;
-}
-
-function queryScanEnd(
-  cursor: number,
-  availableFrom: number,
-  availableTo: number,
-  queryBytes: number,
-): number {
-  const logicalStart = Math.max(cursor, availableFrom);
-  const overlap = Math.min(queryBytes - 1, logicalStart - availableFrom);
-  return Math.min(availableTo, logicalStart - overlap + MAX_QUERY_SCAN_BYTES);
 }
 
 function clearRetainedOutput(session: CommandSession): void {

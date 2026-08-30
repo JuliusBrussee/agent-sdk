@@ -534,7 +534,7 @@ function codingTools(
     description:
       "Run shell command in the workspace and return combined stdout/stderr. " +
       "Set yieldTimeMs to keep a still-running command as an inspectable session. " +
-      "List finds retained sessions; read pages or literal-searches retained output, write resumes " +
+      "List sessions; read pages or use query + waitMs for literal output, write resumes " +
       "stdin or closes it for EOF, and kill stops one. Cursors never rerun commands. " +
       `Hard timeout is ${BASH_TIMEOUT_MS} ms; output is capped at ${caps.bash} bytes.`,
     input: schema.union([
