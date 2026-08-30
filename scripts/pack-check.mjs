@@ -25,6 +25,7 @@ const fixedPackages = [
   "packages/create-caveman-agent",
   "packages/evals",
   "packages/pebble-protocol",
+  "packages/react",
 ];
 const adaptersRoot = resolve(root, "packages/adapters");
 const adapterPackages = readdirSync(adaptersRoot, { withFileTypes: true })

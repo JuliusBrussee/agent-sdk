@@ -8,6 +8,7 @@
   - `@caveman-ai/adapter-kit`: fail-closed adapter manifest + registry contract.
   - `@caveman-ai/coding-agent`: interactive coding agent and `caveman-code` CLI.
   - `@caveman-ai/create-agent`: zero-runtime-dependency project scaffold.
+  - `@caveman-ai/react`: `useAgent` hook over the agent server's SSE stream.
   - `@pebble-agent/protocol`: frozen Apache-2.0 Pebble wire/session protocol.
 - Also contains framework adapters under `packages/adapters/*` and an example coding agent under `examples/coding-agent`.
 - This repo must not absorb proprietary Pebble runtime/session/TUI implementation; only the public protocol belongs here.
@@ -26,6 +27,7 @@
 - `packages/adapters/*`: exact-pinned adapters for Pi, Claude Agent SDK, Vercel AI SDK, Eve, Mastra.
 - `packages/coding-agent`: coding-agent package + CLI.
 - `packages/create-caveman-agent`: initializer templates and CLI.
+- `packages/react`: browser client for `@caveman-ai/agent/serve`; peer-depends on React, never holds the server token.
 - `packages/pebble-protocol`: frozen JSONL framing, turn events, ACP mapping, session entry contract.
 - `packages/shared`: shared contracts/provider catalog snapshot used by generation/verification.
 - `examples/coding-agent`: runnable example built on `@caveman-ai/coding-agent`.

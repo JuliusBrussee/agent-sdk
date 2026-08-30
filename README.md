@@ -376,6 +376,8 @@ remain disabled.
 - `packages/adapters/*` — exact-pinned framework integrations.
 - `packages/coding-agent` — `@caveman-ai/coding-agent` and `caveman-code` CLI.
 - `packages/create-caveman-agent` — zero-runtime-dependency initializer.
+- `packages/react` — `@caveman-ai/react`, a `useAgent` hook over the server's
+  Server-Sent Events stream. Holds no token; talks to a route your app proxies.
 - `packages/pebble-protocol` — frozen Apache-2.0 wire and session contract.
   Proprietary Pebble implementation lives outside this repository.
 - `packages/shared` — pinned wire schemas and provider-catalog snapshot used to

@@ -53,14 +53,17 @@ jobs:
         run: |
           mkdir clean-room && cd clean-room
           npm init -y >/dev/null
-          npm install "$RUNNER_TEMP"/tgz/*.tgz
+          npm install "$RUNNER_TEMP"/tgz/*.tgz react
           node --input-type=module -e '
             const m = await import("@caveman-ai/agent");
             for (const name of ["agent", "auto", "run", "tool", "schema"]) {
               if (!(name in m)) throw new Error(`missing_export:${name}`);
             }
+            await import("@caveman-ai/agent/serve");
             await import("@caveman-ai/agent/wire");
             await import("@pebble-agent/protocol");
+            const react = await import("@caveman-ai/react");
+            if (typeof react.useAgent !== "function") throw new Error("missing_export:useAgent");
           '
           npx --no-install caveman-agent --version
 
