@@ -64,6 +64,8 @@ export interface CommandSessionReadOptions {
   sessionId: string;
   /** Absolute byte position in this session's combined stdout/stderr stream. */
   cursor?: number;
+  /** Case-sensitive literal UTF-8 byte query. Returns the first retained match. */
+  query?: string;
   limit?: number;
   /** Wait until bytes after `cursor` arrive or the process stops. */
   waitMs?: number;
@@ -76,7 +78,10 @@ export interface CommandSessionReadResult {
   readonly state: CommandSessionState;
   /** Requested absolute cursor. */
   readonly cursor: number;
-  /** Absolute cursor of the first returned byte. May advance when old bytes were evicted. */
+  /**
+   * Absolute cursor of the first returned byte. May advance when old bytes were
+   * evicted, or begin before a query cursor when one literal spans that cursor.
+   */
   readonly outputStart: number;
   /** Absolute cursor immediately after the returned bytes. */
   readonly nextCursor: number;
@@ -87,6 +92,8 @@ export interface CommandSessionReadResult {
   readonly availableTo: number;
   readonly truncatedBeforeCursor: boolean;
   readonly hasMore: boolean;
+  /** Query reads only: absolute first match, or `null` when scanned bytes had none. */
+  readonly matchStart?: number | null;
   readonly exitCode: number | null;
   readonly exitSignal: NodeJS.Signals | null;
   readonly spawnError?: string;
@@ -403,6 +410,9 @@ const DEFAULT_MAX_READ_BYTES = 64 * 1024;
 const DEFAULT_MAX_INPUT_BYTES = 64 * 1024;
 const DEFAULT_MAX_TIMEOUT_MS = 120_000;
 const DEFAULT_MAX_WAIT_MS = 30_000;
+const MAX_QUERY_BYTES = 4 * 1024;
+const MAX_QUERY_SCAN_BYTES = 16 * 1024 * 1024;
+const QUERY_SCAN_CHUNK_BYTES = 64 * 1024;
 const EXIT_FLUSH_GRACE_MS = 100;
 const FORCE_FINISH_MS = 500;
 const SESSION_ID = /^cmd_[a-f0-9]{32}$/;
@@ -504,10 +514,11 @@ export function createCommandSessionRuntime(
     const cursor = nonNegativeInteger(input.cursor ?? 0, "cursor");
     const limit = positiveBoundedInteger(input.limit ?? maxReadBytes, maxReadBytes, "limit");
     const waitMs = nonNegativeBoundedInteger(input.waitMs ?? 0, maxWaitMs, "waitMs");
+    const query = validateQuery(input.query);
     throwIfOperationAborted(input.signal);
     validateSessionId(input.sessionId);
     const session = sessions.get(input.sessionId);
-    if (session === undefined) return unknownRead(input.sessionId, cursor);
+    if (session === undefined) return unknownRead(input.sessionId, cursor, query !== undefined);
     if (cursor > session.availableTo) {
       throw new Error("command_session_cursor_beyond_output");
     }
@@ -515,7 +526,30 @@ export function createCommandSessionRuntime(
       await waitForChange(session, cursor, waitMs, input.signal);
     }
     const availableFrom = retainedAvailableFrom(session);
-    const outputStart = Math.max(cursor, availableFrom);
+    const match = query === undefined
+      ? undefined
+      : findLiteralMatch(session, cursor, availableFrom, query, input.signal);
+    if (query !== undefined && match === null) {
+      const nextCursor = queryScanEnd(cursor, availableFrom, session.availableTo, query.byteLength);
+      return Object.freeze({
+        sessionId: session.id,
+        state: session.state,
+        cursor,
+        outputStart: nextCursor,
+        nextCursor,
+        outputEncoding: "utf8" as const,
+        output: "",
+        availableFrom,
+        availableTo: session.availableTo,
+        truncatedBeforeCursor: cursor < availableFrom,
+        hasMore: nextCursor < session.availableTo,
+        matchStart: null,
+        exitCode: session.exitCode,
+        exitSignal: session.exitSignal,
+        ...(session.spawnError === undefined ? {} : { spawnError: session.spawnError }),
+      });
+    }
+    const outputStart = match ?? Math.max(cursor, availableFrom);
     let nextCursor = Math.min(session.availableTo, outputStart + limit);
     let page = retainedSlice(
       session,
@@ -548,6 +582,7 @@ export function createCommandSessionRuntime(
       availableTo: session.availableTo,
       truncatedBeforeCursor: cursor < availableFrom,
       hasMore: nextCursor < session.availableTo,
+      ...(match === undefined ? {} : { matchStart: match }),
       exitCode: session.exitCode,
       exitSignal: session.exitSignal,
       ...(session.spawnError === undefined ? {} : { spawnError: session.spawnError }),
@@ -753,6 +788,60 @@ function retainedSlice(session: CommandSession, start: number, end: number): Buf
   ], end - start);
 }
 
+function findLiteralMatch(
+  session: CommandSession,
+  cursor: number,
+  availableFrom: number,
+  query: Buffer,
+  signal?: AbortSignal,
+): number | null {
+  const logicalStart = Math.max(cursor, availableFrom);
+  const overlap = Math.min(query.byteLength - 1, logicalStart - availableFrom);
+  const scanStart = logicalStart - overlap;
+  const scanEnd = queryScanEnd(cursor, availableFrom, session.availableTo, query.byteLength);
+  let carry = Buffer.alloc(0);
+  let position = scanStart;
+  while (position < scanEnd) {
+    throwIfOperationAborted(signal);
+    const chunkEnd = Math.min(scanEnd, position + QUERY_SCAN_CHUNK_BYTES);
+    const chunk = retainedSlice(
+      session,
+      position - availableFrom,
+      chunkEnd - availableFrom,
+    );
+    const searchable = carry.byteLength === 0
+      ? chunk
+      : Buffer.concat([carry, chunk], carry.byteLength + chunk.byteLength);
+    const searchableStart = position - carry.byteLength;
+    let offset = 0;
+    for (;;) {
+      const relativeMatch = searchable.indexOf(query, offset);
+      if (relativeMatch < 0) break;
+      const absoluteMatch = searchableStart + relativeMatch;
+      if (absoluteMatch + query.byteLength > cursor) return absoluteMatch;
+      offset = relativeMatch + 1;
+    }
+    const carryBytes = Math.min(query.byteLength - 1, searchable.byteLength);
+    carry = carryBytes === 0
+      ? Buffer.alloc(0)
+      : Buffer.from(searchable.subarray(searchable.byteLength - carryBytes));
+    position = chunkEnd;
+  }
+  throwIfOperationAborted(signal);
+  return null;
+}
+
+function queryScanEnd(
+  cursor: number,
+  availableFrom: number,
+  availableTo: number,
+  queryBytes: number,
+): number {
+  const logicalStart = Math.max(cursor, availableFrom);
+  const overlap = Math.min(queryBytes - 1, logicalStart - availableFrom);
+  return Math.min(availableTo, logicalStart - overlap + MAX_QUERY_SCAN_BYTES);
+}
+
 function clearRetainedOutput(session: CommandSession): void {
   session.output.clear();
   session.spill?.clear();
@@ -784,7 +873,11 @@ function waitForChange(
   });
 }
 
-function unknownRead(sessionId: string, cursor: number): CommandSessionReadResult {
+function unknownRead(
+  sessionId: string,
+  cursor: number,
+  search = false,
+): CommandSessionReadResult {
   return Object.freeze({
     sessionId,
     state: "unknown_after_restart",
@@ -797,6 +890,7 @@ function unknownRead(sessionId: string, cursor: number): CommandSessionReadResul
     availableTo: cursor,
     truncatedBeforeCursor: false,
     hasMore: false,
+    ...(search ? { matchStart: null } : {}),
     exitCode: null,
     exitSignal: null,
   });
@@ -804,6 +898,18 @@ function unknownRead(sessionId: string, cursor: number): CommandSessionReadResul
 
 function throwIfOperationAborted(signal: AbortSignal | undefined): void {
   if (signal?.aborted === true) throw operationAbortedError();
+}
+
+function validateQuery(query: string | undefined): Buffer | undefined {
+  if (query === undefined) return undefined;
+  if (typeof query !== "string" || query.length === 0) {
+    throw new Error("command_session_query_invalid");
+  }
+  const encoded = Buffer.from(query, "utf8");
+  if (encoded.byteLength > MAX_QUERY_BYTES) {
+    throw new Error("command_session_query_limit_exceeded");
+  }
+  return encoded;
 }
 
 function operationAbortedError(): Error {

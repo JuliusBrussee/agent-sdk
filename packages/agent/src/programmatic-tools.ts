@@ -398,9 +398,13 @@ function schemaType(value: unknown, depth = 0): string {
     ? value.required.filter((item): item is string => typeof item === "string")
     : []);
   const fields = Object.entries(value.properties).map(([name, schema]) =>
-    `${JSON.stringify(name)}${required.has(name) ? "" : "?"}: ${schemaType(schema, depth + 1)}`
+    `${schemaPropertyName(name)}${required.has(name) ? "" : "?"}: ${schemaType(schema, depth + 1)}`
   );
   return `{ ${fields.join("; ")} }`;
+}
+
+function schemaPropertyName(name: string): string {
+  return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name) ? name : JSON.stringify(name);
 }
 
 type ProgrammaticMetadata = {

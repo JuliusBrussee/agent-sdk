@@ -890,6 +890,49 @@ test("caveman_code drives command sessions through canonical nested dispatch", a
   });
 });
 
+test("programmatic bash formats literal search without exposing its query", async () => {
+  await withWorkspace(async (workspace) => {
+    const codingAgent = createCodingAgent({
+      workspace,
+      model: "anthropic/faux-1",
+      toolSet: "pebble-v1",
+      toolMode: "programmatic",
+    });
+    try {
+      const codeTool = codingAgent.definition.tools[0];
+      const nested = new Map(codeTool.nestedTools.map((item) => [item.name, item]));
+      const context = {
+        toolCallId: "literal-search-parent",
+        parentToolCallId: "literal-search-parent",
+        dispatch(name, input, options) {
+          const definition = nested.get(name);
+          if (definition === undefined) return Promise.reject(new Error(`test_unknown_tool:${name}`));
+          return definition.execute(input, options?.signal);
+        },
+      };
+      const command = "node -e 'process.stdout.write(\"prefix-TARGET-tail\");" +
+        "setInterval(()=>{},1000)'";
+      const result = await codeTool.execute({
+        code: [
+          `const started=await bash(${JSON.stringify({ command, yieldTimeMs: 10 })});`,
+          "const sessionId=/cmd_[a-f0-9]{32}/.exec(started)?.[0];",
+          'if(!sessionId)throw new Error("missing session");',
+          'const missed=await bash({sessionId,action:"read",cursor:0,query:"must-not-echo"});',
+          'const found=await bash({sessionId,action:"read",cursor:0,query:"TARGET",waitMs:5000});',
+          'return missed+"\\n"+found;',
+        ].join(""),
+      }, undefined, context);
+      assert.match(result, /\(no literal match\)/);
+      assert.match(result, /still running; search again at cursor/);
+      assert.doesNotMatch(result, /must-not-echo/);
+      assert.match(result, /literal match at byte 7/);
+      assert.match(result, /TARGET-tail/);
+    } finally {
+      await codingAgent.close();
+    }
+  });
+});
+
 test("successful code cells retain yielded commands until owner cancellation", async () => {
   await withWorkspace(async (workspace) => {
     const codingAgent = createCodingAgent({
@@ -1284,6 +1327,237 @@ test("command session spill recovers exact UTF-8 and binary bytes from cursor ze
   });
 });
 
+test("command session literal search crosses scan, spill, and binary byte boundaries", async () => {
+  await withWorkspace(async (workspace) => {
+    const spillDirectory = resolve(workspace, "spill");
+    await mkdir(spillDirectory);
+    const totalBytes = 80 * 1024;
+    const memoryBytes = 8 * 1024;
+    const spillMemoryBoundary = totalBytes - memoryBytes;
+    const placements = [
+      { offset: 100, bytes: Buffer.from("spill-target") },
+      { offset: 1_024, bytes: Buffer.from("🙂needle") },
+      { offset: 2_048, bytes: Buffer.concat([
+        Buffer.from("binary-target"),
+        Buffer.from([0xff]),
+        Buffer.from("abcd"),
+      ]) },
+      { offset: 64 * 1024 - 4, bytes: Buffer.from("chunk-target") },
+      { offset: spillMemoryBoundary - 4, bytes: Buffer.from("bridge-target") },
+    ];
+    const encodedPlacements = placements.map(({ offset, bytes }) => [
+      offset,
+      bytes.toString("base64"),
+    ]);
+    const runtime = createCommandSessionRuntime({
+      maxOutputBytes: memoryBytes,
+      spill: { directory: spillDirectory, maxBytes: totalBytes },
+      maxReadBytes: 128,
+      maxTimeoutMs: 2_000,
+      maxWaitMs: 1_000,
+    });
+    try {
+      const started = await runtime.start({
+        command: process.execPath,
+        args: [
+          "-e",
+          [
+            `const output=Buffer.alloc(${totalBytes},46);`,
+            `for(const [offset,body] of ${JSON.stringify(encodedPlacements)})`,
+            "Buffer.from(body,'base64').copy(output,offset);",
+            "process.stdout.write(output)",
+          ].join(""),
+        ],
+        cwd: workspace,
+        env: {},
+        stdin: "closed",
+        timeoutMs: 2_000,
+      });
+      await settleCommandSession(runtime, started.sessionId);
+
+      for (const [query, expectedOffset] of [
+        ["spill-target", 100],
+        ["🙂needle", 1_024],
+        ["chunk-target", 64 * 1024 - 4],
+        ["bridge-target", spillMemoryBoundary - 4],
+      ]) {
+        const found = await runtime.read({
+          sessionId: started.sessionId,
+          cursor: 0,
+          query,
+          limit: 64,
+        });
+        assert.equal(found.matchStart, expectedOffset);
+        assert.equal(found.outputStart, expectedOffset);
+        assert.deepEqual(
+          Buffer.from(found.output, found.outputEncoding).subarray(0, Buffer.byteLength(query)),
+          Buffer.from(query),
+        );
+      }
+
+      const binary = await runtime.read({
+        sessionId: started.sessionId,
+        cursor: 0,
+        query: "binary-target",
+        limit: Buffer.byteLength("binary-target") + 5,
+      });
+      assert.equal(binary.matchStart, 2_048);
+      assert.equal(binary.outputStart, 2_048);
+      assert.equal(binary.outputEncoding, "base64");
+      assert.deepEqual(
+        Buffer.from(binary.output, "base64"),
+        Buffer.concat([Buffer.from("binary-target"), Buffer.from([0xff]), Buffer.from("abcd")]),
+      );
+      const pastMatch = await runtime.read({
+        sessionId: started.sessionId,
+        cursor: 200,
+        query: "spill-target",
+        limit: 64,
+      });
+      assert.equal(pastMatch.matchStart, null);
+    } finally {
+      await runtime.close();
+    }
+  });
+});
+
+test("command session literal search caps one scan at 16 MiB", async () => {
+  await withWorkspace(async (workspace) => {
+    const spillDirectory = resolve(workspace, "spill");
+    await mkdir(spillDirectory);
+    const totalBytes = 17 * 1024 * 1024;
+    const runtime = createCommandSessionRuntime({
+      maxOutputBytes: 1024 * 1024,
+      spill: { directory: spillDirectory, maxBytes: 16 * 1024 * 1024 },
+      maxReadBytes: 64,
+      maxTimeoutMs: 5_000,
+      maxWaitMs: 1_000,
+    });
+    try {
+      const started = await runtime.start({
+        command: process.execPath,
+        args: ["-e", `process.stdout.write(Buffer.alloc(${totalBytes},97))`],
+        cwd: workspace,
+        env: {},
+        stdin: "closed",
+        timeoutMs: 5_000,
+      });
+      await settleCommandSession(runtime, started.sessionId);
+      const first = await runtime.read({
+        sessionId: started.sessionId,
+        cursor: 0,
+        query: "z",
+        limit: 64,
+      });
+      assert.equal(first.matchStart, null);
+      assert.equal(first.output, "");
+      assert.equal(first.nextCursor, 16 * 1024 * 1024);
+      assert.equal(first.hasMore, true);
+      const second = await runtime.read({
+        sessionId: started.sessionId,
+        cursor: first.nextCursor,
+        query: "z",
+        limit: 64,
+      });
+      assert.equal(second.matchStart, null);
+      assert.equal(second.nextCursor, totalBytes);
+      assert.equal(second.hasMore, false);
+    } finally {
+      await runtime.close();
+    }
+  });
+});
+
+test("running literal search resumes across its prior cursor", async () => {
+  await withWorkspace(async (workspace) => {
+    const runtime = createCommandSessionRuntime({
+      maxOutputBytes: 64,
+      maxReadBytes: 32,
+      maxTimeoutMs: 10_000,
+      maxWaitMs: 5_000,
+    });
+    try {
+      const prefix = "prefix-NEED";
+      const started = await runtime.start({
+        command: process.execPath,
+        args: [
+          "-e",
+          `process.stdout.write(${JSON.stringify(prefix)});` +
+            'process.stdin.once("data",()=>process.stdout.write("LE-tail"));' +
+            "process.stdin.resume()",
+        ],
+        cwd: workspace,
+        env: {},
+        timeoutMs: 10_000,
+      });
+      await runtime.read({
+        sessionId: started.sessionId,
+        cursor: 0,
+        limit: 1,
+        waitMs: 5_000,
+      });
+      const first = await runtime.read({
+        sessionId: started.sessionId,
+        cursor: 0,
+        query: "NEEDLE",
+        limit: 32,
+      });
+      assert.equal(first.state, "running");
+      assert.equal(first.matchStart, null);
+      assert.equal(first.nextCursor, Buffer.byteLength(prefix));
+
+      const released = await runtime.write({
+        sessionId: started.sessionId,
+        input: "go",
+        closeStdin: true,
+      });
+      assert.equal(released.accepted, true);
+
+      const resumed = await runtime.read({
+        sessionId: started.sessionId,
+        cursor: first.nextCursor,
+        query: "NEEDLE",
+        limit: 32,
+        waitMs: 5_000,
+      });
+      assert.equal(resumed.matchStart, Buffer.byteLength("prefix-"));
+      assert.equal(resumed.outputStart, Buffer.byteLength("prefix-"));
+      assert.match(resumed.output, /^NEEDLE-tail/);
+    } finally {
+      await runtime.close();
+    }
+  });
+});
+
+test("literal search validation, unknown sessions, and aborts fail closed", async () => {
+  const runtime = createCommandSessionRuntime();
+  const unknownId = "cmd_00000000000000000000000000000000";
+  try {
+    await assert.rejects(
+      () => runtime.read({ sessionId: unknownId, query: "" }),
+      /command_session_query_invalid/,
+    );
+    await assert.rejects(
+      () => runtime.read({ sessionId: unknownId, query: "🙂".repeat(1_025) }),
+      /command_session_query_limit_exceeded/,
+    );
+    const unknown = await runtime.read({
+      sessionId: unknownId,
+      query: "x".repeat(4 * 1024),
+    });
+    assert.equal(unknown.state, "unknown_after_restart");
+    assert.equal(unknown.matchStart, null);
+    const abort = new AbortController();
+    abort.abort();
+    await assert.rejects(
+      () => runtime.read({ sessionId: unknownId, query: "needle", signal: abort.signal }),
+      /command_session_operation_aborted/,
+    );
+  } finally {
+    await runtime.close();
+  }
+});
+
 test("command session spill cap falls back to a truthful retained suffix", async () => {
   await withWorkspace(async (workspace) => {
     const spillDirectory = resolve(workspace, "spill");
@@ -1327,6 +1601,16 @@ test("command session spill cap falls back to a truthful retained suffix", async
       assert.equal(captured.outputStart, payload.length - 18);
       assert.equal(captured.output, payload.slice(-18));
       assert.equal(captured.truncatedBeforeCursor, true);
+      const evicted = await runtime.read({
+        sessionId: started.sessionId,
+        cursor: 0,
+        query: "0123",
+        limit: 64,
+      });
+      assert.equal(evicted.matchStart, null);
+      assert.equal(evicted.output, "");
+      assert.equal(evicted.nextCursor, payload.length);
+      assert.equal(evicted.truncatedBeforeCursor, true);
       const files = await readdir(spillDirectory);
       if (process.platform === "win32") {
         assert.equal(files.length, 1);

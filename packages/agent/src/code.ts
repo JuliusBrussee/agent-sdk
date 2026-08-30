@@ -156,6 +156,7 @@ const BASH_SESSION_MAX_SESSIONS = 8;
 const BASH_SESSION_MAX_WAIT_MS = 30_000;
 const BASH_SESSION_MAX_INPUT_BYTES = 64 * 1024;
 const BASH_SESSION_READ_CHUNK_BYTES = 64 * 1024;
+const BASH_SESSION_QUERY_MAX_BYTES = 4 * 1024;
 const READ_TIMEOUT_MS = 30_000;
 const PROCESS_CAPTURE_MAX_BYTES = 4 * 1024 * 1024;
 const STORED_TOOL_OUTPUT_MAX_BYTES = 8 * 1024 * 1024;
@@ -533,8 +534,8 @@ function codingTools(
     description:
       "Run shell command in the workspace and return combined stdout/stderr. " +
       "Set yieldTimeMs to keep a still-running command as an inspectable session. " +
-      "List finds retained sessions; read, write, or kill resumes one by sessionId. Read cursors " +
-      "are absolute bytes and never rerun the command; write can close stdin to send EOF. " +
+      "List finds retained sessions; read pages or literal-searches retained output, write resumes " +
+      "stdin or closes it for EOF, and kill stops one. Cursors never rerun commands. " +
       `Hard timeout is ${BASH_TIMEOUT_MS} ms; output is capped at ${caps.bash} bytes.`,
     input: schema.union([
       schema.object({
@@ -549,6 +550,7 @@ function codingTools(
         sessionId: schema.string(),
         action: schema.literal("read"),
         cursor: schema.optional(schema.integer()),
+        query: schema.optional(schema.string()),
         limit: schema.optional(schema.integer()),
         waitMs: schema.optional(schema.integer()),
       }),
@@ -688,6 +690,7 @@ function codingTools(
       const page = await commandSessions.read({
         sessionId: input.sessionId,
         ...(input.cursor === undefined ? {} : { cursor: input.cursor }),
+        ...(input.action === "read" && input.query !== undefined ? { query: input.query } : {}),
         limit: input.limit ?? bashSessionPageLimit(caps.bash),
         ...(input.action === "kill" || input.waitMs === undefined || waitedForClose
           ? {}
@@ -831,6 +834,7 @@ function codingTools(
 
 type BashSessionReadInput = {
   readonly cursor?: number;
+  readonly query?: string;
   readonly limit?: number;
   readonly waitMs?: number;
 };
@@ -850,6 +854,14 @@ function validateBashSessionReadInput(input: BashSessionReadInput, outputCap: nu
   if (input.limit !== undefined &&
       (!Number.isSafeInteger(input.limit) || input.limit <= 0 || input.limit > maxLimit)) {
     throw new Error(`caveman-code: bash session limit must be an integer from 1 to ${maxLimit}`);
+  }
+  if (input.query !== undefined) {
+    const queryBytes = Buffer.byteLength(input.query, "utf8");
+    if (queryBytes === 0 || queryBytes > BASH_SESSION_QUERY_MAX_BYTES) {
+      throw new Error(
+        `caveman-code: bash session query must be 1 to ${BASH_SESSION_QUERY_MAX_BYTES} UTF-8 bytes`,
+      );
+    }
   }
   validateBashWait(input.waitMs, "waitMs");
 }
@@ -938,7 +950,29 @@ function formatCommandSessionPage(
       : page.state === "killed"
         ? " · killed"
         : "";
+  if (page.matchStart === null) {
+    const searchedFrom = Math.max(page.cursor, page.availableFrom);
+    const continuation = page.hasMore
+      ? `[continue search at cursor ${page.nextCursor}]`
+      : page.state === "running"
+        ? `[still running; search again at cursor ${page.nextCursor}]`
+        : undefined;
+    return capOutput(
+      [
+        `session ${page.sessionId} · ${page.state}${exit}`,
+        ...(prefix === undefined ? [] : [prefix]),
+        `searched retained bytes ${searchedFrom}-${page.nextCursor} of ${page.availableTo}`,
+        ...(page.truncatedBeforeCursor
+          ? [`older output discarded before absolute byte ${page.availableFrom}`]
+          : []),
+        "(no literal match)",
+        ...(continuation === undefined ? [] : [continuation]),
+      ].join("\n"),
+      outputCap,
+    );
+  }
   const position = [
+    ...(page.matchStart === undefined ? [] : [`literal match at byte ${page.matchStart}`]),
     `bytes ${page.outputStart}-${page.nextCursor} of ${page.availableTo}`,
     `next cursor ${page.nextCursor}`,
     ...(page.truncatedBeforeCursor

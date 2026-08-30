@@ -446,6 +446,8 @@ test("programmatic runtime collapses ordinary tools into one typed code surface"
   const description = runtime.definition.tools[0]!.description;
   assert.match(description, /declare function read_file\(args:/);
   assert.match(description, /declare function write_file\(args:/);
+  assert.match(description, /declare function bash\(args:.*query\?: string/);
+  assert.doesNotMatch(description, /"sessionId"|"query"/);
   assert.doesNotMatch(description, /Promise\.all|TypeScript-style/);
   const instructions = runtime.definition.instructions;
   assert.equal(typeof instructions, "string");
@@ -454,6 +456,35 @@ test("programmatic runtime collapses ordinary tools into one typed code surface"
   assert.match(instructions, /Intermediate tool results stay outside model context/);
   assert.match(instructions, /project rule$/);
   runtime.close();
+});
+
+test("programmatic schema prints safe property names compactly and quotes unsafe names", () => {
+  const lookup = tool({
+    name: "lookup",
+    description: "Read one value.",
+    input: schema.object({
+      safeName: schema.string(),
+      "dash-key": schema.optional(schema.string()),
+    }),
+    effect: "read",
+    result: "inline",
+    execute: ({ safeName }) => safeName,
+  });
+  const runtime = createProgrammaticToolRuntime(agent({
+    id: "schema-rendering",
+    instructions: "test",
+    model: "openai/gpt-5.4",
+    sandbox: "host",
+    tools: [lookup],
+  }));
+  try {
+    assert.match(
+      runtime.definition.tools[0]!.description,
+      /declare function lookup\(args: \{ safeName: string; "dash-key"\?: string \}\)/,
+    );
+  } finally {
+    runtime.close();
+  }
 });
 
 test("programmatic runtime supports product-specific provider tool names", () => {
