@@ -33,20 +33,27 @@
  */
 
 import { createHash } from "node:crypto";
-import { mkdir, open, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, open, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import type { Dirent } from "node:fs";
 import type { FileHandle } from "node:fs/promises";
 import { resolve } from "node:path";
+import {
+  MAX_JOURNAL_BYTES,
+  RUN_ID_PATTERN,
+  isPlainRecord,
+  utf8Bytes,
+  validateDurableRunId,
+} from "./durable-limits.js";
+export { validateDurableRunId } from "./durable-limits.js";
 import { validateRunReceipt } from "./run-receipt.js";
 import { snapshotDataDictionary, snapshotDenseArray } from "./strict-data.js";
 
 /** Journal schema version. Bump on any incompatible event-shape change. */
 export const DURABLE_JOURNAL_VERSION = 2;
 
-const RUN_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const TOOL_NAME_PATTERN = /^[a-zA-Z][a-zA-Z0-9_-]{0,127}$/;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 const MAX_JOURNAL_EVENTS = 100_000;
-const MAX_JOURNAL_BYTES = 256 * 1024 * 1024;
 const MAX_EVENT_BYTES = 16 * 1024 * 1024;
 const MAX_ARGUMENT_BYTES = 1024 * 1024;
 const MAX_TOOL_CALL_ID_BYTES = 1024;
@@ -108,15 +115,36 @@ export interface DurableStore {
   acquire(runId: string): Promise<() => Promise<void>>;
   /** Release any open handles for `runId`. Idempotent. */
   close(runId: string): Promise<void>;
+  /**
+   * Every runId this store holds a journal for. Optional: a store that cannot
+   * enumerate its runs is still a valid journal store, it just cannot back
+   * crash recovery — {@link recoverableRuns} reports that honestly rather
+   * than pretending the store is empty.
+   */
+  list?(): Promise<readonly string[]>;
 }
 
-export function validateDurableRunId(runId: string): void {
-  if (typeof runId !== "string" || !RUN_ID_PATTERN.test(runId)) {
-    throw new Error(
-      "cave_durable_run_id_invalid: durable.runId must match [A-Za-z0-9][A-Za-z0-9._-]{0,127}",
-    );
-  }
-}
+// The stores live in `durable-stores.ts` (storage, not semantics) and are
+// re-exported here so `@caveman-ai/agent/durable` stays their single import
+// site — the same pattern `runtime.ts` uses for its split modules.
+export { DiskDurableStore, HttpDurableStore, type HttpDurableStoreOptions } from "./durable-stores.js";
+// Cancellation is journal-level control over a run, so it belongs on the same
+// entrypoint as the journal it is written into.
+export {
+  DURABLE_CANCELLED_CODE,
+  durableCancelRequest,
+  requestDurableCancel,
+  settleCancelledRun,
+  type DurableCancelOutcome,
+} from "./durable-control.js";
+export {
+  MAX_DURABLE_SLEEP_MS,
+  durableRunIsDue,
+  nextDurableWake,
+  scheduleDurableWake,
+  type DurableSleepOutcome,
+} from "./durable-control.js";
+
 
 type JsonSnapshot = {
   readonly value: unknown;
@@ -128,9 +156,6 @@ type JsonWalkState = {
   readonly seen: Set<object>;
 };
 
-function utf8Bytes(value: string): number {
-  return new TextEncoder().encode(value).byteLength;
-}
 
 function jsonInvalid(code: string): () => never {
   return () => {
@@ -446,6 +471,47 @@ export interface RunCompletedEvent extends JournalEventBase {
   conversation?: DurableConversationCheckpoint;
 }
 
+/**
+ * A cancellation REQUEST, not a cancellation. Appended by whoever wants the run
+ * stopped — a `DELETE /runs/{id}`, an operator, another process — and observed
+ * by whoever is driving it.
+ *
+ * This is Temporal's cancel, not its terminate: the request is graceful and the
+ * run still ends with a terminal event of its own, so spend already journaled
+ * stays accounted and a compensating step still gets to run. Forcing a run to
+ * stop without letting its driver settle is what killing the process already
+ * does, and that path is a crash, which the journal already handles.
+ *
+ * The event is idempotent by construction: a second request on a run that
+ * already carries one changes nothing, so a retried DELETE is free.
+ */
+export interface CancelRequestedEvent extends JournalEventBase {
+  type: "cancel_requested";
+  reason: string;
+}
+
+/**
+ * A durable timer: this run is not eligible to be driven until `wakeAt`.
+ *
+ * The point is economic, not functional. An agent waiting on a rate limit, a
+ * retry window, or tomorrow morning's approval does not need a process — it
+ * needs a date. Blocking a process for it means paying for wall-clock in which
+ * nothing happens, which on every container platform is the single largest
+ * avoidable cost in an agent workload. So a sleep is journaled and the driver
+ * RETURNS: the instance is free, the container can scale to zero, and the run
+ * is picked up again when it is due.
+ *
+ * The wake time is absolute and last-write-wins, which is what makes this one
+ * event instead of two. There is no `sleep_settled`: once `wakeAt` has passed
+ * the sleep is over by definition, so a crash-resume cannot re-wait it, and a
+ * second sleep is simply a later `wakeAt`.
+ */
+export interface SleepScheduledEvent extends JournalEventBase {
+  type: "sleep_scheduled";
+  wakeAt: string;
+  reason: string;
+}
+
 export interface RunFailedEvent extends JournalEventBase {
   type: "run_failed";
   code: string;
@@ -465,174 +531,11 @@ export type DurableJournalEvent =
   | TurnEvent
   | SnapshotEvent
   | TrancheEvent
+  | CancelRequestedEvent
+  | SleepScheduledEvent
   | RunCompletedEvent
   | RunFailedEvent;
 
-// ---------------------------------------------------------------------------
-// Disk store
-// ---------------------------------------------------------------------------
-
-/**
- * JSONL journal on local disk: `<root>/<runId>/journal.jsonl` plus a `lock`
- * file holding the owning pid. Appends fsync before resolving. This is the
- * dev/default store; production deployments that need shared storage supply
- * their own {@link DurableStore}.
- */
-export class DiskDurableStore implements DurableStore {
-  private readonly root: string;
-  private readonly handles = new Map<string, Promise<FileHandle>>();
-
-  constructor(root: string) {
-    this.root = root;
-  }
-
-  private runDir(runId: string): string {
-    validateDurableRunId(runId);
-    // The directory name carries a digest suffix so two runIds that differ
-    // only by case stay distinct journals on case-insensitive filesystems
-    // (macOS/Windows defaults), and Windows reserved device names (`con`,
-    // `nul`, …) never appear as a bare directory name. The caller's runId
-    // remains the journaled identity.
-    const digest = createHash("sha256").update(runId, "utf8").digest("hex").slice(0, 10);
-    return resolve(this.root, `${runId}-${digest}`);
-  }
-
-  async load(runId: string): Promise<readonly string[]> {
-    let raw: string;
-    try {
-      const path = resolve(this.runDir(runId), "journal.jsonl");
-      const metadata = await stat(path);
-      if (metadata.size > MAX_JOURNAL_BYTES) throw new Error("cave_durable_journal_limit");
-      raw = await readFile(path, "utf8");
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
-      throw error;
-    }
-    // A torn final line (crash mid-write) is expected, not corruption: every
-    // complete line ends with \n, so anything after the last \n is discarded.
-    const complete = raw.slice(0, raw.lastIndexOf("\n") + 1);
-    return complete === "" ? [] : complete.slice(0, -1).split("\n");
-  }
-
-  private async handle(runId: string): Promise<FileHandle> {
-    const existing = this.handles.get(runId);
-    if (existing !== undefined) return existing;
-    const opened = (async () => {
-      const dir = this.runDir(runId);
-      await mkdir(dir, { recursive: true, mode: 0o700 });
-      return open(resolve(dir, "journal.jsonl"), "a", 0o600);
-    })();
-    this.handles.set(runId, opened);
-    try {
-      return await opened;
-    } catch (error) {
-      this.handles.delete(runId);
-      throw error;
-    }
-  }
-
-  async append(runId: string, data: string): Promise<void> {
-    if (utf8Bytes(data) > MAX_JOURNAL_BYTES) throw new Error("cave_durable_journal_limit");
-    const path = resolve(this.runDir(runId), "journal.jsonl");
-    try {
-      const metadata = await stat(path);
-      if (metadata.size + utf8Bytes(data) > MAX_JOURNAL_BYTES) {
-        throw new Error("cave_durable_journal_limit");
-      }
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-    }
-    const handle = await this.handle(runId);
-    await handle.appendFile(data, "utf8");
-    await handle.datasync();
-  }
-
-  async acquire(runId: string): Promise<() => Promise<void>> {
-    const dir = this.runDir(runId);
-    await mkdir(dir, { recursive: true, mode: 0o700 });
-    const lockDir = resolve(dir, "lock.d");
-    const ownerPath = resolve(lockDir, "owner.json");
-    const lockedError = () => new Error(
-      `cave_durable_run_locked: run "${runId}" is already being driven by another process`,
-    );
-    // mkdir is the atomic primitive: exactly one process creates the lock
-    // directory. The owner file lands after — a probe that reads the
-    // directory before the file exists sees an unreadable owner and treats
-    // the lock as held, which fails closed.
-    const take = async (): Promise<void> => {
-      try {
-        await mkdir(lockDir, { mode: 0o700 });
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === "EEXIST") throw lockedError();
-        throw error;
-      }
-      await writeFile(ownerPath, JSON.stringify({ pid: process.pid }), { mode: 0o600 });
-    };
-    try {
-      await take();
-    } catch (error) {
-      if (!(error instanceof Error) || !error.message.startsWith("cave_durable_run_locked")) {
-        throw error;
-      }
-      // A lock is stale when its owning process is gone (SIGKILL leaves it
-      // behind). Unreadable owner = held: ambiguity fails closed rather than
-      // risking two processes double-spending one run.
-      let ownerAlive = true;
-      try {
-        const owner = JSON.parse(await readFile(ownerPath, "utf8")) as { pid?: number };
-        if (typeof owner.pid === "number" && owner.pid !== process.pid) {
-          try {
-            process.kill(owner.pid, 0);
-          } catch (signalError) {
-            ownerAlive = (signalError as NodeJS.ErrnoException).code !== "ESRCH";
-          }
-        }
-      } catch {
-        ownerAlive = true;
-      }
-      if (ownerAlive) throw lockedError();
-      // Single-winner takeover: rename is atomic, so of N processes that all
-      // observed the same dead owner, exactly one moves the stale lock aside;
-      // the losers surface the held-lock error instead of removing a LIVE
-      // lock the winner just created (the rm-then-mkdir race).
-      const reaped = resolve(dir, `lock.reaped-${process.pid}-${Math.floor(performance.now() * 1000)}`);
-      try {
-        await rename(lockDir, reaped);
-      } catch {
-        throw lockedError();
-      }
-      await rm(reaped, { recursive: true, force: true });
-      await take();
-    }
-    return async () => {
-      // Release only what this process still owns: another process may have
-      // legitimately reaped a lock left behind by a crashed sibling with the
-      // same pid file already gone.
-      try {
-        const owner = JSON.parse(await readFile(ownerPath, "utf8")) as { pid?: number };
-        if (owner.pid !== process.pid) return;
-      } catch {
-        return;
-      }
-      await rm(lockDir, { recursive: true, force: true });
-    };
-  }
-
-  async close(runId: string): Promise<void> {
-    const pending = this.handles.get(runId);
-    if (pending === undefined) return;
-    this.handles.delete(runId);
-    try {
-      const handle = await pending;
-      await handle.close();
-    } catch {
-      // Closing a handle that failed to open has nothing to release.
-    }
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Journal writer
 // ---------------------------------------------------------------------------
 
 /**
@@ -1119,6 +1022,20 @@ function validateEvent(event: DurableJournalEvent): void {
       requireJournalString(event.reason, MAX_ERROR_BYTES, "tranche reason");
       requireTokens(event.atCall, "tranche atCall");
       break;
+    case "cancel_requested":
+      requireEventKeys(event, [...base, "reason"]);
+      requireJournalString(event.reason, MAX_ERROR_BYTES, "cancellation reason");
+      break;
+    case "sleep_scheduled": {
+      requireEventKeys(event, [...base, "wakeAt", "reason"]);
+      requireJournalString(event.reason, MAX_ERROR_BYTES, "sleep reason");
+      const wakeAt = typeof event.wakeAt === "string" ? Date.parse(event.wakeAt) : Number.NaN;
+      if (typeof event.wakeAt !== "string" || !Number.isFinite(wakeAt) ||
+          new Date(wakeAt).toISOString() !== event.wakeAt) {
+        throw corrupt("malformed sleep wake time");
+      }
+      break;
+    }
     case "run_completed":
       requireEventKeys(event, [...base, "result"], ["conversation"]);
       snapshotJson(event.result, MAX_EVENT_BYTES / 2);
@@ -1137,10 +1054,6 @@ function validateEvent(event: DurableJournalEvent): void {
   }
 }
 
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value) &&
-    Object.getPrototypeOf(value) === Object.prototype;
-}
 
 function requireEventKeys(
   event: DurableJournalEvent,
@@ -1611,6 +1524,118 @@ function reconcileTerminalReceipt(
  * journaled identity fails closed — a resume must continue the same run, not
  * silently become a different one (Temporal's versioning lesson).
  */
+/**
+ * Journal-encoded stand-in for a non-string input. A multimodal run journals
+ * the digest of its lowered context instead of the content, so its `input`
+ * cannot be replayed from the journal alone — see
+ * {@link durableInputIsReplayable}.
+ */
+export const MULTIMODAL_DURABLE_INPUT_PREFIX = "\u0000cave.multimodal.v1:";
+
+/**
+ * True when a journaled `input` is the literal input and can therefore drive
+ * an unattended resume. False for the multimodal digest form, which needs the
+ * original input supplied by the caller.
+ */
+export function durableInputIsReplayable(input: string): boolean {
+  return !input.startsWith(MULTIMODAL_DURABLE_INPUT_PREFIX);
+}
+
+/**
+ * What a journal says about a run, WITHOUT the definition, budget, or input
+ * the caller would need for {@link analyzeJournal}. This is the read-only
+ * view: it answers "is this run finished, and with what" for a status
+ * endpoint or a recovery sweep. It deliberately cannot resume anything —
+ * every resume still goes through `analyzeJournal`, which fails closed on a
+ * definition, input, or budget that drifted.
+ */
+export type DurableRunSummary =
+  | { readonly status: "missing" }
+  | {
+    readonly status: "pending";
+    readonly runId: string;
+    readonly agentId: string;
+    readonly input: string;
+    readonly startedAt: string;
+    readonly attempts: number;
+    /**
+     * Set when a cancellation was requested and the run has not settled yet.
+     * A recovery sweep must honour this instead of re-driving the run.
+     */
+    readonly cancelRequested?: { readonly reason: string; readonly at: string };
+    /**
+     * Absolute time before which this run must not be driven. Present while a
+     * durable sleep is outstanding — including one already due, so a caller can
+     * tell "asleep until later" from "never slept" without a clock comparison
+     * of its own.
+     */
+    readonly wakeAt?: string;
+    /** Why it is sleeping. Operator-facing; never a secret. */
+    readonly sleepReason?: string;
+  }
+  | {
+    readonly status: "completed";
+    readonly runId: string;
+    readonly agentId: string;
+    readonly result: unknown;
+    readonly settledAt: string;
+  }
+  | {
+    readonly status: "failed";
+    readonly runId: string;
+    readonly agentId: string;
+    readonly code: string;
+    readonly message: string;
+    readonly receipt: unknown;
+    readonly settledAt: string;
+  };
+
+export function durableRunSummary(lines: readonly string[]): DurableRunSummary {
+  const events = parseEvents(lines);
+  const started = events[0];
+  if (started === undefined) return { status: "missing" };
+  if (started.type !== "run_started") {
+    throw new Error("cave_durable_journal_corrupt: journal does not begin with run_started");
+  }
+  // The terminal event is journaled last, but the search covers the whole
+  // journal rather than just the tail: a settled run must never be reported
+  // as pending because something was appended after it.
+  const terminal = events.find(
+    (event) => event.type === "run_completed" || event.type === "run_failed",
+  );
+  const identity = { runId: started.runId, agentId: started.agentId };
+  if (terminal?.type === "run_completed") {
+    return { status: "completed", ...identity, result: terminal.result, settledAt: terminal.at };
+  }
+  if (terminal?.type === "run_failed") {
+    return {
+      status: "failed",
+      ...identity,
+      code: terminal.code,
+      message: terminal.message,
+      receipt: terminal.receipt,
+      settledAt: terminal.at,
+    };
+  }
+  const cancel = events.find((event) => event.type === "cancel_requested");
+  // Last write wins: a run that slept twice is due at the later time.
+  const sleep = events.reduce<SleepScheduledEvent | undefined>(
+    (latest, event) => event.type === "sleep_scheduled" ? event : latest,
+    undefined,
+  );
+  return {
+    status: "pending",
+    ...identity,
+    input: started.input,
+    startedAt: started.at,
+    attempts: 1 + events.filter((event) => event.type === "resumed").length,
+    ...(cancel === undefined
+      ? {}
+      : { cancelRequested: { reason: cancel.reason, at: cancel.at } }),
+    ...(sleep === undefined ? {} : { wakeAt: sleep.wakeAt, sleepReason: sleep.reason }),
+  };
+}
+
 export function analyzeJournal(
   lines: readonly string[],
   expected: {
@@ -1879,6 +1904,12 @@ export function analyzeJournal(
         });
         break;
       }
+      case "cancel_requested":
+      case "sleep_scheduled":
+        // Control signals, not state: they say what someone WANTS to happen and
+        // contribute nothing to the reconstructed conversation or ledger. The
+        // driver reads them through `durable-control.ts`; replay ignores them.
+        break;
       case "run_completed":
         if (index !== events.length - 1) throw corrupt("events follow terminal outcome");
         if ([...pendingCalls.values()].some((pending) => pending.length !== 0)) {

@@ -73,8 +73,18 @@ export type {
   RunReceipt,
   RunStopReason,
 } from "./budget.js";
-export { DiskDurableStore } from "./durable.js";
-export type { DurableRunOptions, DurableStore } from "./durable.js";
+export {
+  DiskDurableStore,
+  durableInputIsReplayable,
+  durableRunSummary,
+  HttpDurableStore,
+} from "./durable.js";
+export type {
+  DurableRunOptions,
+  DurableRunSummary,
+  DurableStore,
+  HttpDurableStoreOptions,
+} from "./durable.js";
 export type {
   CavemanRunEvent,
   ConversationState,
