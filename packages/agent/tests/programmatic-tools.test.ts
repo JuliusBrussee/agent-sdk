@@ -403,6 +403,26 @@ test("programmatic recovery fallback deduplicates only complete appended guidanc
   assert.equal(deduplicated.match(/before guessing/gi)?.length, 1);
 });
 
+test("programmatic instructions support one validated branded tool name", () => {
+  const additional = "Keep the literal caveman_code compatibility note.";
+  const canonical = programmaticToolInstructions(additional);
+  const branded = programmaticToolInstructions(additional, { toolName: "pebble_code" });
+
+  assert.equal(
+    branded,
+    canonical.slice(0, canonical.lastIndexOf("\n\n")).replaceAll(
+      PROGRAMMATIC_TOOL_NAME,
+      "pebble_code",
+    ) + `\n\n${additional}`,
+  );
+  assert.match(branded, /^Use pebble_code /);
+  assert.match(branded, /literal caveman_code compatibility note\.$/);
+  assert.throws(
+    () => programmaticToolInstructions(undefined, { toolName: "bad name" }),
+    /invalid tool name "bad name"/,
+  );
+});
+
 test("programmatic runtime collapses ordinary tools into one typed code surface", () => {
   const direct = createCodingAgent({
     workspace: process.cwd(),

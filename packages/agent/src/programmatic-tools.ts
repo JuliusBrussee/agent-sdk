@@ -245,8 +245,18 @@ type WorkerError = {
 
 type WorkerMessage = WorkerToolCall | WorkerDone | WorkerError;
 
-export function programmaticToolInstructions(additional: string | undefined): string {
-  return programmaticToolInstructionsFor(PROGRAMMATIC_TOOL_NAME, additional);
+export interface ProgrammaticToolInstructionOptions {
+  /** Provider-visible composite tool name. Defaults to `caveman_code`. */
+  readonly toolName?: string;
+}
+
+export function programmaticToolInstructions(
+  additional: string | undefined,
+  options: ProgrammaticToolInstructionOptions = {},
+): string {
+  const toolName = options.toolName ?? PROGRAMMATIC_TOOL_NAME;
+  validateProgrammaticToolName(toolName);
+  return programmaticToolInstructionsFor(toolName, additional);
 }
 
 function programmaticToolInstructionsFor(toolName: string, additional: string | undefined): string {
@@ -285,9 +295,9 @@ export function createProgrammaticToolRuntime(
   const codeTool = createCodeTool(definitions, enabled, counters, toolName);
   const definition = Object.freeze({
     ...directDefinition,
-    instructions: options.instructions ?? programmaticToolInstructionsFor(
-      toolName,
+    instructions: options.instructions ?? programmaticToolInstructions(
       typeof directDefinition.instructions === "string" ? directDefinition.instructions : undefined,
+      { toolName },
     ),
     tools: Object.freeze([codeTool]),
   });
@@ -307,6 +317,12 @@ export function createProgrammaticToolRuntime(
     },
     close() {},
   });
+}
+
+function validateProgrammaticToolName(toolName: string): void {
+  if (!/^[a-zA-Z][a-zA-Z0-9_-]{0,127}$/.test(toolName)) {
+    throw new Error(`caveman agent: invalid tool name ${JSON.stringify(toolName)}`);
+  }
 }
 
 function createCodeTool(
