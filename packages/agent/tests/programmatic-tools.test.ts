@@ -368,13 +368,39 @@ test("coding agent exposes programmatic mode with speculation enabled by default
     programmaticInstructions.match(/Say what you changed and why\./g)?.length,
     1,
   );
+  for (const instructions of [directInstructions, programmaticInstructions]) {
+    assert.equal(instructions.match(/<cave-compressed>/g)?.length, 1);
+    assert.equal(instructions.match(/\bcave_retrieve\b/g)?.length, 1);
+    assert.equal(instructions.match(/\brecovery_handle\b/g)?.length, 1);
+    assert.equal(instructions.match(/before guessing/gi)?.length, 1);
+  }
   assert.ok(
-    Buffer.byteLength(programmaticInstructions) - Buffer.byteLength(directInstructions) <= 900,
+    Buffer.byteLength(programmaticInstructions) - Buffer.byteLength(directInstructions) <= 700,
   );
   assert.throws(
     () => createCodingAgent({ model, toolMode: "other" as "programmatic" }),
     /coding_tool_mode_invalid:other/,
   );
+});
+
+test("programmatic recovery fallback deduplicates only complete appended guidance", () => {
+  for (const instructions of [
+    programmaticToolInstructions(undefined),
+    programmaticToolInstructions("Use cave_retrieve when useful."),
+  ]) {
+    assert.match(instructions, /<cave-compressed>/);
+    assert.match(instructions, /recovery_handle before guessing/i);
+  }
+
+  const complete = [
+    "Older turns may contain <cave-compressed> markers.",
+    "Call cave_retrieve with recovery_handle before guessing.",
+  ].join("\n");
+  const deduplicated = programmaticToolInstructions(complete);
+  assert.equal(deduplicated.match(/<cave-compressed>/g)?.length, 1);
+  assert.equal(deduplicated.match(/\bcave_retrieve\b/g)?.length, 1);
+  assert.equal(deduplicated.match(/\brecovery_handle\b/g)?.length, 1);
+  assert.equal(deduplicated.match(/before guessing/gi)?.length, 1);
 });
 
 test("programmatic runtime collapses ordinary tools into one typed code surface", () => {
