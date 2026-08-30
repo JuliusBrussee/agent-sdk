@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { constants } from "node:fs";
 import { access, lstat, realpath } from "node:fs/promises";
 import { delimiter, isAbsolute, join } from "node:path";
@@ -21,6 +22,9 @@ const CONNECT_TOOL_LIST_MAX_CURSOR_BYTES = 4 * 1024;
 const CONNECT_TOOL_LIST_MAX_JSON_DEPTH = 64;
 const CONNECT_TOOL_LIST_MAX_JSON_NODES = 100_000;
 const CONNECT_BOOTSTRAP_QUERY = "__caveman_agent_mcp_bootstrap__";
+const CONNECT_ACTION_BIND_MAX_KEYS = 32;
+const CONNECT_ACTION_INPUT_MAX_DEPTH = 32;
+const CONNECT_ACTION_UNKNOWN_OUTCOME_MAX = 256;
 const CONNECT_COMMANDS = new Set([
   "serve",
   "start",
@@ -140,6 +144,21 @@ export interface ConnectMcpTool {
   readonly _meta?: Readonly<Record<string, unknown>>;
 }
 
+/** Values trusted config may fix on an action. Must stay serializable. */
+export type ConnectActionBindValue = string | number | boolean | null;
+
+export interface ConnectAction {
+  /** Curated provider action name. */
+  readonly name: string;
+  /** Argument values fixed by config. Model input may not set these keys. */
+  readonly bind?: Readonly<Record<string, ConnectActionBindValue>>;
+}
+
+export interface NormalizedConnectAction {
+  readonly name: string;
+  readonly bind: Readonly<Record<string, ConnectActionBindValue>>;
+}
+
 export interface ConnectSource {
   /** Short agent-facing name, for example "work-github". */
   readonly id: string;
@@ -151,8 +170,12 @@ export interface ConnectSource {
   readonly collect?: readonly string[];
   /** Record models agent may read. Empty/omitted means any model under this allowed connection. */
   readonly models?: readonly string[];
-  /** Curated provider actions agent may execute. Default none. */
-  readonly actions?: readonly string[];
+  /**
+   * Curated provider actions agent may execute. Default none. A bare string
+   * lets the model choose every argument; the object form fixes destination or
+   * credential-shaped arguments in trusted config instead.
+   */
+  readonly actions?: readonly (string | ConnectAction)[];
 }
 
 export interface ConnectQualityPolicy {
@@ -185,7 +208,7 @@ export interface NormalizedConnectSource {
   readonly connectionId?: string;
   readonly collect: readonly string[];
   readonly models: readonly string[];
-  readonly actions: readonly string[];
+  readonly actions: readonly NormalizedConnectAction[];
 }
 
 /** Serializable runtime marker. Contains source allowlists, never credentials. */
@@ -282,6 +305,36 @@ function uniqueExternalIdentifiers(
   return normalized;
 }
 
+function normalizeActions(
+  values: readonly (string | ConnectAction)[] | undefined,
+): readonly NormalizedConnectAction[] {
+  const names = new Set<string>();
+  return Object.freeze([...(values ?? [])].map((value) => {
+    const entry = typeof value === "string"
+      ? { name: value, bind: undefined }
+      : snapshotDataRecord(value, ["name", "bind"], ["name"], () => {
+        throw new Error("cave_connect_action_invalid");
+      });
+    const name = safeExternalIdentifier(
+      typeof entry.name === "string" ? entry.name : "",
+      "cave_connect_action_invalid",
+    );
+    if (names.has(name)) throw new Error("cave_connect_action_invalid_duplicate");
+    names.add(name);
+    if (entry.bind === undefined) return Object.freeze({ name, bind: Object.freeze({}) });
+    const bind = snapshotDataDictionary(entry.bind, CONNECT_ACTION_BIND_MAX_KEYS, () => {
+      throw new Error("cave_connect_action_bind_invalid");
+    });
+    for (const key of Object.keys(bind)) {
+      const bound = bind[key];
+      const serializable = bound === null || typeof bound === "string" ||
+        typeof bound === "boolean" || (typeof bound === "number" && Number.isFinite(bound));
+      if (!serializable) throw new Error(`cave_connect_action_bind_invalid:${key}`);
+    }
+    return Object.freeze({ name, bind: Object.freeze(bind) as NormalizedConnectAction["bind"] });
+  }));
+}
+
 function normalizeSources(sources: readonly ConnectSource[]): readonly NormalizedConnectSource[] {
   if (sources.length === 0) throw new Error("cave_connect_sources_required");
   const ids = new Set<string>();
@@ -299,7 +352,7 @@ function normalizeSources(sources: readonly ConnectSource[]): readonly Normalize
       ...(connectionId === undefined ? {} : { connectionId }),
       collect: uniqueExternalIdentifiers(source.collect, "cave_connect_sync_invalid"),
       models: uniqueNames(source.models, "cave_connect_model_invalid"),
-      actions: uniqueExternalIdentifiers(source.actions, "cave_connect_action_invalid"),
+      actions: normalizeActions(source.actions),
     });
   }));
 }
@@ -919,18 +972,23 @@ export class ConnectRuntime {
   }
 }
 
+function actionLabel(action: NormalizedConnectAction): string {
+  const fixed = Object.keys(action.bind);
+  return fixed.length === 0 ? action.name : `${action.name}(fixed:${fixed.join("+")})`;
+}
+
 function connectToolDescription(sources: readonly NormalizedConnectSource[]): string {
   const manifest = sources.map((source) => [
     `${source.id}=${source.provider}`,
     source.collect.length === 0 ? "existing-records-only" : `syncs:${source.collect.join(",")}`,
     source.models.length === 0 ? "models:any-connected" : `models:${source.models.join(",")}`,
-    source.actions.length === 0 ? "actions:none" : `actions:${source.actions.join(",")}`,
+    source.actions.length === 0 ? "actions:none" : `actions:${source.actions.map(actionLabel).join(",")}`,
   ].join(" ")).join("; ");
   return [
     "Access explicitly allowed Caveman Connect sources through one bounded tool.",
     "Use sources first, search_syncs before collect, then records for exact synced data.",
     "Never claim a complete answer when result.complete is false or must_refuse is true; continue with next_cursor or say what remains unread.",
-    "Provider actions execute only when allowlisted in source config.",
+    "Provider actions execute only when allowlisted in source config; arguments marked fixed are set by config and must be omitted.",
     `Sources: ${manifest}.`,
   ].join(" ");
 }
@@ -1028,6 +1086,78 @@ async function resolveConnectionId(
 function requiredString(value: unknown, field: string): string {
   if (typeof value !== "string" || value === "") throw new Error(`cave_connect_${field}_required`);
   return value;
+}
+
+function actionByName(source: NormalizedConnectSource, name: string): NormalizedConnectAction {
+  const action = source.actions.find((candidate) => candidate.name === name);
+  if (action === undefined) throw new Error(`cave_connect_action_not_allowed:${name}`);
+  return action;
+}
+
+/**
+ * Merge model-chosen arguments under the values trusted config fixed. Bound
+ * keys are rejected rather than silently overridden, so a model attempting to
+ * redirect an action fails instead of appearing to succeed elsewhere.
+ */
+function boundActionInput(
+  action: NormalizedConnectAction,
+  value: unknown,
+): Record<string, unknown> {
+  if (value !== undefined && (value === null || typeof value !== "object" || Array.isArray(value))) {
+    throw new Error("cave_connect_action_input_invalid");
+  }
+  const supplied = (value ?? {}) as Record<string, unknown>;
+  for (const key of Object.keys(action.bind)) {
+    if (Object.hasOwn(supplied, key)) throw new Error(`cave_connect_action_bind_conflict:${key}`);
+  }
+  return { ...supplied, ...action.bind };
+}
+
+/** Key-order-independent serialization so a retry of one call hashes equally. */
+function stableJson(value: unknown, depth: number): string {
+  if (depth > CONNECT_ACTION_INPUT_MAX_DEPTH) throw new Error("cave_connect_action_input_invalid");
+  if (value === null || typeof value !== "object") {
+    const encoded = JSON.stringify(value);
+    if (encoded === undefined) throw new Error("cave_connect_action_input_invalid");
+    return encoded;
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableJson(item, depth + 1)).join(",")}]`;
+  }
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record).sort().map((key) =>
+    `${JSON.stringify(key)}:${stableJson(record[key], depth + 1)}`).join(",")}}`;
+}
+
+function actionIdempotencyKey(
+  source: NormalizedConnectSource,
+  action: NormalizedConnectAction,
+  payload: Record<string, unknown>,
+): string {
+  return createHash("sha256")
+    .update(stableJson([source.id, source.provider, action.name, payload], 0))
+    .digest("hex");
+}
+
+/**
+ * Actions this process fired without learning whether they ran. A timeout, an
+ * abort, or a result that exceeded the byte cap all leave the side effect
+ * possibly applied, so an identical repeat is refused rather than fired twice.
+ *
+ * ponytail: process-scoped Set, cap 256 with oldest-first eviction. Move to a
+ * durable store if actions must stay guarded across restarts.
+ */
+const actionOutcomeUnknown = new Set<string>();
+
+function rememberUnknownOutcome(key: string): void {
+  actionOutcomeUnknown.delete(key);
+  actionOutcomeUnknown.add(key);
+  if (actionOutcomeUnknown.size > CONNECT_ACTION_UNKNOWN_OUTCOME_MAX) {
+    for (const oldest of actionOutcomeUnknown) {
+      actionOutcomeUnknown.delete(oldest);
+      break;
+    }
+  }
 }
 
 function assertAllowed(value: string, allowed: readonly string[], code: string): void {
@@ -1152,7 +1282,7 @@ export async function executeConnectTool(
         provider: source.provider,
         collect: source.collect,
         models: source.models,
-        actions: source.actions,
+        actions: source.actions.map(actionLabel),
       })),
       quality: runtime.quality,
     }, runtime.quality, "configure fewer sources");
@@ -1214,18 +1344,28 @@ export async function executeConnectTool(
     );
   }
   if (operation === "call_action") {
-    const action = requiredString(input.action, "action");
-    assertAllowed(action, source.actions, "cave_connect_action_not_allowed");
-    if (input.input !== undefined &&
-        (input.input === null || typeof input.input !== "object" || Array.isArray(input.input))) {
-      throw new Error("cave_connect_action_input_invalid");
+    const action = actionByName(source, requiredString(input.action, "action"));
+    const payload = boundActionInput(action, input.input);
+    const key = actionIdempotencyKey(source, action, payload);
+    if (actionOutcomeUnknown.has(key)) {
+      throw new Error(`cave_connect_action_outcome_unknown:${action.name}:verify whether the earlier identical call ran before repeating it`);
     }
-    return boundedResult(structured(await client.call("caveman_tool_call", {
-      provider: source.provider,
-      connection_id: connectionId,
-      action,
-      input: input.input ?? {},
-    }, signal)), runtime.quality, "action completed but response exceeded configured cap; do not retry blindly");
+    try {
+      return boundedResult(structured(await client.call("caveman_tool_call", {
+        provider: source.provider,
+        connection_id: connectionId,
+        action: action.name,
+        input: payload,
+      }, signal)), runtime.quality, "action completed but response exceeded configured cap; do not retry blindly");
+    } catch (error) {
+      // No response (timeout/abort) and an executed action whose result broke
+      // the byte cap both leave a retry able to fire the side effect twice.
+      // Only a daemon-reported failure is known not to have applied.
+      if ((error as { message?: unknown } | null)?.message !== "cave_connect_tool_failed") {
+        rememberUnknownOutcome(key);
+      }
+      throw error;
+    }
   }
   throw new Error(`cave_connect_operation_invalid:${operation}`);
 }
