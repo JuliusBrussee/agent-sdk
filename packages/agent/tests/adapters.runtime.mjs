@@ -1,15 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Agent as MastraAgent } from "@mastra/core/agent";
-import { ToolLoopAgent } from "ai";
-import { MockLanguageModelV3 } from "ai/test";
 import { Client as EveClient } from "eve/client";
 import {
   createClaudeAdapter,
   createEveAdapter,
-  createMastraAdapter,
   createPiAdapter,
-  createVercelAISDKAdapter,
 } from "../dist/adapters.js";
 import { compile, defineBuild } from "../dist/build.js";
 import { catalogCost } from "../dist/catalog.js";
@@ -23,23 +18,6 @@ const adapterIdentity = (overrides = {}) => ({
   dependencyLockSHA256: hex("b"),
   ...overrides,
 });
-
-function upstreamMockModel() {
-  return new MockLanguageModelV3({
-    provider: "anthropic",
-    modelId: "claude-haiku-4-5",
-    doGenerate: {
-      content: [{ type: "text", text: "ok" }],
-      finishReason: { unified: "stop", raw: "stop" },
-      usage: {
-        inputTokens: { total: 10, noCache: 10, cacheRead: 0, cacheWrite: 0 },
-        outputTokens: { total: 2, text: 2, reasoning: 0 },
-      },
-      response: { modelId: "claude-haiku-4-5" },
-      warnings: [],
-    },
-  });
-}
 
 function baselinePlan() {
   return {
@@ -80,7 +58,6 @@ async function buildLock({
     contextIR: { schemaVersion: 1, segments: [] },
     evals: ["a", "b"].map((suffix) => defineEval({
       id: `adapter-${suffix}`,
-      approved: true,
       input: `x-${suffix}`,
       quality: [{ type: "exact_match", expected: "ok" }],
     })),
@@ -402,234 +379,6 @@ function adapterRequest(build, overrides = {}) {
   };
 }
 
-test("Vercel AI SDK adapter executes matching build and normalizes v7 usage", async () => {
-  const identity = adapterIdentity({ adapterVersion: "7.0.43", upstreamVersion: "7.0.43" });
-  const build = await buildLock({
-    harnessId: "vercel-ai-sdk",
-    adapterVersion: identity.adapterVersion,
-    upstreamVersion: identity.upstreamVersion,
-  });
-  const calls = [];
-  const adapter = createVercelAISDKAdapter(identity, {
-    async generate(options) {
-      calls.push(options);
-      return {
-        text: "ok",
-        finishReason: "stop",
-        response: { modelId: "claude-haiku-4-5" },
-        usage: {
-          inputTokens: 10,
-          inputTokenDetails: { noCacheTokens: 10, cacheReadTokens: 0, cacheWriteTokens: 0 },
-          outputTokens: 2,
-          outputTokenDetails: { textTokens: 2, reasoningTokens: 0 },
-          totalTokens: 12,
-        },
-      };
-    },
-  });
-  const controller = new AbortController();
-  const result = await adapter.run(adapterRequest(build, { signal: controller.signal }));
-  assert.equal(calls.length, 1);
-  assert.equal(calls[0].prompt, "x");
-  assert.equal(calls[0].abortSignal, controller.signal);
-  assert.equal(result.harness, "vercel-ai-sdk");
-  assert.equal(result.totalTokens, 12);
-  assert.equal(result.verifiedSavingsUsd, 0);
-});
-
-test("Vercel AI SDK adapter accepts complete usage without optional cache breakdown", async () => {
-  const identity = adapterIdentity({ adapterVersion: "7.0.43", upstreamVersion: "7.0.43" });
-  const build = await buildLock({
-    harnessId: "vercel-ai-sdk",
-    adapterVersion: identity.adapterVersion,
-    upstreamVersion: identity.upstreamVersion,
-  });
-  const adapter = createVercelAISDKAdapter(identity, {
-    async generate() {
-      return {
-        text: "ok",
-        finishReason: "stop",
-        response: { modelId: "claude-haiku-4-5" },
-        usage: {
-          inputTokens: 10,
-          inputTokenDetails: {
-            noCacheTokens: undefined,
-            cacheReadTokens: undefined,
-            cacheWriteTokens: undefined,
-          },
-          outputTokens: 2,
-          outputTokenDetails: { textTokens: 2, reasoningTokens: 0 },
-          totalTokens: 12,
-        },
-      };
-    },
-  });
-  const result = await adapter.run(adapterRequest(build));
-  assert.equal(result.inputTokens, 10);
-  assert.equal(result.cacheReadTokens, 0);
-  assert.equal(result.cacheWriteTokens, 0);
-  assert.equal(result.totalTokens, 12);
-});
-
-test("Vercel AI SDK adapter executes an actual pinned ToolLoopAgent", async () => {
-  const identity = adapterIdentity({ adapterVersion: "7.0.43", upstreamVersion: "7.0.43" });
-  const build = await buildLock({
-    harnessId: "vercel-ai-sdk",
-    adapterVersion: identity.adapterVersion,
-    upstreamVersion: identity.upstreamVersion,
-  });
-  const model = upstreamMockModel();
-  const toolLoopAgent = new ToolLoopAgent({ model });
-  const result = await createVercelAISDKAdapter(identity, toolLoopAgent).run(adapterRequest(build));
-  assert.equal(model.doGenerateCalls.length, 1);
-  assert.equal(result.text, "ok");
-  assert.equal(result.model, "claude-haiku-4-5");
-  assert.equal(result.totalTokens, 12);
-});
-
-test("Mastra adapter executes matching build with bounded retries and normalized usage", async () => {
-  const identity = adapterIdentity({ adapterVersion: "1.55.0", upstreamVersion: "1.55.0" });
-  const build = await buildLock({
-    harnessId: "mastra",
-    adapterVersion: identity.adapterVersion,
-    upstreamVersion: identity.upstreamVersion,
-  });
-  const calls = [];
-  const adapter = createMastraAdapter(identity, {
-    async generate(prompt, options) {
-      calls.push({ prompt, options });
-      return {
-        text: "ok",
-        finishReason: "stop",
-        error: undefined,
-        response: { modelId: "claude-haiku-4-5" },
-        totalUsage: {
-          inputTokens: 10,
-          outputTokens: 2,
-          totalTokens: 12,
-          reasoningTokens: 0,
-          cachedInputTokens: 0,
-          cacheCreationInputTokens: 0,
-        },
-      };
-    },
-  });
-  const result = await adapter.run(adapterRequest(build));
-  assert.deepEqual(calls, [{
-    prompt: "x",
-    options: { maxProcessorRetries: 0, runId: "run" },
-  }]);
-  assert.equal("preExecutionControls" in adapter.manifest.wireContract, false);
-  assert.equal(result.harness, "mastra");
-  assert.equal(result.model, "claude-haiku-4-5");
-});
-
-test("Mastra adapter forwards an opt-in framework-native maxSteps limit before execution", async () => {
-  const identity = adapterIdentity({ adapterVersion: "1.55.0", upstreamVersion: "1.55.0" });
-  const build = await buildLock({
-    harnessId: "mastra",
-    adapterVersion: identity.adapterVersion,
-    upstreamVersion: identity.upstreamVersion,
-  });
-  const calls = [];
-  const adapter = createMastraAdapter(identity, {
-    async generate(prompt, options) {
-      calls.push({ prompt, options });
-      return {
-        text: "ok",
-        finishReason: "stop",
-        response: { modelId: "claude-haiku-4-5" },
-        totalUsage: {
-          inputTokens: 10,
-          outputTokens: 2,
-          totalTokens: 12,
-          reasoningTokens: 0,
-        },
-      };
-    },
-  }, { maxSteps: 2 });
-
-  const result = await adapter.run(adapterRequest(build));
-
-  assert.deepEqual(calls, [{
-    prompt: "x",
-    options: { maxProcessorRetries: 0, runId: "run", maxSteps: 2 },
-  }]);
-  assert.deepEqual(adapter.manifest.wireContract.preExecutionControls, { maxSteps: 2 });
-  assert.equal(result.text, "ok");
-  assert.equal(result.harness, "mastra");
-});
-
-test("Mastra adapter rejects invalid maxSteps before provider execution", () => {
-  let calls = 0;
-  const binding = {
-    async generate() {
-      calls++;
-      throw new Error("must not execute");
-    },
-  };
-  const identity = adapterIdentity({ adapterVersion: "1.55.0", upstreamVersion: "1.55.0" });
-
-  for (const maxSteps of [0, -1, 1.5, Number.POSITIVE_INFINITY, Number.MAX_SAFE_INTEGER + 1]) {
-    assert.throws(
-      () => createMastraAdapter(identity, binding, { maxSteps }),
-      /cave_mastra_max_steps_invalid/,
-    );
-  }
-  assert.equal(calls, 0);
-});
-
-test("Mastra adapter accepts complete usage without optional cache counters", async () => {
-  const identity = adapterIdentity({ adapterVersion: "1.55.0", upstreamVersion: "1.55.0" });
-  const build = await buildLock({
-    harnessId: "mastra",
-    adapterVersion: identity.adapterVersion,
-    upstreamVersion: identity.upstreamVersion,
-  });
-  const adapter = createMastraAdapter(identity, {
-    async generate() {
-      return {
-        text: "ok",
-        finishReason: "stop",
-        error: undefined,
-        response: { modelId: "claude-haiku-4-5" },
-        totalUsage: {
-          inputTokens: 10,
-          outputTokens: 2,
-          totalTokens: 12,
-          reasoningTokens: 0,
-        },
-      };
-    },
-  });
-  const result = await adapter.run(adapterRequest(build));
-  assert.equal(result.inputTokens, 10);
-  assert.equal(result.cacheReadTokens, 0);
-  assert.equal(result.cacheWriteTokens, 0);
-  assert.equal(result.totalTokens, 12);
-});
-
-test("Mastra adapter executes an actual pinned Agent", async () => {
-  const identity = adapterIdentity({ adapterVersion: "1.55.0", upstreamVersion: "1.55.0" });
-  const build = await buildLock({
-    harnessId: "mastra",
-    adapterVersion: identity.adapterVersion,
-    upstreamVersion: identity.upstreamVersion,
-  });
-  const model = upstreamMockModel();
-  const mastraAgent = new MastraAgent({
-    id: "caveman-adapter-test",
-    name: "Caveman adapter test",
-    instructions: "Return ok.",
-    model,
-  });
-  const result = await createMastraAdapter(identity, mastraAgent).run(adapterRequest(build));
-  assert.equal(model.doGenerateCalls.length, 1);
-  assert.equal(result.text, "ok");
-  assert.equal(result.model, "claude-haiku-4-5");
-  assert.equal(result.totalTokens, 12);
-});
-
 test("Eve adapter aggregates durable step usage and validates runtime model identity", async () => {
   const identity = adapterIdentity({ adapterVersion: "0.29.2", upstreamVersion: "0.29.2" });
   const build = await buildLock({
@@ -724,93 +473,34 @@ test("Eve adapter executes an actual pinned ClientSession transport", async () =
   }
 });
 
-test("third-party adapters reject incomplete usage and model drift", async () => {
-  const vercelIdentity = adapterIdentity({ adapterVersion: "7.0.43", upstreamVersion: "7.0.43" });
-  const vercelBuild = await buildLock({
-    harnessId: "vercel-ai-sdk",
-    adapterVersion: vercelIdentity.adapterVersion,
-    upstreamVersion: vercelIdentity.upstreamVersion,
-  });
-  await assert.rejects(
-    createVercelAISDKAdapter(vercelIdentity, {
-      async generate() {
-        return {
-          text: "ok",
-          finishReason: "stop",
-          response: { modelId: "wrong-model" },
-          usage: {
-            inputTokens: 10,
-            inputTokenDetails: { noCacheTokens: 10, cacheReadTokens: 0, cacheWriteTokens: 0 },
-            outputTokens: 2,
-            outputTokenDetails: { textTokens: 2, reasoningTokens: 0 },
-            totalTokens: 12,
-          },
-        };
-      },
-    }).run(adapterRequest(vercelBuild)),
-    /cave_harness_incomplete_evidence/,
-  );
-
-  const mastraIdentity = adapterIdentity({ adapterVersion: "1.55.0", upstreamVersion: "1.55.0" });
-  const mastraBuild = await buildLock({
-    harnessId: "mastra",
-    adapterVersion: mastraIdentity.adapterVersion,
-    upstreamVersion: mastraIdentity.upstreamVersion,
-  });
-  await assert.rejects(
-    createMastraAdapter(mastraIdentity, {
-      async generate() {
-        return {
-          text: "ok",
-          finishReason: "stop",
-          response: { modelId: "claude-haiku-4-5" },
-          totalUsage: { inputTokens: 10, outputTokens: undefined, totalTokens: 10 },
-        };
-      },
-    }).run(adapterRequest(mastraBuild)),
-    /cave_mastra_usage_missing/,
-  );
-});
-
-test("third-party adapters pin upstream versions and abort before execution", async () => {
-  // A caller claiming a version that does not match what is actually installed
-  // is refused before execution: the identity is derived from the installed
-  // package.json now, not from the caller's string.
-  // Specifically a MISMATCH against the installed package.json (ai@7.0.43), not
-  // merely "unsupported" against a constant — proves the identity is derived
-  // from the installed version, not the caller's claim (old code threw
-  // cave_vercel_upstream_version_unsupported here).
-  assert.throws(
-    () => createVercelAISDKAdapter(adapterIdentity({ upstreamVersion: "7.0.44" }), {
-      async generate() { throw new Error("must not execute"); },
-    }),
-    /cave_vercel_upstream_version_mismatch/,
-  );
+test("Eve adapter pins installed upstream version before execution", () => {
+  let calls = 0;
   assert.throws(
     () => createEveAdapter(adapterIdentity({ upstreamVersion: "0.29.3" }), {
-      async send() { throw new Error("must not execute"); },
+      async send() {
+        calls++;
+        throw new Error("must not execute");
+      },
     }),
     /cave_eve_upstream_version_(unsupported|mismatch)/,
   );
-  assert.throws(
-    () => createMastraAdapter(adapterIdentity({ upstreamVersion: "1.56.0" }), {
-      async generate() { throw new Error("must not execute"); },
-    }),
-    /cave_mastra_upstream_version_(unsupported|mismatch)/,
-  );
+  assert.equal(calls, 0);
+});
 
-  const identity = adapterIdentity({ adapterVersion: "7.0.43", upstreamVersion: "7.0.43" });
+test("Eve adapter forwards no work after pre-abort", async () => {
+  const identity = adapterIdentity({ adapterVersion: "0.29.2", upstreamVersion: "0.29.2" });
   const build = await buildLock({
-    harnessId: "vercel-ai-sdk",
+    harnessId: "eve",
     adapterVersion: identity.adapterVersion,
     upstreamVersion: identity.upstreamVersion,
+    reasoning: "none",
   });
   let calls = 0;
   const controller = new AbortController();
   controller.abort();
   await assert.rejects(
-    createVercelAISDKAdapter(identity, {
-      async generate() {
+    createEveAdapter(identity, {
+      async send() {
         calls++;
         throw new Error("must not execute");
       },

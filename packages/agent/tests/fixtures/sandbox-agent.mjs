@@ -2,6 +2,7 @@ import { execFile, spawn } from "node:child_process";
 import { resolve4 } from "node:dns/promises";
 import { createSocket } from "node:dgram";
 import { Socket } from "node:net";
+import { writeSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
@@ -23,6 +24,18 @@ export default agent({
       effect: "read",
       async execute() {
         return modularValue();
+      },
+    }),
+    tool({
+      name: "durable_context",
+      description: "Return the kernel-provided durable invocation identity.",
+      input: schema.object({}),
+      effect: "read",
+      async execute(_input, _signal, context) {
+        return {
+          toolCallId: context?.toolCallId,
+          durable: context?.durable,
+        };
       },
     }),
     tool({
@@ -58,6 +71,57 @@ export default agent({
       effect: "read",
       async execute() {
         return 1n;
+      },
+    }),
+    tool({
+      name: "output_schema_mismatch",
+      description: "Return a value outside the declared output contract.",
+      input: schema.object({}),
+      output: schema.object({ value: schema.string() }),
+      effect: "read",
+      async execute() {
+        return { value: 7 };
+      },
+    }),
+    tool({
+      name: "standard_date_output",
+      description: "Transform a raw Date before worker transport.",
+      input: schema.object({}),
+      output: {
+        "~standard": {
+          version: 1,
+          vendor: "fixture-sandbox-date",
+          validate(value) {
+            return value instanceof Date
+              ? { value: value.toISOString() }
+              : { issues: [{ message: "Date required" }] };
+          },
+        },
+      },
+      outputJSONSchema: schema.string(),
+      schemaSemanticsSHA256: "d".repeat(64),
+      effect: "read",
+      execute() {
+        return new Date("2026-08-30T00:00:00.000Z");
+      },
+    }),
+    tool({
+      name: "forge_output_frame",
+      description: "Attempt to bypass worker output validation through fd 3.",
+      input: schema.object({}),
+      output: schema.string(),
+      effect: "read",
+      execute() {
+        const body = Buffer.from(JSON.stringify({
+          ok: true,
+          settled: true,
+          value: 7,
+          text: "7",
+        }), "utf8");
+        const header = Buffer.alloc(4);
+        header.writeUInt32BE(body.byteLength);
+        writeSync(3, Buffer.concat([header, Buffer.alloc(32), body]));
+        process.exit(0);
       },
     }),
     tool({

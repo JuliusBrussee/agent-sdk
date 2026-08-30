@@ -1,5 +1,6 @@
 import { Value } from "typebox/value";
-import { tool, type ToolDefinition } from "./primitives.js";
+import { tool, type ToolDefinition, type ToolExecutionContext } from "./primitives.js";
+import { executeRawTool, TOOL_STANDARD_SCHEMA } from "./tool-internal.js";
 
 /**
  * Closed, runtime-declared outcome vocabulary for a routine call. Unknown
@@ -23,7 +24,6 @@ export interface RoutineOutcomeCount {
 const TOOL_IMPLEMENTATION_SOURCE = Symbol.for(
   "@caveman-ai/agent:tool-implementation-source",
 );
-const TOOL_STANDARD_SCHEMA = Symbol.for("@caveman-ai/agent:tool-standard-schema");
 /**
  * Prefix of the implementation source a routine declares for itself. It does
  * two jobs: it folds the real `impl`/`guard` text into every digest that hashes
@@ -85,9 +85,8 @@ export function routineOutcomes(): readonly RoutineOutcomeCount[] {
  * receipt line, no metering change, no cost math, no savings claim of any
  * basis.
  *
- * The routine's `impl` output is NOT validated — the framework validates no
- * tool's output anywhere, and the determinism dividend's output gate lives in
- * customer CI (spec §4.1.3), not here.
+ * Declared TypeBox output contracts remain attached. Both optimized and deopt
+ * results cross the same canonical tool-output validator before exposure.
  *
  * Refused at construction: a framework-reserved `cave_` tool name; a subagent
  * tool (its execute is framework-run, so a deopt could not reach the original —
@@ -129,11 +128,22 @@ export function routine<TInput, TResult>(
     name: original.name,
     description: original.description,
     input: original.input,
+    ...(original.output === undefined ? {} : { output: original.output }),
+    ...(original.schemaSemanticsSHA256 === undefined
+      ? {}
+      : { schemaSemanticsSHA256: original.schemaSemanticsSHA256 }),
     effect: original.effect,
     result: original.artifact ?? original.result,
     ...(original.allowRepeat === undefined ? {} : { allowRepeat: original.allowRepeat }),
+    // A composite original dispatches nested calls; the wrapper must declare
+    // the same surface or the runtime never registers them and the deopt
+    // path hands the original an unusable context.
+    ...(original.nestedTools === undefined ? {} : { nestedTools: original.nestedTools }),
+    ...(original.speculativeTools === undefined
+      ? {}
+      : { speculativeTools: original.speculativeTools }),
     timeoutMs: original.timeoutMs,
-    async execute(input: unknown, signal?: AbortSignal) {
+    async execute(input: unknown, signal?: AbortSignal, context?: ToolExecutionContext) {
       let admitted: boolean;
       try {
         admitted = Value.Check(original.input, input) &&
@@ -144,7 +154,7 @@ export function routine<TInput, TResult>(
       }
       if (!admitted) {
         record(original.name, "routine_deopt_guard");
-        return original.execute(input as TInput, signal);
+        return executeRawTool(original, input, signal, context) as Promise<TResult>;
       }
       try {
         const value = await impl(input as TInput, signal);
@@ -152,7 +162,7 @@ export function routine<TInput, TResult>(
         return value;
       } catch {
         record(original.name, "routine_deopt_error");
-        return original.execute(input as TInput, signal);
+        return executeRawTool(original, input, signal, context) as Promise<TResult>;
       }
     },
   };
@@ -163,5 +173,7 @@ export function routine<TInput, TResult>(
     configurable: false,
     writable: false,
   });
-  return tool(options) as ToolDefinition<TInput, TResult>;
+  // Runtime-preserved output contract is already bound to `original`; generic
+  // routine TResult cannot be re-inferred from that erased TSchema here.
+  return tool(options as never) as ToolDefinition<TInput, TResult>;
 }

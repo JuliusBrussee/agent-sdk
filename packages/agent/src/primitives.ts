@@ -1,9 +1,24 @@
 import { Type, type Static, type TSchema } from "@earendil-works/pi-ai";
+import type { Grader } from "@caveman-ai/evals";
 import type {
   StandardJSONSchemaV1,
   StandardSchemaV1,
 } from "@standard-schema/spec";
+import type { ConnectToolRuntimeDefinition } from "./connect.js";
 import type { MemoryAmbientOptions } from "./memory.js";
+import {
+  type CapturedStandardSchema,
+  TOOL_RAW_EXECUTE,
+  TOOL_SCHEMA_IMPLEMENTATION_SOURCE,
+  TOOL_STANDARD_SCHEMA,
+  TOOL_STANDARD_OUTPUT,
+  executableSchemaImplementationSource,
+  settleToolOutput,
+  snapshotToolSchema,
+  standardSchemaImplementationSource,
+  standardReceiverState,
+  validateCapturedStandardSchema,
+} from "./tool-internal.js";
 
 const TOOL_IMPLEMENTATION_SOURCE = Symbol.for(
   "@caveman-ai/agent:tool-implementation-source",
@@ -13,8 +28,6 @@ const TOOL_IMPLEMENTATION_SOURCE = Symbol.for(
  * only re-check the converted draft-07 JSON Schema (see `routine()`) can refuse
  * rather than silently drop the vendor's refinements and transforms.
  */
-const TOOL_STANDARD_SCHEMA = Symbol.for("@caveman-ai/agent:tool-standard-schema");
-
 export const AUTO = Symbol.for("@caveman-ai/agent:auto");
 export type Auto = { readonly kind: "auto"; readonly [AUTO]: true };
 
@@ -40,6 +53,7 @@ export const schema = {
   boolean: () => Type.Boolean(),
   integer: () => Type.Integer(),
   literal: <T extends string | number | boolean>(value: T) => Type.Literal(value),
+  null: () => Type.Null(),
   number: () => Type.Number(),
   object: <T extends Record<string, TSchema>>(properties: T) => Type.Object(properties),
   optional: <T extends TSchema>(value: T) => Type.Optional(value),
@@ -62,7 +76,15 @@ export interface NestedToolDispatchOptions {
 }
 
 export interface ToolExecutionContext {
-  /** Provider identity of the composite call containing these nested calls. */
+  /** Provider identity for this exact tool invocation. */
+  readonly toolCallId: string;
+  /** Stable, non-secret durable identity. Present only on durable runs. */
+  readonly durable?: {
+    readonly idempotencyKey: string;
+    /** True when this invocation safely re-drives an unmatched prior intent. */
+    readonly resumed: boolean;
+  };
+  /** Composite parent identity; equals toolCallId on a top-level invocation. */
   readonly parentToolCallId: string;
   /** Dispatch one declared nested tool through the run's canonical kernel. */
   dispatch(
@@ -87,6 +109,8 @@ export interface SubagentRuntimeDefinition {
   readonly maxContextTokens: number;
 }
 
+export type ToolRuntimeDefinition = SubagentRuntimeDefinition | ConnectToolRuntimeDefinition;
+
 export type StandardToolSchema<Input = unknown, Output = Input> =
   StandardSchemaV1<Input, Output> & StandardJSONSchemaV1<Input, Output>;
 
@@ -95,6 +119,10 @@ export interface ToolDefinition<TInput = unknown, TResult = unknown> {
   readonly name: string;
   readonly description: string;
   readonly input: TSchema;
+  /** Declared result contract. Validated before any result reaches model context. */
+  readonly output?: TSchema;
+  /** Stable digest required to lock/durably replay mutable custom schema semantics. */
+  readonly schemaSemanticsSHA256?: string;
   readonly effect: ToolEffect;
   readonly result: ToolResultPolicy;
   readonly artifact?: ArtifactDefinition;
@@ -107,7 +135,7 @@ export interface ToolDefinition<TInput = unknown, TResult = unknown> {
   /** Explicit opt-in for kernel-owned streaming speculation. Read tools only. */
   readonly speculative?: boolean;
   readonly timeoutMs: number;
-  readonly runtime?: SubagentRuntimeDefinition;
+  readonly runtime?: ToolRuntimeDefinition;
   /** Flat, kernel-dispatched tools available only inside this composite tool. */
   readonly nestedTools?: readonly ToolDefinition[];
   /** Nested read tools whose already-started result may be consumed safely. */
@@ -121,10 +149,16 @@ export interface ToolDefinition<TInput = unknown, TResult = unknown> {
   }["bivarianceHack"];
 }
 
-export interface ToolOptions<TInput extends TSchema, TResult> {
+export interface ToolOptions<TInput extends TSchema, TExecuteResult, TResult = TExecuteResult> {
   name: string;
   description: string;
-  input: TInput;
+  input: TInput & { readonly "~standard"?: never };
+  /** TypeBox/JSON Schema or Standard Schema result contract. */
+  output?: StandardSchemaV1<TExecuteResult, TResult>;
+  /** Required only when a Standard output schema cannot emit draft-07. */
+  outputJSONSchema?: TSchema;
+  /** SHA-256 of Standard/custom-format validator semantics and captured state. */
+  schemaSemanticsSHA256?: string;
   effect: ToolEffect;
   result?: ToolResultPolicy | ArtifactDefinition;
   /** See {@link ToolDefinition.allowRepeat}. */
@@ -132,21 +166,57 @@ export interface ToolOptions<TInput extends TSchema, TResult> {
   /** See {@link ToolDefinition.speculative}. */
   speculative?: boolean;
   timeoutMs?: number;
-  runtime?: SubagentRuntimeDefinition;
+  runtime?: ToolRuntimeDefinition;
   nestedTools?: readonly ToolDefinition[];
   speculativeTools?: readonly string[];
   execute: (
     input: Static<TInput>,
     signal?: AbortSignal,
     context?: ToolExecutionContext,
-  ) => TResult | Promise<TResult>;
+  ) => TExecuteResult | Promise<TExecuteResult>;
 }
 
-export interface StandardToolOptions<Input, Output, TResult> {
+export interface TypeBoxOutputToolOptions<
+  TInput extends TSchema,
+  TOutput extends TSchema,
+> extends Omit<
+    ToolOptions<TInput, Static<TOutput>, Static<TOutput>>,
+    "output" | "outputJSONSchema"
+  > {
+  output: TOutput & { readonly "~standard"?: never };
+  outputJSONSchema?: never;
+}
+
+export interface StandardOutputToolOptions<
+  TInput extends TSchema,
+  TOutput extends StandardSchemaV1,
+> extends Omit<
+    ToolOptions<
+      TInput,
+      StandardSchemaV1.InferInput<TOutput>,
+      StandardSchemaV1.InferOutput<TOutput>
+  >,
+    "output"
+  > {
+  output: TOutput;
+}
+
+export interface StandardToolOptions<
+  Input,
+  Output,
+  TExecuteResult,
+  TResult = TExecuteResult,
+> {
   name: string;
   description: string;
   input: StandardSchemaV1<Input, Output>;
   inputJSONSchema: TSchema;
+  /** TypeBox/JSON Schema or Standard Schema result contract. */
+  output?: StandardSchemaV1<TExecuteResult, TResult>;
+  /** Required only when a Standard output schema cannot emit draft-07. */
+  outputJSONSchema?: TSchema;
+  /** SHA-256 of Standard/custom-format validator semantics and captured state. */
+  schemaSemanticsSHA256?: string;
   effect: ToolEffect;
   result?: ToolResultPolicy | ArtifactDefinition;
   /** See {@link ToolDefinition.allowRepeat}. */
@@ -154,38 +224,129 @@ export interface StandardToolOptions<Input, Output, TResult> {
   /** See {@link ToolDefinition.speculative}. */
   speculative?: boolean;
   timeoutMs?: number;
-  runtime?: SubagentRuntimeDefinition;
+  runtime?: ToolRuntimeDefinition;
   nestedTools?: readonly ToolDefinition[];
   speculativeTools?: readonly string[];
   execute: (
     input: Output,
     signal?: AbortSignal,
     context?: ToolExecutionContext,
-  ) => TResult | Promise<TResult>;
+  ) => TExecuteResult | Promise<TExecuteResult>;
 }
 
-export interface StandardJSONToolOptions<Input, Output, TResult>
-  extends Omit<StandardToolOptions<Input, Output, TResult>, "input" | "inputJSONSchema"> {
+export interface StandardTypeBoxOutputToolOptions<
+  Input,
+  Output,
+  TOutput extends TSchema,
+> extends Omit<
+    StandardToolOptions<Input, Output, Static<TOutput>, Static<TOutput>>,
+    "output" | "outputJSONSchema"
+  > {
+  output: TOutput & { readonly "~standard"?: never };
+  outputJSONSchema?: never;
+}
+
+export interface StandardInputOutputToolOptions<
+  Input,
+  Output,
+  TOutput extends StandardSchemaV1,
+> extends Omit<
+    StandardToolOptions<
+      Input,
+      Output,
+      StandardSchemaV1.InferInput<TOutput>,
+      StandardSchemaV1.InferOutput<TOutput>
+    >,
+    "output"
+  > {
+  output: TOutput;
+}
+
+export interface StandardJSONToolOptions<
+  Input,
+  Output,
+  TExecuteResult,
+  TResult = TExecuteResult,
+> extends Omit<
+    StandardToolOptions<Input, Output, TExecuteResult, TResult>,
+    "input" | "inputJSONSchema"
+  > {
   input: StandardToolSchema<Input, Output>;
   inputJSONSchema?: never;
 }
 
-export function tool<TInput extends TSchema, TResult>(
-  options: ToolOptions<TInput, TResult>,
+export interface StandardJSONTypeBoxOutputToolOptions<
+  Input,
+  Output,
+  TOutput extends TSchema,
+> extends Omit<
+    StandardJSONToolOptions<Input, Output, Static<TOutput>, Static<TOutput>>,
+    "output" | "outputJSONSchema"
+  > {
+  output: TOutput & { readonly "~standard"?: never };
+  outputJSONSchema?: never;
+}
+
+export interface StandardJSONOutputToolOptions<
+  Input,
+  Output,
+  TOutput extends StandardSchemaV1,
+> extends Omit<
+    StandardJSONToolOptions<
+      Input,
+      Output,
+      StandardSchemaV1.InferInput<TOutput>,
+      StandardSchemaV1.InferOutput<TOutput>
+    >,
+    "output"
+  > {
+  output: TOutput;
+}
+
+export function tool<TInput extends TSchema, TOutput extends TSchema>(
+  options: TypeBoxOutputToolOptions<TInput, TOutput>,
+): ToolDefinition<Static<TInput>, Static<TOutput>>;
+export function tool<TInput extends TSchema, TOutput extends StandardSchemaV1>(
+  options: StandardOutputToolOptions<TInput, TOutput>,
+): ToolDefinition<Static<TInput>, StandardSchemaV1.InferOutput<TOutput>>;
+export function tool<TInput extends TSchema, TExecuteResult, TResult = TExecuteResult>(
+  options: ToolOptions<TInput, TExecuteResult, TResult>,
 ): ToolDefinition<Static<TInput>, TResult>;
-export function tool<Input, Output, TResult>(
-  options: StandardToolOptions<Input, Output, TResult>,
+export function tool<Input, Output, TOutput extends TSchema>(
+  options: StandardTypeBoxOutputToolOptions<Input, Output, TOutput>,
+): ToolDefinition<Output, Static<TOutput>>;
+export function tool<Input, Output, TOutput extends StandardSchemaV1>(
+  options: StandardInputOutputToolOptions<Input, Output, TOutput>,
+): ToolDefinition<Output, StandardSchemaV1.InferOutput<TOutput>>;
+export function tool<Input, Output, TExecuteResult, TResult = TExecuteResult>(
+  options: StandardToolOptions<Input, Output, TExecuteResult, TResult>,
 ): ToolDefinition<Output, TResult>;
-export function tool<Input, Output, TResult>(
-  options: StandardJSONToolOptions<Input, Output, TResult>,
+export function tool<Input, Output, TOutput extends TSchema>(
+  options: StandardJSONTypeBoxOutputToolOptions<Input, Output, TOutput>,
+): ToolDefinition<Output, Static<TOutput>>;
+export function tool<Input, Output, TOutput extends StandardSchemaV1>(
+  options: StandardJSONOutputToolOptions<Input, Output, TOutput>,
+): ToolDefinition<Output, StandardSchemaV1.InferOutput<TOutput>>;
+export function tool<Input, Output, TExecuteResult, TResult = TExecuteResult>(
+  options: StandardJSONToolOptions<Input, Output, TExecuteResult, TResult>,
 ): ToolDefinition<Output, TResult>;
 export function tool(
-  options: ToolOptions<TSchema, unknown> |
-    StandardToolOptions<unknown, unknown, unknown> |
-    StandardJSONToolOptions<unknown, unknown, unknown>,
+  options: ToolOptions<TSchema, unknown, unknown> |
+    TypeBoxOutputToolOptions<TSchema, TSchema> |
+    StandardOutputToolOptions<TSchema, StandardSchemaV1> |
+    StandardToolOptions<unknown, unknown, unknown, unknown> |
+    StandardTypeBoxOutputToolOptions<unknown, unknown, TSchema> |
+    StandardInputOutputToolOptions<unknown, unknown, StandardSchemaV1> |
+    StandardJSONToolOptions<unknown, unknown, unknown, unknown> |
+    StandardJSONTypeBoxOutputToolOptions<unknown, unknown, TSchema> |
+    StandardJSONOutputToolOptions<unknown, unknown, StandardSchemaV1>,
 ): ToolDefinition<unknown, unknown> {
   if (!/^[a-zA-Z][a-zA-Z0-9_-]{0,127}$/.test(options.name)) {
     throw new Error(`caveman agent: invalid tool name ${JSON.stringify(options.name)}`);
+  }
+  if (options.schemaSemanticsSHA256 !== undefined &&
+      !/^[0-9a-f]{64}$/.test(options.schemaSemanticsSHA256)) {
+    throw new Error("caveman agent: schemaSemanticsSHA256 must be lowercase SHA-256");
   }
   if (!["read", "write", "idempotent", "external"].includes(options.effect)) {
     throw new Error(`caveman agent: unknown tool effect ${JSON.stringify(options.effect)}`);
@@ -245,17 +406,21 @@ export function tool(
       seen.add(name);
     }
   }
-  const standard = standardToolSchema(options.input);
+  const standard = standardToolSchema(options.input, "input");
   let input: TSchema;
   if (standard === undefined) {
-    input = options.input as TSchema;
+    input = snapshotToolSchema(options.input, "input");
   } else {
     let converted = "inputJSONSchema" in options
       ? options.inputJSONSchema
       : undefined;
-    if (converted === undefined && standard.jsonSchema !== undefined) {
+    if (converted === undefined && standard.converter !== undefined) {
       try {
-        converted = standard.jsonSchema.input({ target: "draft-07" });
+        converted = Reflect.apply(
+          standard.converter,
+          standard.converterReceiver,
+          [{ target: "draft-07" }],
+        ) as TSchema;
       } catch (error) {
         throw new Error("caveman agent: Standard Schema cannot emit draft-07 input JSON Schema", {
           cause: error,
@@ -270,13 +435,71 @@ export function tool(
     if (!isRecord(converted)) {
       throw new Error("caveman agent: Standard Schema emitted invalid input JSON Schema");
     }
-    input = converted as TSchema;
+    input = snapshotToolSchema(converted, "input");
   }
+  const declaredOutput = options.output;
+  const outputStandard = declaredOutput === undefined
+    ? undefined
+    : standardToolSchema(declaredOutput, "output");
+  let outputSchema: TSchema | undefined;
+  if (declaredOutput === undefined) {
+    if (options.outputJSONSchema !== undefined) {
+      throw new Error("caveman agent: outputJSONSchema requires a Standard output schema");
+    }
+  } else if (outputStandard === undefined) {
+    if (options.outputJSONSchema !== undefined) {
+      throw new Error("caveman agent: outputJSONSchema is only valid with Standard Schema");
+    }
+    outputSchema = snapshotToolSchema(declaredOutput, "output");
+  } else {
+    let converted = options.outputJSONSchema;
+    if (converted === undefined && outputStandard.converter !== undefined) {
+      try {
+        converted = Reflect.apply(
+          outputStandard.converter,
+          outputStandard.converterReceiver,
+          [{ target: "draft-07" }],
+        ) as TSchema;
+      } catch (error) {
+        throw new Error("caveman agent: Standard Schema cannot emit draft-07 output JSON Schema", {
+          cause: error,
+        });
+      }
+    }
+    if (converted === undefined) {
+      throw new Error(
+        "caveman agent: Standard output Schema needs outputJSONSchema or Standard JSON Schema conversion",
+      );
+    }
+    if (!isRecord(converted)) {
+      throw new Error("caveman agent: Standard Schema emitted invalid output JSON Schema");
+    }
+    outputSchema = snapshotToolSchema(converted, "output");
+  }
+  const executeRaw = async (
+    value: unknown,
+    signal?: AbortSignal,
+    context?: ToolExecutionContext,
+  ): Promise<unknown> => {
+    if (standard === undefined) {
+      return options.execute(value as never, signal, context);
+    }
+    const validated = await validateCapturedStandardSchema(
+      standard,
+      value,
+      `cave_tool_input_schema_mismatch:${options.name}`,
+    );
+    return options.execute(validated, signal, context);
+  };
   const definition = {
     kind: "tool",
     name: options.name,
     description: options.description,
     input,
+    ...(outputSchema === undefined ? {} : { output: outputSchema }),
+    ...(options.schemaSemanticsSHA256 === undefined
+      ? {}
+      : { schemaSemanticsSHA256: options.schemaSemanticsSHA256 }),
     effect: options.effect,
     result,
     ...(typeof options.result === "object" ? { artifact: options.result } : {}),
@@ -287,14 +510,9 @@ export function tool(
     ...(nestedTools === undefined ? {} : { nestedTools }),
     ...(speculativeTools === undefined ? {} : { speculativeTools }),
     async execute(value: unknown, signal?: AbortSignal, context?: ToolExecutionContext) {
-      if (standard === undefined) {
-        return options.execute(value as never, signal, context);
-      }
-      const validated = await standard.validate(value);
-      if (validated.issues) {
-        throw new Error(`cave_tool_input_schema_mismatch:${options.name}`);
-      }
-      return options.execute(validated.value, signal, context);
+      const result = await executeRaw(value, signal, context);
+      if (outputSchema === undefined) return result;
+      return (await settleToolOutput(definition, result)).value;
     },
   } as const;
   // A wrapper (`routine()`) whose own `execute` source is identical for every
@@ -309,7 +527,35 @@ export function tool(
     configurable: false,
     writable: false,
   });
-  if (standard !== undefined) {
+  Object.defineProperty(definition, TOOL_RAW_EXECUTE, {
+    value: executeRaw,
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  });
+  if (outputStandard !== undefined) {
+    Object.defineProperty(definition, TOOL_STANDARD_OUTPUT, {
+      value: outputStandard,
+      enumerable: false,
+      configurable: false,
+      writable: false,
+    });
+  }
+  const schemaImplementationSource = [
+    standard === undefined ? "" : standardSchemaImplementationSource(standard),
+    executableSchemaImplementationSource(input),
+    outputStandard === undefined ? "" : standardSchemaImplementationSource(outputStandard),
+    outputSchema === undefined ? "" : executableSchemaImplementationSource(outputSchema),
+  ].filter((source) => source !== "").join("\n---\n");
+  if (schemaImplementationSource !== "") {
+    Object.defineProperty(definition, TOOL_SCHEMA_IMPLEMENTATION_SOURCE, {
+      value: schemaImplementationSource,
+      enumerable: false,
+      configurable: false,
+      writable: false,
+    });
+  }
+  if (standard !== undefined || outputStandard !== undefined) {
     Object.defineProperty(definition, TOOL_STANDARD_SCHEMA, {
       value: true,
       enumerable: false,
@@ -322,24 +568,50 @@ export function tool(
 
 function standardToolSchema(
   value: unknown,
-): StandardSchemaV1.Props<unknown, unknown> & {
-  jsonSchema?: StandardJSONSchemaV1.Converter;
-} | undefined {
-  if (!isRecord(value) || !isRecord(value["~standard"])) return undefined;
-  const standard = value["~standard"];
-  if (standard.version !== 1 || typeof standard.vendor !== "string" ||
-      typeof standard.validate !== "function") {
+  direction: "input" | "output",
+): CapturedStandardSchema | undefined {
+  if (!isRecord(value)) return undefined;
+  const standard = Reflect.get(value, "~standard") as unknown;
+  if (!isRecord(standard)) return undefined;
+  const version = Reflect.get(standard, "version") as unknown;
+  const vendor = Reflect.get(standard, "vendor") as unknown;
+  const validate = Reflect.get(standard, "validate") as unknown;
+  if (version !== 1 || typeof vendor !== "string" || typeof validate !== "function") {
     throw new Error(
       "caveman agent: tool Standard Schema must implement version 1 validation",
     );
   }
-  if (standard.jsonSchema !== undefined &&
-      (!isRecord(standard.jsonSchema) || typeof standard.jsonSchema.input !== "function")) {
+  const converterReceiver = Reflect.get(standard, "jsonSchema") as unknown;
+  let converter: unknown;
+  if (converterReceiver !== undefined) {
+    if (!isRecord(converterReceiver)) {
+      throw new Error("caveman agent: tool Standard JSON Schema converter is invalid");
+    }
+    converter = Reflect.get(converterReceiver, direction);
+    if (typeof converter !== "function") {
+      throw new Error("caveman agent: tool Standard JSON Schema converter is invalid");
+    }
+  }
+  const capturedConverterReceiver = converter === undefined
+    ? undefined
+    : converterReceiver;
+  if (converter !== undefined &&
+      (capturedConverterReceiver === null || typeof capturedConverterReceiver !== "object")) {
     throw new Error("caveman agent: tool Standard JSON Schema converter is invalid");
   }
-  return standard as unknown as StandardSchemaV1.Props<unknown, unknown> & {
-    jsonSchema?: StandardJSONSchemaV1.Converter;
-  };
+  return Object.freeze({
+    version,
+    vendor,
+    receiver: standard,
+    receiverState: standardReceiverState(standard),
+    validate: validate as CapturedStandardSchema["validate"],
+    ...(converter === undefined
+      ? {}
+      : {
+          converterReceiver: capturedConverterReceiver as object,
+          converter: converter as NonNullable<CapturedStandardSchema["converter"]>,
+        }),
+  });
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -533,12 +805,64 @@ export function output<T extends TSchema | undefined = undefined>(options: {
   }) as OutputDefinition<T>;
 }
 
-export type QualityGrader =
-  | { type: "contains"; fragments: string[] }
-  | { type: "not_contains"; fragments: string[] }
-  | { type: "tool_called"; tools: string[] }
-  | { type: "exact_match"; expected: string }
-  | { type: "json_schema"; schema: TSchema };
+type LowerableQualityGraderType =
+  | "contains"
+  | "not_contains"
+  | "tool_called"
+  | "exact_match"
+  | "json_schema";
+
+const LOWERABLE_QUALITY_GRADER_TYPES: ReadonlySet<Grader["type"]> = new Set([
+  "contains",
+  "not_contains",
+  "tool_called",
+  "exact_match",
+  "json_schema",
+]);
+
+/**
+ * Graders the native compiler can lower without model or network dependencies.
+ * `exact_match` uses canonical eval semantics: trimmed, case-insensitive text by
+ * default; `case_sensitive` and `remove_punctuation` opt into stricter variants.
+ */
+export type QualityGrader = Extract<Grader, { type: LowerableQualityGraderType }>;
+
+/** Runtime gate shared by fixture construction and compiler admission. */
+export function assertQualityGrader(grader: unknown): asserts grader is QualityGrader {
+  if (!isRecord(grader) || typeof grader.type !== "string") {
+    throw new Error("caveman agent: unknown grader <missing>");
+  }
+  const type = grader.type;
+  if (!LOWERABLE_QUALITY_GRADER_TYPES.has(type as Grader["type"])) {
+    throw new Error(`caveman agent: unknown grader ${type}`);
+  }
+  if ((type === "contains" || type === "not_contains") &&
+      (!Array.isArray(grader.fragments) || grader.fragments.length === 0 ||
+        grader.fragments.some((fragment: unknown) =>
+          typeof fragment !== "string" || fragment.trim() === ""))) {
+    throw new Error(`caveman agent: ${type} grader needs non-empty fragments`);
+  }
+  if (type === "tool_called" &&
+      (!Array.isArray(grader.tools) || grader.tools.length === 0 ||
+        grader.tools.some((name: unknown) => typeof name !== "string" || name.trim() === ""))) {
+    throw new Error("caveman agent: tool_called grader needs non-empty tool names");
+  }
+  if (type === "exact_match") {
+    if (!Object.hasOwn(grader, "expected")) {
+      throw new Error("caveman agent: exact_match grader needs expected");
+    }
+    if (grader.case_sensitive !== undefined && typeof grader.case_sensitive !== "boolean") {
+      throw new Error("caveman agent: exact_match case_sensitive must be boolean");
+    }
+    if (grader.remove_punctuation !== undefined &&
+        typeof grader.remove_punctuation !== "boolean") {
+      throw new Error("caveman agent: exact_match remove_punctuation must be boolean");
+    }
+  }
+  if (type === "json_schema" && !isRecord(grader.schema)) {
+    throw new Error("caveman agent: json_schema grader needs object schema");
+  }
+}
 
 export type EvalGuardrail =
   | { type: "latency_threshold"; p95_ms: number }
@@ -553,12 +877,10 @@ export interface EvalDefinition {
   readonly lineageId?: string;
   /**
    * Explicit compiler role. Omit for legacy v2 builds. A v3 build requires
-   * every approved fixture to declare one role and a lineageId; it never
+   * every fixture to declare one role and a lineageId; it never
    * invents or randomly splits holdout evidence.
    */
   readonly split?: EvalSplit;
-  readonly approved: boolean;
-  readonly required: boolean;
   readonly input: unknown;
   readonly tools: { mode: "fixture" | "live"; sandbox?: string };
   readonly quality: readonly QualityGrader[];
@@ -569,8 +891,6 @@ export function evalFixture(options: {
   id: string;
   lineageId?: string;
   split?: EvalSplit;
-  approved?: boolean;
-  required?: boolean;
   input: unknown;
   tools?: { mode: "fixture" | "live"; sandbox?: string };
   quality: QualityGrader[];
@@ -585,21 +905,8 @@ export function evalFixture(options: {
     throw new Error("caveman agent: eval split must be profile, development, or holdout");
   }
   if (options.quality.length === 0) throw new Error("caveman agent: eval needs at least one quality grader");
-  const known = new Set(["contains", "not_contains", "tool_called", "exact_match", "json_schema"]);
   for (const grader of options.quality) {
-    if (!known.has(grader.type)) {
-      throw new Error(`caveman agent: unknown grader ${(grader as { type: string }).type}`);
-    }
-    if ((grader.type === "contains" || grader.type === "not_contains") &&
-        (grader.fragments.length === 0 || grader.fragments.some((fragment) =>
-          typeof fragment !== "string" || fragment.trim() === ""))) {
-      throw new Error(`caveman agent: ${grader.type} grader needs non-empty fragments`);
-    }
-    if (grader.type === "tool_called" &&
-        (grader.tools.length === 0 || grader.tools.some((name) =>
-          typeof name !== "string" || name.trim() === ""))) {
-      throw new Error("caveman agent: tool_called grader needs non-empty tool names");
-    }
+    assertQualityGrader(grader);
   }
   for (const guardrail of options.guardrails ?? []) {
     if (guardrail.type === "latency_threshold" &&
@@ -620,8 +927,6 @@ export function evalFixture(options: {
     id: options.id,
     ...(options.lineageId === undefined ? {} : { lineageId: options.lineageId }),
     ...(options.split === undefined ? {} : { split: options.split }),
-    approved: options.approved ?? false,
-    required: options.required ?? true,
     input: options.input,
     tools,
     quality: Object.freeze([...options.quality]),

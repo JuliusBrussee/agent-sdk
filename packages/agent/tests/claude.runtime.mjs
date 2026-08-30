@@ -367,7 +367,7 @@ test("public Claude lane rejects private build injection, memory, and unsafe too
   const build = await lockedBuild();
   await assert.rejects(
     runClaudeAgent(definition(), "must not spend", { lockedBuild: build }),
-    /cave_execution_authorization_private/,
+    /cave_internal_run_option/,
   );
   const capture = { calls: 0 };
   const withMemory = agent({

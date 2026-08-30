@@ -225,6 +225,7 @@ test("discovered and retired artifact rows cannot enter agent pricing", () => {
     model: "future-model",
     region: "global",
     currency: "USD",
+    verified_at: "2026-08-13T00:00:00Z",
     pricing: { input_per_million: 1, output_per_million: 2 },
     cache_profile: { state: "unknown" },
     capabilities: {
@@ -261,6 +262,7 @@ test("agent row selection preserves unknown and explicit-free optional rates", (
     provider: "fixture",
     region: "global",
     currency: "USD",
+    verified_at: "2026-08-13T00:00:00Z",
     lifecycle: { status: "reviewed" },
     pricing: { input_per_million: 1, output_per_million: 2 },
     cache_profile: { state: "unknown" },
@@ -291,6 +293,7 @@ test("agent row selection preserves unknown and explicit-free optional rates", (
     cacheReadPerMillion: null,
     cacheWritePerMillion: null,
     reasoningPerMillion: null,
+    verifiedAt: "2026-08-13T00:00:00.000Z",
   });
   assert.deepEqual(prices["fixture/free-optionals"], {
     inputPerMillion: 1,
@@ -299,6 +302,7 @@ test("agent row selection preserves unknown and explicit-free optional rates", (
     cacheReadPerMillion: 0,
     cacheWritePerMillion: 0,
     reasoningPerMillion: 0,
+    verifiedAt: "2026-08-13T00:00:00.000Z",
   });
 });
 

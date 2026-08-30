@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { SUPPORTED_GRADER_TYPES } from "@caveman-ai/evals";
 import Ajv2020 from "ajv/dist/2020.js";
 import { resolve } from "node:path";
 import {
@@ -24,7 +24,9 @@ import {
   contextIRToWire,
   eval as defineEval,
   lowerContext,
+  schema,
   subagent,
+  tool,
 } from "../dist/index.js";
 
 const hex = (character) => character.repeat(64);
@@ -70,7 +72,6 @@ function transformedPlan(id) {
 function fixture(id = "quality") {
   return defineEval({
     id,
-    approved: true,
     input: "test",
     quality: [{ type: "contains", fragments: ["ok"] }],
   });
@@ -79,7 +80,6 @@ function fixture(id = "quality") {
 function dynamicFixture(id = "dynamic-quality") {
   return defineEval({
     id,
-    approved: true,
     input: "test",
     quality: [{ type: "tool_called", tools: ["lookup"] }],
   });
@@ -374,7 +374,6 @@ test("same-lineage eval ids count as one retention family", async () => {
   const evals = ["variant-a", "variant-b"].map((id) => defineEval({
     id,
     lineageId: "one-task-family",
-    approved: true,
     input: id,
     quality: [{ type: "contains", fragments: ["ok"] }],
   }));
@@ -638,14 +637,10 @@ test("unimplemented residency policy fails closed before search", () => {
   );
 });
 
-test("no approved eval returns needs_eval without runner", async () => {
+test("no eval returns needs_eval without runner", async () => {
   let calls = 0;
   const result = await compile(baseInput({
-    evals: [defineEval({
-      id: "draft",
-      input: "x",
-      quality: [{ type: "contains", fragments: ["x"] }],
-    })],
+    evals: [],
     async runner() {
       calls++;
       return evidence();
@@ -658,7 +653,6 @@ test("no approved eval returns needs_eval without runner", async () => {
 test("fixture guardrails gate a lock independently from quality", async () => {
   const strict = defineEval({
     id: "strict",
-    approved: true,
     input: "x",
     quality: [{ type: "contains", fragments: ["ok"] }],
     guardrails: [{ type: "latency_threshold", p95_ms: 50 }],
@@ -1018,24 +1012,66 @@ test("generateCandidatePlans enforces catalog pricing and policy when a policy i
   assert.ok(noPolicy.every((candidate) => candidate.static_rejection === undefined));
 });
 
-test("knownGrader recognizes the full public/evals taxonomy and rejects the rest", async () => {
-  // public/evals exposes the discriminated union but no runtime registry. Pin
-  // parity to that union so a taxonomy edit forces this fail-closed mirror to
-  // move in the same change.
-  const sourceEvals = new URL("../../evals/src/index.ts", import.meta.url);
-  const mirroredGraders = new URL("../../graders/src/index.ts", import.meta.url);
-  const evalsSource = await readFile(existsSync(sourceEvals) ? sourceEvals : mirroredGraders, "utf8");
-  const block = evalsSource.match(/export type Grader =([\s\S]*?)export interface GradeResult/);
-  assert.ok(block, "could not locate Grader union in public grader taxonomy");
-  const evalsTypes = [...new Set([...block[1].matchAll(/type:\s*"([a-z0-9_]+)"/g)]
-    .map((match) => match[1]))].sort();
-  assert.equal(evalsTypes.length, 27);
-  // Every type public/evals supports is known here...
-  for (const type of evalsTypes) {
+test("knownGrader recognizes canonical @caveman-ai/evals taxonomy and rejects the rest", async () => {
+  assert.equal(SUPPORTED_GRADER_TYPES.size, 27);
+  for (const type of SUPPORTED_GRADER_TYPES) {
     assert.equal(knownGrader(type), true, `knownGrader should accept ${type}`);
   }
-  // ...and nothing outside it is.
   assert.equal(knownGrader("semantic"), false);
   assert.equal(knownGrader("custom"), false);
   assert.equal(knownGrader("totally_made_up"), false);
+});
+
+test("compiler rejects non-lowerable canonical graders before runner I/O", async () => {
+  let runs = 0;
+  const unsupported = {
+    ...fixture("unsupported"),
+    quality: [{ type: "regex", pattern: "ok" }],
+  };
+  await assert.rejects(
+    compile(baseInput({
+      evals: [unsupported],
+      async runner() {
+        runs++;
+        return evidence();
+      },
+    })),
+    /unknown grader regex/,
+  );
+  assert.equal(runs, 0);
+});
+
+test("compiler refuses opaque schema semantics before runner I/O", async () => {
+  let runs = 0;
+  const mutableOutput = tool({
+    name: "mutable_output",
+    description: "Mutable Standard validator.",
+    input: schema.object({}),
+    output: {
+      "~standard": {
+        version: 1,
+        vendor: "fixture",
+        validate: (value) => ({ value }),
+      },
+    },
+    outputJSONSchema: schema.string(),
+    effect: "read",
+    execute: () => "ok",
+  });
+  await assert.rejects(
+    compile(baseInput({
+      agent: agent({
+        id: "mutable-schema-compiler",
+        instructions: "Use tool.",
+        model: auto(),
+        tools: [mutableOutput],
+      }),
+      async runner() {
+        runs++;
+        return evidence();
+      },
+    })),
+    /cave_tool_schema_semantics_unverified/,
+  );
+  assert.equal(runs, 0);
 });

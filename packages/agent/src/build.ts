@@ -1,11 +1,21 @@
 import { mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
+import { SUPPORTED_GRADER_TYPES } from "@caveman-ai/evals";
 import { catalogCost, catalogPriceFingerprint, catalogSearchCeiling } from "./catalog.js";
 import type { AgentDefinition } from "./index.js";
-import { agentGraphHasSubagents, graphUsesHostSandbox } from "./definition-graph.js";
+import {
+  agentGraphHasSubagents,
+  graphHasUnverifiedToolSchemaSemantics,
+  graphUsesHostSandbox,
+} from "./definition-graph.js";
 import type { ContextIR } from "./context-ir.js";
 import { contextIRToWire, sha256, stableStringify } from "./context-ir.js";
-import type { ContextKind, EvalDefinition, ToolDefinition } from "./primitives.js";
+import {
+  assertQualityGrader,
+  type ContextKind,
+  type EvalDefinition,
+  type ToolDefinition,
+} from "./primitives.js";
 import { PI_NATIVE_COMPILER_CONTRACT } from "./runtime-identity.js";
 
 export interface BuildConfig {
@@ -394,7 +404,10 @@ type Completed = {
 
 export async function compile(input: CompileInput): Promise<CompileResult> {
   input = { ...input, config: defineBuild(input.config) };
-  // One explicit admission instant prices the static search reservation. Actual
+  for (const fixture of input.evals) {
+    for (const grader of fixture.quality) assertQualityGrader(grader);
+  }
+  // One explicit accounting instant prices the static search reservation. Actual
   // multi-call spend remains the runner's per-request settled catalog evidence.
   const planningAccountingAt = new Date();
   // An unsandboxed run cannot produce a lock. Host mode runs tool
@@ -406,6 +419,9 @@ export async function compile(input: CompileInput): Promise<CompileResult> {
   // fixture corpora with a contained sandbox mode.
   if (graphUsesHostSandbox(input.agent)) {
     throw new Error("cave_host_sandbox_lock_ineligible");
+  }
+  if (graphHasUnverifiedToolSchemaSemantics(input.agent)) {
+    throw new Error("cave_tool_schema_semantics_unverified");
   }
   // RunResult currently rolls descendant usage into root provider/model totals.
   // Refuse until compiler evidence prices every nested receipt call separately.
@@ -424,11 +440,10 @@ export async function compile(input: CompileInput): Promise<CompileResult> {
   const evalSnapshot = freezeBuildValue(
     JSON.parse(stableStringify(input.evals)) as EvalDefinition[],
   );
-  const approved = evalSnapshot.filter((fixture) => fixture.approved && fixture.required);
-  if (approved.length === 0) {
-    return emptyResult("needs_eval", "no approved required eval fixture");
+  if (evalSnapshot.length === 0) {
+    return emptyResult("needs_eval", "no eval fixture");
   }
-  const evalSuiteSha256 = sha256(stableStringify(approved));
+  const evalSuiteSha256 = sha256(stableStringify(evalSnapshot));
   const seeds = input.seeds ?? [1, 2, 3, 4, 5];
   if (seeds.length === 0 || new Set(seeds).size !== seeds.length) {
     throw new Error("caveman build: seeds must be a non-empty unique set");
@@ -472,9 +487,9 @@ export async function compile(input: CompileInput): Promise<CompileResult> {
   if (candidates.length === 0) throw new Error("caveman build: generated no candidate plans");
   const runnable = candidates.filter((candidate) => !candidate.static_rejection);
   const staticRejections = candidates.length - runnable.length;
-  const plannedRuns = runnable.length * approved.length * seeds.length;
+  const plannedRuns = runnable.length * evalSnapshot.length * seeds.length;
   const estimatedCeiling = roundUsd(
-    runnable.reduce((sum, candidate) => sum + candidate.estimated_cost_usd_per_run * approved.length * seeds.length, 0),
+    runnable.reduce((sum, candidate) => sum + candidate.estimated_cost_usd_per_run * evalSnapshot.length * seeds.length, 0),
   );
   if (estimatedCeiling > input.config.maxSearchCostUsd) {
     return {
@@ -500,7 +515,7 @@ export async function compile(input: CompileInput): Promise<CompileResult> {
   for (const candidate of runnable) {
     const evidence: Completed["evidence"] = [];
     byPlan.set(candidate.plan.plan_id, evidence);
-    for (const fixture of approved) {
+    for (const fixture of evalSnapshot) {
       for (const seed of seeds) {
         if (actualCost >= input.config.maxSearchCostUsd) {
           budgetExceeded = true;
@@ -572,16 +587,16 @@ export async function compile(input: CompileInput): Promise<CompileResult> {
       reason: providerModelDrift
         ? "provider/model identity drift against candidate plan"
         : unknownGraderType !== undefined
-          ? `unknown grader type "${unknownGraderType}": not in the supported grader taxonomy (public/evals)`
+          ? `unknown grader type "${unknownGraderType}": not in canonical @caveman-ai/evals taxonomy`
           : "usage, terminal, grader, recovery, privacy, or sandbox evidence missing",
     };
   }
 
   const baselineEvidence = byPlan.get(baselinePlan.plan_id);
-  if (!baselineEvidence || baselineEvidence.length !== approved.length * seeds.length) {
+  if (!baselineEvidence || baselineEvidence.length !== evalSnapshot.length * seeds.length) {
     return { ...base, status: "incomplete_evidence", reason: "complete baseline evidence missing" };
   }
-  if (sha256(stableStringify(approved)) !== evalSuiteSha256) {
+  if (sha256(stableStringify(evalSnapshot)) !== evalSuiteSha256) {
     throw new Error("cave_compiler_eval_snapshot_mutated");
   }
   const completed = runnable.map((candidate) => summarizeCandidate(
@@ -590,7 +605,7 @@ export async function compile(input: CompileInput): Promise<CompileResult> {
     baselineEvidence,
     input.config,
     evalSuiteSha256,
-    approved,
+    evalSnapshot,
   ));
   const passing = completed.filter((candidate) => candidate.passing);
   const bestObserved = [...completed].sort(selectionOrder)[0];
@@ -1231,6 +1246,13 @@ function lockableValue(value: unknown, seen: WeakSet<object>): unknown {
     if (typeof implementationSource === "string") {
       projected.cave_tool_implementation_sha256 = sha256(implementationSource);
     }
+    const schemaImplementationSource = Reflect.get(
+      value,
+      Symbol.for("@caveman-ai/agent:tool-schema-implementation-source"),
+    );
+    if (typeof schemaImplementationSource === "string") {
+      projected.cave_tool_schema_implementation_sha256 = sha256(schemaImplementationSource);
+    }
     return projected;
   } finally {
     seen.delete(value);
@@ -1265,7 +1287,7 @@ export function generateCandidatePlans(
   contextIR: ContextIR,
   baseline: CavePlan,
   models: string[],
-  approvedEval: boolean,
+  includeTransformCandidates: boolean,
   preferredTransforms: ReadonlyMap<string, string> = new Map(),
   transformCapabilities: readonly TransformCapability[] = ENGINE_TRANSFORM_CAPABILITIES,
   observedDynamicKinds: ReadonlySet<ContextKind> = new Set(),
@@ -1276,7 +1298,7 @@ export function generateCandidatePlans(
     plan: baseline,
     estimated_cost_usd_per_run: 0.01,
   }];
-  if (approvedEval) {
+  if (includeTransformCandidates) {
     const candidateRoute = (
       segmentKind: ContextKind,
       transformID: string,
@@ -1800,41 +1822,8 @@ function completeEvidence(
     evidence.provider_visible_tokens === providerVisible;
 }
 
-// The full public/evals grader taxonomy. public/evals currently exposes the
-// discriminated union but not a runtime registry, so this list is pinned by a
-// source-parity regression test. Unknown values still fail closed.
-const KNOWN_GRADER_TYPES: ReadonlySet<string> = new Set([
-  "exact_match",
-  "contains",
-  "not_contains",
-  "regex",
-  "not_regex",
-  "blocklist",
-  "json_schema",
-  "json_path_assertion",
-  "tool_called",
-  "tool_not_called",
-  "tool_sequence",
-  "tool_argument_assertion",
-  "http_status",
-  "latency_threshold",
-  "cost_threshold",
-  "token_threshold",
-  "bleu_score",
-  "rouge_score",
-  "context_f1",
-  "no_pii",
-  "custom_webhook",
-  "localization_f1",
-  "llm_judge",
-  "llm_score",
-  "llm_category",
-  "llm_pairwise",
-  "llm_answer_match",
-]);
-
 export function knownGrader(type: string): boolean {
-  return KNOWN_GRADER_TYPES.has(type);
+  return (SUPPORTED_GRADER_TYPES as ReadonlySet<string>).has(type);
 }
 
 /** The first grader type an evidence row carries that is outside the taxonomy. */

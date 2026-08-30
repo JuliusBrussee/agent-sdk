@@ -83,7 +83,7 @@ async function skillsDir({ withSkills = true } = {}) {
     await writeFile(join(root, "skills", "refund.md"), [
       "---",
       "name: refund",
-      "description: Refund windows and approval rules.",
+      "description: Refund windows and eligibility rules.",
       "---",
       "",
       `${BODY_MARKER}: full refund within 30 days, store credit to 90.`,
@@ -149,7 +149,7 @@ test("dissolving fixture: loading a skill body never moves the frozen prefix", a
 
     // The prefix the model sees: descriptions, sorted, plus the cave_skill
     // tool — and never a body.
-    assert.match(captured[0].system, /- refund: Refund windows and approval rules\./);
+    assert.match(captured[0].system, /- refund: Refund windows and eligibility rules\./);
     assert.match(captured[0].system, /- shipping: Late and lost shipment handling\./);
     assert.equal(captured[0].system.includes(BODY_MARKER), false);
     assert.equal(captured[0].toolNames.includes("cave_skill"), true);

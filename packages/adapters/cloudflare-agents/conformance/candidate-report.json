@@ -1,0 +1,119 @@
+{
+  "schema": "caveman.adapter-conformance.report.v4",
+  "suite": "@caveman-ai/adapter-conformance/candidate/v4",
+  "adapter": {
+    "id": "cloudflare-agents",
+    "packageName": "@caveman-ai/adapter-cloudflare-agents",
+    "version": "0.1.0"
+  },
+  "upstream": {
+    "packageName": "agents",
+    "version": "0.22.0"
+  },
+  "environment": {
+    "runtime": {
+      "name": "node",
+      "version": "22.22.2"
+    },
+    "platform": {
+      "name": "darwin",
+      "architecture": "arm64"
+    },
+    "execution": "uncontained-host"
+  },
+  "packages": [
+    {
+      "role": "adapter",
+      "name": "@caveman-ai/adapter-cloudflare-agents",
+      "version": "0.1.0",
+      "sha256": "ce44ab12c1f4b7f5f558f906a4223ca49a1774a85310dc53f24abf1d77ff5e29"
+    },
+    {
+      "role": "upstream",
+      "name": "agents",
+      "version": "0.22.0",
+      "sha256": "8cad21290b6ef50d9807554c5caca7d363ebac884b254c5f638424bb3a29ebe2"
+    }
+  ],
+  "testVector": {
+    "id": "adapter-capabilities-v4",
+    "version": "4.0.0",
+    "sha256": "8dec2730881a52e2f924f0b5368eda07eb0d39da4188e8fc3ea4935b18fc23f9",
+    "executedSetSHA256": "362afdce80b72db3ff970f4794814c90fde472f900a798cc3b5532a652d0e5eb"
+  },
+  "capabilities": [
+    {
+      "name": "runLifecycle",
+      "cases": [
+        {
+          "id": "run-lifecycle.success",
+          "status": "passed",
+          "code": null,
+          "evidenceSHA256": "4d75e4052be0489e2c9cd14d4172cb7c4ff665072e6cde89837b062de87e414f"
+        },
+        {
+          "id": "run-lifecycle.failure",
+          "status": "passed",
+          "code": null,
+          "evidenceSHA256": "101d309084f1a31afbf6e6b630573d177c0efbfe86bcf6008fb0bdafe03700e4"
+        }
+      ],
+      "caseCounts": {
+        "passed": 2,
+        "failed": 0,
+        "skipped": 0,
+        "total": 2
+      },
+      "performanceCounts": {
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0,
+        "total": 1
+      },
+      "qualification": {
+        "status": "passed",
+        "blockers": []
+      }
+    }
+  ],
+  "performance": [
+    {
+      "id": "run-lifecycle.hook-overhead-p99",
+      "capability": "runLifecycle",
+      "metric": "hook-overhead-p99",
+      "unit": "microseconds",
+      "clock": "node:process.hrtime.bigint:captured",
+      "percentile": 99,
+      "warmupCount": 250,
+      "requiredSampleCount": 2000,
+      "threshold": {
+        "operator": "lte",
+        "value": 100
+      },
+      "sampleCount": 2000,
+      "observed": 9,
+      "status": "passed",
+      "code": null
+    }
+  ],
+  "totals": {
+    "capabilities": {
+      "passed": 1,
+      "blocked": 0,
+      "total": 1
+    },
+    "cases": {
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "total": 2
+    },
+    "performance": {
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "total": 1
+    }
+  },
+  "reportDigest": "sha256:f33c3e0077c2dccf3fbaa63d2e06b5ec1b3904cb5893ddcb85d935e061fe8db3"
+}

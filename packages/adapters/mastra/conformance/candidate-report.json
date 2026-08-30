@@ -1,0 +1,427 @@
+{
+  "schema": "caveman.adapter-conformance.report.v4",
+  "suite": "@caveman-ai/adapter-conformance/candidate/v4",
+  "adapter": {
+    "id": "mastra",
+    "packageName": "@caveman-ai/adapter-mastra",
+    "version": "0.1.0"
+  },
+  "upstream": {
+    "packageName": "@mastra/core",
+    "version": "1.63.2"
+  },
+  "environment": {
+    "runtime": {
+      "name": "node",
+      "version": "22.22.2"
+    },
+    "platform": {
+      "name": "darwin",
+      "architecture": "arm64"
+    },
+    "execution": "uncontained-host"
+  },
+  "packages": [
+    {
+      "role": "adapter",
+      "name": "@caveman-ai/adapter-mastra",
+      "version": "0.1.0",
+      "sha256": "4692f09d963ed61ae62c637aed61c9adfb80382bac075d5c6da5c186e3b7500e"
+    },
+    {
+      "role": "upstream",
+      "name": "@mastra/core",
+      "version": "1.63.2",
+      "sha256": "4fb8fec6ace0f2ee160aed6ccf9e21cb499fa593a3897240c2dd2b2e34cd3172"
+    }
+  ],
+  "testVector": {
+    "id": "adapter-capabilities-v4",
+    "version": "4.0.0",
+    "sha256": "8dec2730881a52e2f924f0b5368eda07eb0d39da4188e8fc3ea4935b18fc23f9",
+    "executedSetSHA256": "468be61151217ac322eb6f083743859892ce2d8c3f6b8dccb92f7215006e6c57"
+  },
+  "capabilities": [
+    {
+      "name": "runLifecycle",
+      "cases": [
+        {
+          "id": "run-lifecycle.success",
+          "status": "passed",
+          "code": null,
+          "evidenceSHA256": "f9af0d9e01edd4638f0c36b9f037467a618c8c0b484fd3795710da8964b4cf8b"
+        },
+        {
+          "id": "run-lifecycle.failure",
+          "status": "skipped",
+          "code": "fixture_unavailable",
+          "evidenceSHA256": null
+        }
+      ],
+      "caseCounts": {
+        "passed": 1,
+        "failed": 0,
+        "skipped": 1,
+        "total": 2
+      },
+      "performanceCounts": {
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0,
+        "total": 1
+      },
+      "qualification": {
+        "status": "blocked",
+        "blockers": [
+          "case_skipped"
+        ]
+      }
+    },
+    {
+      "name": "modelInterception",
+      "cases": [
+        {
+          "id": "model-interception.request",
+          "status": "passed",
+          "code": null,
+          "evidenceSHA256": "1567390d3144cf4a68c30ebd64016d496a030f4b3726764b108219d2025ed91f"
+        },
+        {
+          "id": "model-interception.response",
+          "status": "passed",
+          "code": null,
+          "evidenceSHA256": "9faca78a171cce01d7bf46202d7ad34b6ca4347ca25754a1e0c3802a58fa209b"
+        },
+        {
+          "id": "model-interception.error",
+          "status": "passed",
+          "code": null,
+          "evidenceSHA256": "b364e3a6b2633578a99c6d7cfc8ba8878fca6ad65078f2607d1db85fc3e2ff94"
+        }
+      ],
+      "caseCounts": {
+        "passed": 3,
+        "failed": 0,
+        "skipped": 0,
+        "total": 3
+      },
+      "performanceCounts": {
+        "passed": 0,
+        "failed": 0,
+        "skipped": 1,
+        "total": 1
+      },
+      "qualification": {
+        "status": "blocked",
+        "blockers": [
+          "performance_skipped"
+        ]
+      }
+    },
+    {
+      "name": "contextTransformation",
+      "cases": [
+        {
+          "id": "context-transformation.deterministic",
+          "status": "passed",
+          "code": null,
+          "evidenceSHA256": "7c9de665bb267e5f842a712cfa95b3aa840f8ef7b15cd02c35224e344e3f70ec"
+        },
+        {
+          "id": "context-transformation.cache-prefix-stable",
+          "status": "passed",
+          "code": null,
+          "evidenceSHA256": "3fb152c351eba735ef1dc1229a0bb5b579715a0f068e69cbb5eeeaf2e603f8ca"
+        }
+      ],
+      "caseCounts": {
+        "passed": 2,
+        "failed": 0,
+        "skipped": 0,
+        "total": 2
+      },
+      "performanceCounts": {
+        "passed": 0,
+        "failed": 0,
+        "skipped": 1,
+        "total": 1
+      },
+      "qualification": {
+        "status": "blocked",
+        "blockers": [
+          "performance_skipped"
+        ]
+      }
+    },
+    {
+      "name": "toolObservation",
+      "cases": [
+        {
+          "id": "tool-observation.success",
+          "status": "passed",
+          "code": null,
+          "evidenceSHA256": "2cde5ee3fb27b328fcdbe091b470077212e6b3dcf981c967aa85963b95194243"
+        },
+        {
+          "id": "tool-observation.failure",
+          "status": "passed",
+          "code": null,
+          "evidenceSHA256": "b02c7cb6af7ff3bfbddcbd8ab01d72798b11b70b5ee32a9f46f83a63231ffe85"
+        }
+      ],
+      "caseCounts": {
+        "passed": 2,
+        "failed": 0,
+        "skipped": 0,
+        "total": 2
+      },
+      "performanceCounts": {
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0,
+        "total": 1
+      },
+      "qualification": {
+        "status": "passed",
+        "blockers": []
+      }
+    },
+    {
+      "name": "usageAccounting",
+      "cases": [
+        {
+          "id": "usage-accounting.known",
+          "status": "passed",
+          "code": null,
+          "evidenceSHA256": "39b6c5d9fb2c0018d71b13b7fdf5a31a0d9444c2638fbd5edd0c3171ef173e94"
+        },
+        {
+          "id": "usage-accounting.unknown-fails-closed",
+          "status": "passed",
+          "code": null,
+          "evidenceSHA256": "06c9e9f3b12678ae69a115d87cdd8739b2c0c40a84570b797259bf9cfcf730c3"
+        }
+      ],
+      "caseCounts": {
+        "passed": 2,
+        "failed": 0,
+        "skipped": 0,
+        "total": 2
+      },
+      "performanceCounts": {
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0,
+        "total": 1
+      },
+      "qualification": {
+        "status": "passed",
+        "blockers": []
+      }
+    },
+    {
+      "name": "streaming",
+      "cases": [
+        {
+          "id": "streaming.ordered-chunks",
+          "status": "passed",
+          "code": null,
+          "evidenceSHA256": "b75e5a6ffa59800545fcca6e004184bb26cd15b42a1060b95619a9c2194bf2b1"
+        },
+        {
+          "id": "streaming.terminal",
+          "status": "passed",
+          "code": null,
+          "evidenceSHA256": "d5f3822c709ce5a820ed31fd689c7b0333bedc79e2603945d6509298d390dcd2"
+        },
+        {
+          "id": "streaming.error",
+          "status": "skipped",
+          "code": "fixture_unavailable",
+          "evidenceSHA256": null
+        }
+      ],
+      "caseCounts": {
+        "passed": 2,
+        "failed": 0,
+        "skipped": 1,
+        "total": 3
+      },
+      "performanceCounts": {
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0,
+        "total": 1
+      },
+      "qualification": {
+        "status": "blocked",
+        "blockers": [
+          "case_skipped"
+        ]
+      }
+    },
+    {
+      "name": "abort",
+      "cases": [
+        {
+          "id": "abort.pre-start",
+          "status": "passed",
+          "code": null,
+          "evidenceSHA256": "cc18c41c41713653473640b97504d06b63e1aecca7c3db7cc7f4fb25e4471baa"
+        },
+        {
+          "id": "abort.in-flight",
+          "status": "passed",
+          "code": null,
+          "evidenceSHA256": "9c708eac59d6fa24e3a17aa8d0cf626f38fffd98574d90730a5311d74aa547b9"
+        }
+      ],
+      "caseCounts": {
+        "passed": 2,
+        "failed": 0,
+        "skipped": 0,
+        "total": 2
+      },
+      "performanceCounts": {
+        "passed": 0,
+        "failed": 0,
+        "skipped": 0,
+        "total": 0
+      },
+      "qualification": {
+        "status": "passed",
+        "blockers": []
+      }
+    }
+  ],
+  "performance": [
+    {
+      "id": "run-lifecycle.hook-overhead-p99",
+      "capability": "runLifecycle",
+      "metric": "hook-overhead-p99",
+      "unit": "microseconds",
+      "clock": "node:process.hrtime.bigint:captured",
+      "percentile": 99,
+      "warmupCount": 250,
+      "requiredSampleCount": 2000,
+      "threshold": {
+        "operator": "lte",
+        "value": 100
+      },
+      "sampleCount": 2000,
+      "observed": 11.625,
+      "status": "passed",
+      "code": null
+    },
+    {
+      "id": "model-interception.hook-overhead-p99",
+      "capability": "modelInterception",
+      "metric": "hook-overhead-p99",
+      "unit": "microseconds",
+      "clock": "node:process.hrtime.bigint:captured",
+      "percentile": 99,
+      "warmupCount": 250,
+      "requiredSampleCount": 2000,
+      "threshold": {
+        "operator": "lte",
+        "value": 100
+      },
+      "sampleCount": 0,
+      "observed": null,
+      "status": "skipped",
+      "code": "fixture_unavailable"
+    },
+    {
+      "id": "context-transformation.hook-overhead-p99",
+      "capability": "contextTransformation",
+      "metric": "hook-overhead-p99",
+      "unit": "microseconds",
+      "clock": "node:process.hrtime.bigint:captured",
+      "percentile": 99,
+      "warmupCount": 250,
+      "requiredSampleCount": 2000,
+      "threshold": {
+        "operator": "lte",
+        "value": 250
+      },
+      "sampleCount": 0,
+      "observed": null,
+      "status": "skipped",
+      "code": "fixture_unavailable"
+    },
+    {
+      "id": "tool-observation.hook-overhead-p99",
+      "capability": "toolObservation",
+      "metric": "hook-overhead-p99",
+      "unit": "microseconds",
+      "clock": "node:process.hrtime.bigint:captured",
+      "percentile": 99,
+      "warmupCount": 250,
+      "requiredSampleCount": 2000,
+      "threshold": {
+        "operator": "lte",
+        "value": 100
+      },
+      "sampleCount": 2000,
+      "observed": 49.25,
+      "status": "passed",
+      "code": null
+    },
+    {
+      "id": "usage-accounting.hook-overhead-p99",
+      "capability": "usageAccounting",
+      "metric": "hook-overhead-p99",
+      "unit": "microseconds",
+      "clock": "node:process.hrtime.bigint:captured",
+      "percentile": 99,
+      "warmupCount": 250,
+      "requiredSampleCount": 2000,
+      "threshold": {
+        "operator": "lte",
+        "value": 100
+      },
+      "sampleCount": 2000,
+      "observed": 7.292,
+      "status": "passed",
+      "code": null
+    },
+    {
+      "id": "streaming.chunk-overhead-p99",
+      "capability": "streaming",
+      "metric": "hook-overhead-p99",
+      "unit": "microseconds",
+      "clock": "node:process.hrtime.bigint:captured",
+      "percentile": 99,
+      "warmupCount": 1000,
+      "requiredSampleCount": 10000,
+      "threshold": {
+        "operator": "lte",
+        "value": 50
+      },
+      "sampleCount": 10000,
+      "observed": 0.084,
+      "status": "passed",
+      "code": null
+    }
+  ],
+  "totals": {
+    "capabilities": {
+      "passed": 3,
+      "blocked": 4,
+      "total": 7
+    },
+    "cases": {
+      "passed": 14,
+      "failed": 0,
+      "skipped": 2,
+      "total": 16
+    },
+    "performance": {
+      "passed": 4,
+      "failed": 0,
+      "skipped": 2,
+      "total": 6
+    }
+  },
+  "reportDigest": "sha256:32dc28cbe00c21eed706b3ff8a577e0064e069cb2aa15c0b7b3cc4ad92bf2e00"
+}

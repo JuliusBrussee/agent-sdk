@@ -1,0 +1,37 @@
+import { defineAdapterManifest } from "@caveman-ai/adapter-kit";
+
+export const adapterManifest = defineAdapterManifest({
+  schemaVersion: 2,
+  id: "openai-agents",
+  packageName: "@caveman-ai/adapter-openai-agents",
+  adapterVersion: "0.1.0",
+  upstream: { package: "@openai/agents", version: "0.17.0" },
+  capabilities: {
+    runLifecycle: "unsupported",
+    modelInterception: "experimental",
+    contextTransformation: "experimental",
+    toolObservation: "unsupported",
+    usageAccounting: "experimental",
+    streaming: "experimental",
+    abort: "experimental",
+    replayAwareness: "unsupported",
+    durableObservation: "unsupported",
+    tracing: "unsupported",
+    compilation: "unsupported",
+  },
+  lifecycle: {
+    "run.started": "unsupported",
+    "run.completed": "unsupported",
+    "run.error": "unsupported",
+    "model.requested": "intercept",
+    "model.responded": "observe",
+    "model.error": "observe",
+    "tool.proposed": "unsupported",
+    "tool.started": "unsupported",
+    "tool.completed": "unsupported",
+    "tool.error": "unsupported",
+    "checkpoint.committed": "unsupported",
+    "session.committed": "unsupported",
+  },
+  certifications: {},
+});

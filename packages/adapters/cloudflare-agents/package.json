@@ -1,0 +1,63 @@
+{
+  "name": "@caveman-ai/adapter-cloudflare-agents",
+  "version": "0.1.0",
+  "description": "Native Caveman observability adapter for Cloudflare Agents.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JuliusBrussee/agent-sdk.git",
+    "directory": "packages/adapters/cloudflare-agents"
+  },
+  "homepage": "https://caveman.so/products/caveman-agent",
+  "bugs": {
+    "url": "https://github.com/JuliusBrussee/agent-sdk/issues"
+  },
+  "type": "module",
+  "keywords": [
+    "agents",
+    "ai",
+    "cloudflare",
+    "durable-objects",
+    "observability"
+  ],
+  "main": "src/index.js",
+  "types": "src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "import": "./src/index.js"
+    },
+    "./manifest": {
+      "types": "./src/manifest.d.ts",
+      "import": "./src/manifest.js"
+    }
+  },
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "bench": "node bench/hooks.mjs",
+    "test": "npm run test:runtime && npm run test:types",
+    "test:runtime": "node --test tests/*.test.mjs",
+    "test:types": "tsc --project tsconfig.test.json"
+  },
+  "dependencies": {
+    "@caveman-ai/adapter-kit": "0.1.0"
+  },
+  "peerDependencies": {
+    "agents": "0.22.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "agents": "0.22.0",
+    "typescript": "5.9.3"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

@@ -1,0 +1,16 @@
+[
+  {
+    "tenantId": "northwind",
+    "id": "asset-payments-api",
+    "criticality": "critical",
+    "owner": "payments-platform",
+    "controls": ["edr-isolation", "credential-revoke", "waf-block"]
+  },
+  {
+    "tenantId": "contoso",
+    "id": "asset-erp-web",
+    "criticality": "high",
+    "owner": "business-systems",
+    "controls": ["edr-isolation", "credential-revoke"]
+  }
+]

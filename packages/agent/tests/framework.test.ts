@@ -10,20 +10,15 @@ import {
   type RunOptions,
   type StandardToolSchema,
   type ToolDefinition,
+  type TypeBoxOutputToolOptions,
 } from "../src/index.js";
 import type { ClaudeRunOptions } from "../src/claude.js";
-import type { ToolLoopAgent } from "ai";
-import type { Agent as MastraAgent } from "@mastra/core/agent";
 import type { ClientSession } from "eve/client";
 import type {
   EveSessionBinding,
-  MastraAgentBinding,
-  VercelToolLoopAgentBinding,
 } from "../src/adapters.js";
 
 type Assert<T extends true> = T;
-type VercelBindingCompatible = Assert<ToolLoopAgent extends VercelToolLoopAgentBinding ? true : false>;
-type MastraBindingCompatible = Assert<MastraAgent extends MastraAgentBinding ? true : false>;
 type EveBindingCompatible = Assert<ClientSession extends EveSessionBinding ? true : false>;
 
 const lookup = tool({
@@ -43,7 +38,10 @@ const defined: AgentDefinition = agent({
   tools: [lookup],
   output: output({
     maxTokens: 100,
-    schema: schema.object({ answer: schema.string() }),
+    schema: schema.object({
+      answer: schema.string(),
+      referenceId: schema.union([schema.string(), schema.null()]),
+    }),
   }),
 });
 
@@ -95,6 +93,53 @@ const validateOnlyTool = tool({
     return { id };
   },
 });
+const standardOutput = {
+  "~standard": {
+    version: 1 as const,
+    vendor: "fixture",
+    types: undefined as unknown as {
+      input: { raw: string };
+      output: { value: number };
+    },
+    validate(value: unknown) {
+      return { value: { value: Number((value as { raw: string }).raw) } };
+    },
+    jsonSchema: {
+      input() {
+        return { type: "object", properties: { raw: { type: "string" } }, required: ["raw"] };
+      },
+      output() {
+        return { type: "object", properties: { value: { type: "number" } }, required: ["value"] };
+      },
+    },
+  },
+} satisfies StandardToolSchema<{ raw: string }, { value: number }>;
+const standardOutputTool = tool({
+  name: "standard_output_lookup",
+  description: "Validate and transform output through Standard Schema.",
+  input: schema.object({ id: schema.string() }),
+  output: standardOutput,
+  effect: "read",
+  execute({ id }) {
+    return { raw: id };
+  },
+});
+const standardOutputResult: { value: number } | Promise<{ value: number }> =
+  standardOutputTool.execute({ id: "7" });
+const invalidTypeBoxInput = schema.object({});
+const invalidTypeBoxOutput = schema.string();
+const invalidTypeBoxOutputTool: TypeBoxOutputToolOptions<
+  typeof invalidTypeBoxInput,
+  typeof invalidTypeBoxOutput
+> = {
+  name: "invalid_typebox_output",
+  description: "Must not type-check.",
+  input: invalidTypeBoxInput,
+  output: invalidTypeBoxOutput,
+  effect: "read",
+  // @ts-expect-error TypeBox output contract constrains execute result.
+  execute: () => 7,
+};
 const typedEval: EvalDefinition = defineEval({
   id: "types",
   input: "x",
@@ -125,12 +170,13 @@ void defined;
 void typedTool;
 void standardTool;
 void validateOnlyTool;
+void standardOutputTool;
+void standardOutputResult;
+void invalidTypeBoxOutputTool;
 void typedEval;
 void callerPathOptions;
 void callerDepthOptions;
 void callerPlanOptions;
 void callerBuildOptions;
 void callerClaudeBuildOptions;
-void (null as unknown as VercelBindingCompatible);
-void (null as unknown as MastraBindingCompatible);
 void (null as unknown as EveBindingCompatible);

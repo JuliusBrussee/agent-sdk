@@ -26,7 +26,6 @@ function fixture(id, split, input, quality = [{ type: "exact_match", expected: "
     id,
     lineageId: `lineage-${id}`,
     split,
-    approved: true,
     input,
     quality,
   });

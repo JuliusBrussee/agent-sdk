@@ -64,6 +64,10 @@
       "types": "./dist/programmatic-tools.d.ts",
       "import": "./dist/programmatic-tools.js"
     },
+    "./connect": {
+      "types": "./dist/connect.d.ts",
+      "import": "./dist/connect.js"
+    },
     "./plugins": {
       "types": "./dist/agent-environment.d.ts",
       "import": "./dist/agent-environment.js"
@@ -79,6 +83,50 @@
     "./durable": {
       "types": "./dist/durable.d.ts",
       "import": "./dist/durable.js"
+    },
+    "./session": {
+      "types": "./dist/session.d.ts",
+      "import": "./dist/session.js"
+    },
+    "./model-boundary": {
+      "types": "./dist/model-boundary.d.ts",
+      "import": "./dist/model-boundary.js"
+    },
+    "./model-usage": {
+      "types": "./dist/model-usage.d.ts",
+      "import": "./dist/model-usage.js"
+    },
+    "./model-router": {
+      "types": "./dist/model-router.d.ts",
+      "import": "./dist/model-router.js"
+    },
+    "./input": {
+      "types": "./dist/input.d.ts",
+      "import": "./dist/input.js"
+    },
+    "./credentials": {
+      "types": "./dist/credentials.d.ts",
+      "import": "./dist/credentials.js"
+    },
+    "./runtime-descriptor": {
+      "types": "./dist/runtime-descriptor.d.ts",
+      "import": "./dist/runtime-descriptor.js"
+    },
+    "./runtime-model": {
+      "types": "./dist/runtime-model.d.ts",
+      "import": "./dist/runtime-model.js"
+    },
+    "./checkpoints": {
+      "types": "./dist/checkpoints.d.ts",
+      "import": "./dist/checkpoints.js"
+    },
+    "./tracing": {
+      "types": "./dist/tracing.d.ts",
+      "import": "./dist/tracing.js"
+    },
+    "./run-receipt": {
+      "types": "./dist/run-receipt.d.ts",
+      "import": "./dist/run-receipt.js"
     },
     "./cache-engine": {
       "types": "./dist/cache-planner/index.d.ts",
@@ -103,6 +151,8 @@
     "test:types": "tsc --project tsconfig.test.json"
   },
   "dependencies": {
+    "@caveman-ai/adapter-kit": "0.1.0",
+    "@caveman-ai/evals": "0.1.0",
     "@pebble-agent/protocol": "file:../pebble-protocol",
     "@anthropic-ai/claude-agent-sdk": "0.3.220",
     "@anthropic-ai/sdk": "0.93.0",
@@ -116,9 +166,7 @@
     "zod": "4.4.3"
   },
   "devDependencies": {
-    "@mastra/core": "1.55.0",
     "@types/node": "24.10.1",
-    "ai": "7.0.43",
     "ajv": "8.20.0",
     "eve": "0.29.2",
     "typescript": "5.9.3"

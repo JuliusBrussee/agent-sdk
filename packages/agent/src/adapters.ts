@@ -11,9 +11,7 @@ import {
 
 export type HarnessID = "pi" | "claude" | "vercel-ai-sdk" | "eve" | "mastra";
 
-export const VERCEL_AI_SDK_VERSION = "7.0.43";
 export const EVE_VERSION = "0.29.2";
-export const MASTRA_VERSION = "1.55.0";
 
 export interface HarnessRequest {
   build: CaveBuildLock;
@@ -262,50 +260,6 @@ export const createClaudeAdapter = (identity: HarnessAdapterIdentity, invoke: Ha
     response: "HarnessExecution.v1",
   }, invoke);
 
-export interface VercelToolLoopAgentBinding {
-  generate(options: { prompt: string; abortSignal?: AbortSignal }): PromiseLike<{
-    text: string;
-    usage: unknown;
-    finishReason?: unknown;
-    error?: unknown;
-    response?: { modelId?: unknown };
-  }>;
-}
-
-export function createVercelAISDKAdapter(
-  identity: HarnessAdapterIdentity,
-  agent: VercelToolLoopAgentBinding,
-): HarnessAdapter {
-  assertSupportedUpstream(identity, VERCEL_AI_SDK_VERSION, "vercel", "ai");
-  return createHarnessAdapter("vercel-ai-sdk", identity, {
-    package: "ai",
-    class: "ToolLoopAgent",
-    method: "generate",
-    usage: "LanguageModelUsage.v4",
-  }, async (request) => {
-    const accountingAt = new Date();
-    const startedAt = performance.now();
-    const response = await agent.generate({
-      prompt: request.prompt,
-      ...(request.signal === undefined ? {} : { abortSignal: request.signal }),
-    });
-    if (response.error !== undefined || terminalFinishReason(response.finishReason) === false) {
-      throw new Error("cave_vercel_terminal_failure");
-    }
-    const expected = expectedProviderModel(request.plan);
-    const actualModel = normalizedResponseModel(response.response?.modelId, expected.provider);
-    return harnessExecution({
-      request,
-      text: response.text,
-      provider: expected.provider,
-      model: actualModel,
-      usage: usageFromAISDK(response.usage, request.plan.reasoning !== "none"),
-      latencyMs: Math.round(performance.now() - startedAt),
-      accountingAt,
-    });
-  });
-}
-
 export interface EveMessageResponseBinding {
   result(): Promise<{
     message: string | undefined;
@@ -354,69 +308,6 @@ export function createEveAdapter(
   });
 }
 
-export interface MastraAgentBinding {
-  generate(messages: string, options?: {
-    maxProcessorRetries?: number;
-    maxSteps?: number;
-    runId?: string;
-    abortSignal?: AbortSignal;
-  }): Promise<{
-    text: string;
-    totalUsage?: unknown;
-    usage?: unknown;
-    error?: unknown;
-    finishReason?: unknown;
-    response?: { modelId?: unknown };
-  }>;
-}
-
-export interface MastraAdapterOptions {
-  /** Mastra's per-generate maximum number of sequential LLM calls. */
-  maxSteps?: number;
-}
-
-export function createMastraAdapter(
-  identity: HarnessAdapterIdentity,
-  agent: MastraAgentBinding,
-  options: MastraAdapterOptions = {},
-): HarnessAdapter {
-  const maxSteps = options.maxSteps;
-  if (maxSteps !== undefined && (!Number.isSafeInteger(maxSteps) || maxSteps <= 0)) {
-    throw new Error("cave_mastra_max_steps_invalid");
-  }
-  assertSupportedUpstream(identity, MASTRA_VERSION, "mastra", "@mastra/core");
-  return createHarnessAdapter("mastra", identity, {
-    package: "@mastra/core/agent",
-    class: "Agent",
-    method: "generate",
-    usage: "FullOutput.totalUsage",
-    ...(maxSteps === undefined ? {} : { preExecutionControls: { maxSteps } }),
-  }, async (request) => {
-    const accountingAt = new Date();
-    const startedAt = performance.now();
-    const response = await agent.generate(request.prompt, {
-      maxProcessorRetries: 0,
-      runId: request.runID,
-      ...(maxSteps === undefined ? {} : { maxSteps }),
-      ...(request.signal === undefined ? {} : { abortSignal: request.signal }),
-    });
-    if (response.error !== undefined || terminalFinishReason(response.finishReason) === false) {
-      throw new Error("cave_mastra_terminal_failure");
-    }
-    const expected = expectedProviderModel(request.plan);
-    const actualModel = normalizedResponseModel(response.response?.modelId, expected.provider);
-    return harnessExecution({
-      request,
-      text: response.text,
-      provider: expected.provider,
-      model: actualModel,
-      usage: usageFromMastra(response.totalUsage ?? response.usage, request.plan.reasoning !== "none"),
-      latencyMs: Math.round(performance.now() - startedAt),
-      accountingAt,
-    });
-  });
-}
-
 interface NormalizedUsage {
   inputTokens: number;
   outputTokens: number;
@@ -458,47 +349,6 @@ function harnessExecution(input: {
     recoveryResolved: input.request.recoveryResolved,
     latencyMs: input.latencyMs,
   };
-}
-
-function usageFromAISDK(value: unknown, reasoningRequired: boolean): NormalizedUsage {
-  const usage = record(value, "cave_vercel_usage_missing");
-  const input = record(usage.inputTokenDetails, "cave_vercel_usage_missing");
-  const output = record(usage.outputTokenDetails, "cave_vercel_usage_missing");
-  const totalInput = strictInteger(usage.inputTokens, "cave_vercel_usage_missing");
-  const cacheRead = optionalInteger(input.cacheReadTokens, "cave_vercel_usage_missing");
-  const cacheWrite = optionalInteger(input.cacheWriteTokens, "cave_vercel_usage_missing");
-  if (cacheRead + cacheWrite > totalInput) throw new Error("cave_vercel_usage_missing");
-  const noCache = input.noCacheTokens === undefined
-    ? totalInput - cacheRead - cacheWrite
-    : strictInteger(input.noCacheTokens, "cave_vercel_usage_missing");
-  if (noCache + cacheRead + cacheWrite !== totalInput) {
-    throw new Error("cave_vercel_usage_missing");
-  }
-  const normalized = normalizeUsage({
-    inputTokens: noCache,
-    outputTokens: usage.outputTokens,
-    cacheReadTokens: cacheRead,
-    cacheWriteTokens: cacheWrite,
-    reasoningTokens: output.reasoningTokens,
-    totalTokens: usage.totalTokens,
-  }, reasoningRequired, "cave_vercel_usage_missing");
-  return normalized;
-}
-
-function usageFromMastra(value: unknown, reasoningRequired: boolean): NormalizedUsage {
-  const usage = record(value, "cave_mastra_usage_missing");
-  const totalInput = strictInteger(usage.inputTokens, "cave_mastra_usage_missing");
-  const cacheRead = optionalInteger(usage.cachedInputTokens, "cave_mastra_usage_missing");
-  const cacheWrite = optionalInteger(usage.cacheCreationInputTokens, "cave_mastra_usage_missing");
-  if (cacheRead + cacheWrite > totalInput) throw new Error("cave_mastra_usage_missing");
-  return normalizeUsage({
-    inputTokens: totalInput - cacheRead - cacheWrite,
-    outputTokens: usage.outputTokens,
-    cacheReadTokens: cacheRead,
-    cacheWriteTokens: cacheWrite,
-    reasoningTokens: usage.reasoningTokens,
-    totalTokens: usage.totalTokens,
-  }, reasoningRequired, "cave_mastra_usage_missing");
 }
 
 function usageFromEveEvents(events: unknown[], reasoningRequired: boolean): NormalizedUsage {
@@ -587,17 +437,6 @@ function expectedProviderModel(plan: CavePlan): { provider: string; model: strin
     throw new Error("cave_harness_model_invalid");
   }
   return { provider: plan.model.slice(0, separator), model: plan.model.slice(separator + 1) };
-}
-
-function normalizedResponseModel(value: unknown, provider: string): string {
-  if (typeof value !== "string" || value.length === 0) {
-    throw new Error("cave_harness_model_identity_missing");
-  }
-  return value.startsWith(`${provider}/`) ? value.slice(provider.length + 1) : value;
-}
-
-function terminalFinishReason(value: unknown): boolean {
-  return typeof value === "string" && ["stop", "length", "content-filter", "other"].includes(value);
 }
 
 function record(value: unknown, error: string): Record<string, unknown> {

@@ -1,7 +1,7 @@
 {
   "name": "@caveman-ai/adapter-vercel-ai-sdk",
   "version": "0.1.0",
-  "description": "Caveman adapter for Vercel AI SDK ToolLoopAgent.",
+  "description": "Native Caveman middleware and lifecycle adapter for Vercel AI SDK.",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
@@ -19,12 +19,23 @@
     "./manifest": "./src/manifest.js"
   },
   "files": ["src", "README.md"],
+  "scripts": {
+    "bench": "node bench/hooks.mjs",
+    "test": "node --test tests/*.test.mjs && npm run test:types",
+    "test:types": "tsc --noEmit --project tsconfig.json"
+  },
   "dependencies": {
     "@caveman-ai/adapter-kit": "0.1.0"
   },
   "peerDependencies": {
     "@caveman-ai/agent": "0.2.0",
-    "ai": "7.0.43"
+    "ai": "7.0.84"
+  },
+  "devDependencies": {
+    "@types/json-schema": "7.0.15",
+    "@types/node": "24.10.1",
+    "ai": "7.0.84",
+    "typescript": "5.9.3"
   },
   "engines": { "node": ">=22.19.0" },
   "publishConfig": { "access": "public" }

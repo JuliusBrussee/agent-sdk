@@ -44,10 +44,11 @@ Follow these even if a local change seems harmless:
 - Tool/subprocess environments must use explicit allowlists, never ambient secret inheritance.
 - Generated `packages/agent/src/catalog.ts` changes only via:
   - `node scripts/generate-agent-catalog.mjs`
-- Agent skills / `AGENTS.md` / plugin parsing and discovery live in one place:
+- Optional Agent Skills / `AGENTS.md` / plugin compatibility lives in one place:
   - `packages/agent/src/agent-environment.ts`
+  - core runtime never discovers workspace files automatically
   - wrappers may add roots, but must not fork validation/precedence/invocation behavior.
-- Agent Plugins v1 / OpenPlugin support is declarative-only for now; do not add execution for MCP/hooks/custom agents without explicit lifecycle and permission contracts.
+- Agent Plugins v1 / OpenPlugin support is declarative-only; do not add execution for MCP/hooks/custom agents. Executable integrations stay host-owned and require separate environment-allowlist and lifecycle contracts.
 - `@pebble-agent/protocol` is frozen and byte-sensitive. Be careful with event shapes, framing, ordering, enums, and fixtures.
 
 ## Common commands

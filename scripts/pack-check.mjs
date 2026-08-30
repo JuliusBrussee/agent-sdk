@@ -20,8 +20,10 @@ const npm = process.platform === "win32" ? "npm.cmd" : "npm";
 const fixedPackages = [
   "packages/agent",
   "packages/adapter-kit",
+  "packages/adapter-conformance",
   "packages/coding-agent",
   "packages/create-caveman-agent",
+  "packages/evals",
   "packages/pebble-protocol",
 ];
 const adaptersRoot = resolve(root, "packages/adapters");

@@ -8,7 +8,7 @@
 npm run build
 ```
 
-No prior traces required. Build runs approved `profile` evals, searches on
+No prior traces required. Build runs declared `profile` evals, searches on
 `development`, freezes selected plan, then opens untouched `holdout`. If
 content-blind Caveman RunResult, OpenTelemetry, or OpenInference rows already
 exist under `.caveman/traces/`, same command imports them and skips profile-eval
@@ -38,36 +38,36 @@ Build, compiler, and adapter-contract hashes bind canonical bytes for integrity;
 they are not signatures, binary/SBOM provenance, runtime attestation, or proof
 that registered bytes served traffic.
 
-Minimal eval file uses one approval switch and independent lineages:
+Minimal eval file declares independent lineages. Invoking `npm run build`
+executes every declared fixture within configured search budget; SDK adds no
+approval or permission gate.
 
 ```ts
 import { eval as defineEval } from "@caveman-ai/agent";
 
-const APPROVED = false; // inspect cases, then flip once
-
 export const profile = defineEval({
   id: "profile-a", lineageId: "profile-family", split: "profile",
-  approved: APPROVED, input: "representative task",
+  input: "representative task",
   quality: [{ type: "exact_match", expected: "expected result" }],
 });
 export const development = defineEval({
   id: "development-a", lineageId: "development-family-a", split: "development",
-  approved: APPROVED, input: "different representative task",
+  input: "different representative task",
   quality: [{ type: "exact_match", expected: "expected result" }],
 });
 export const developmentB = defineEval({
   id: "development-b", lineageId: "development-family-b", split: "development",
-  approved: APPROVED, input: "second development task",
+  input: "second development task",
   quality: [{ type: "exact_match", expected: "second result" }],
 });
 export const holdout = defineEval({
   id: "holdout-a", lineageId: "holdout-family-a", split: "holdout",
-  approved: APPROVED, input: "unseen representative task",
+  input: "unseen representative task",
   quality: [{ type: "exact_match", expected: "expected result" }],
 });
 export const holdoutB = defineEval({
   id: "holdout-b", lineageId: "holdout-family-b", split: "holdout",
-  approved: APPROVED, input: "second unseen task",
+  input: "second unseen task",
   quality: [{ type: "exact_match", expected: "second result" }],
 });
 ```
@@ -120,13 +120,44 @@ tarballs until `@caveman-ai/agent` and `create-caveman-agent` publish.
 
 Standalone authoring API remains optional convenience. Define instructions,
 tools, context, evals, and budgets in TypeScript; Caveman runs agent, reports
-provider usage, and produces v3 whenever approved evals declare split roles.
+provider usage, and produces v3 whenever evals declare split roles.
 Unsplit legacy eval suites continue producing Pi Cave Build v2.
 
 Local Caveman Engine is optional. With Engine running, eligible context can use
 recoverable local compression. Without it, SDK calls provider directly in explicit
 observe-only mode: no transforms or Caveman gateway telemetry. Provider usage and
 local context estimates remain available.
+
+## Connect provider data without prompt bloat
+
+```ts
+import { agent, auto, createConnect } from "@caveman-ai/agent";
+
+const data = createConnect({
+  sources: [{
+    id: "work-github",
+    provider: "github",
+    collect: ["issues"],
+    models: ["Issue"],
+  }],
+});
+
+export default agent({
+  id: "issue-triage",
+  instructions: "Use connected source data. Never invent missing records.",
+  model: auto(),
+  tools: [data.tool],
+});
+```
+
+Run `caveman-agent connect github` once, then `await data.collect()` from app or
+deployment job. One stable `connected_data` schema enters model context;
+provider catalog, sync/action schemas, and records load only on demand.
+Paginated reads never silently summarize or skip records: capped output returns
+`complete: false`, exact continuation when available, and `must_refuse: true`.
+
+Full cost, quality, security, and evidence contract:
+[`docs/connect.md`](docs/connect.md).
 
 ## Quick start
 
@@ -195,10 +226,10 @@ drift fails check. Doctor also checks engine registry, gateway reachability,
 project/config load, Context IR, and provider selection.
 
 Harnesses report separately. Exact native Pi owns `runAgentInternal` candidate
-and locked execution and may emit the closed behavioral plan above. Existing
-generic/custom Pi, Vercel AI SDK, Eve, and Mastra adapter APIs predate external
-v3 behavioral lowering; current builds bind identity/evidence around unchanged
-baseline.
+and locked execution and may emit the closed behavioral plan above. Generic
+compiler harness accepts adapter-owned runners and binds identity/evidence around
+unchanged baseline. Framework-native Vercel and Mastra integration lives only in
+their adapter packages; core carries no second host implementation.
 Direct `runClaudeAgent` remains unlocked, and every Claude v3 compile refuses
 pending source, budget, recovery, cache, and replay evidence.
 
@@ -209,21 +240,13 @@ capsule validation, deterministic stability tests, and live-model adapters.
 Adapter frameworks ship as separate exact-pinned packages; install only lane used:
 
 ```bash
-npm install @caveman-ai/agent @caveman-ai/adapter-vercel-ai-sdk ai@7.0.43
-npm install @caveman-ai/agent @caveman-ai/adapter-mastra @mastra/core@1.55.0
+npm install @caveman-ai/agent @caveman-ai/adapter-vercel-ai-sdk ai@7.0.84
+npm install @caveman-ai/agent @caveman-ai/adapter-mastra @mastra/core@1.63.2
 npm install @caveman-ai/agent @caveman-ai/adapter-eve eve@0.29.2
 ```
 
 Eve 0.29.2 requires Node.js 24+. Base SDK, Vercel, and Mastra lanes keep package
-minimum Node.js 22.19. Adapter startup reads installed framework package version
-and rejects missing or drifted versions before model execution.
-
-Security audit boundary (checked 2026-08-10): shipped runtime dependencies pass
-`npm audit --omit=dev` with zero advisories. Full optional adapter/dev graph has
-one upstream low-severity resource-consumption advisory through Mastra's exact
-`@ai-sdk/provider-utils` 3.0.30 compatibility dependency. Latest Mastra 1.57.0
-still pins that version, and no patched 3.x release exists. Release CI rejects
-any runtime advisory and any high/critical advisory across full graph.
+minimum Node.js 22.19. Each adapter owns and tests its exact upstream pin.
 
 ## Smallest agent
 
@@ -251,6 +274,32 @@ const result = await run(support, "Can I get a refund?");
 console.log(result.text);
 console.log(result.contextBill);
 ```
+
+Embed one locked Pi Cave Build after deployment freshness gate:
+
+```ts
+import { readFile } from "node:fs/promises";
+import { runLocked } from "@caveman-ai/agent";
+import { parseAnyCaveBuildLock } from "@caveman-ai/agent/build";
+import support from "./agent.js";
+
+// Deployment/startup first runs: caveman-agent check caveman.config.ts
+const build = parseAnyCaveBuildLock(JSON.parse(
+  await readFile(".caveman/agent.lock.json", "utf8"),
+));
+const result = await runLocked(support, "Can I get a refund?", build, {
+  durable: { runId: "case-42-analysis-1" },
+  budget: { maxTokens: 12_000, onExhausted: "stop" },
+});
+```
+
+`runLocked()` accepts only Pi locks. Before provider traffic it validates lock
+integrity, exact agent definition, runtime, adapter/upstream, catalog, Context
+IR, selected plan, and live Engine registry when transforms exist. Durable
+journal identity includes build and plan digests, so same run ID cannot replay
+under another build. Source/config/eval freshness is project-level state and
+remains `caveman-agent check` deployment/startup gate; parsing lock alone does
+not establish freshness.
 
 That run works on a machine with nothing but Node and a provider credential. It
 returns `mode: "observe-only"` there — direct to the provider, no transform, no
@@ -381,7 +430,7 @@ Claude lane must review Anthropic terms and data policy.
 
 ## Tools
 
-Tool schema, side effect, timeout, and result policy are explicit:
+Tool input, output, side effect, timeout, and result policy are explicit:
 
 ```ts
 import { schema, tool } from "@caveman-ai/agent";
@@ -390,6 +439,10 @@ const lookupPolicy = tool({
   name: "lookup_policy",
   description: "Read current refund policy.",
   input: schema.object({ region: schema.string() }),
+  output: schema.object({
+    region: schema.string(),
+    refundWindowDays: schema.number(),
+  }),
   effect: "read",
   result: "auto",
   async execute({ region }) {
@@ -403,20 +456,40 @@ Schema v1 convert automatically to draft-07 provider schema. Validation-only
 Standard Schema libraries pass explicit `inputJSONSchema`; framework still runs
 schema validator before tool code, including async validation and transforms.
 
+`output` accepts TypeBox/JSON Schema or Standard Schema v1. Standard JSON
+Schema v1 converts automatically with its `output` direction. Validation-only
+Standard Schema libraries pass explicit `outputJSONSchema`. Output validation
+runs after tool code but before any result can enter model context or durable
+settlement; mismatch becomes tool error and raw invalid value stays hidden.
+Declared results serialize from same immutable validated snapshot and ignore
+prototype `toJSON` hooks. Schema-less tools retain native JSON serialization for
+backward compatibility.
+
+Standard Schema validators and TypeBox `format` checks can close over mutable
+runtime state. Ordinary runs support them, but Cave Build locks and durable runs
+refuse opaque validator identity. Supply `schemaSemanticsSHA256` as lowercase
+SHA-256 of validator code, dependencies, and captured state; change digest when
+any semantic input changes. Receiver-state drift detectable after `tool()`
+construction fails validation.
+
 Effects: `read`, `write`, `idempotent`, `external`.
 
-### AGENTS.md, Agent Skills, and Agent Plugins
+### Optional workspace compatibility
 
-One environment loader supports repository instructions, standard Agent Skills,
-Agent Plugins v1, and Vercel OpenPlugin packages:
+Core definitions accept explicit instructions, contexts, and tools. Runtime does
+not search workspaces. Optional `@caveman-ai/agent/plugins` compatibility supports
+repository instructions, standard Agent Skills, Agent Plugins v1, and Vercel
+OpenPlugin packages:
 
 ```ts
 import {
   applyAgentEnvironment,
+  createAgentEnvironmentTransform,
   expandAgentEnvironmentSlashCommand,
   loadAgentEnvironment,
 } from "@caveman-ai/agent/plugins";
 import { agent } from "@caveman-ai/agent";
+import { createCodingAgent } from "@caveman-ai/agent/code";
 
 const environment = await loadAgentEnvironment({ cwd: process.cwd() });
 const definition = applyAgentEnvironment(agent({
@@ -429,6 +502,11 @@ const prompt = expandAgentEnvironmentSlashCommand(
   "/vercel-plugin:deploy preview",
   environment,
 );
+const coding = createCodingAgent({
+  workspace: process.cwd(),
+  toolMode: "programmatic",
+  definitionTransforms: [createAgentEnvironmentTransform(environment)],
+});
 ```
 
 Loader reads AGENTS.md from repository root through current directory, scans
@@ -439,8 +517,10 @@ manifests are accepted too. Explicit roots are available for product wrappers.
 Plugin skills and commands use qualified IDs such as `vercel-plugin:nextjs` and
 `vercel-plugin:deploy`. Metadata enters stable prefix; full SKILL.md, contained
 resources, and markdown command bodies enter model context only after activation.
-`$ARGUMENTS` and `$1` through `$9` expand for plugin commands. Coding agents accept same preloaded
-`environment`; programmatic mode nests loader behind its one composite tool.
+`$ARGUMENTS` and `$1` through `$9` expand for plugin commands. Coding products
+can pass `createAgentEnvironmentTransform(environment)` through
+`definitionTransforms`; programmatic mode then nests loader behind its one
+composite tool without making workspace discovery a core runtime concern.
 
 Agent Plugins v1 and OpenPlugin support currently implements declarative skills
 and markdown commands. `mcp.json`/`.mcp.json`, hooks, and custom-agent presence
@@ -678,7 +758,6 @@ import { eval as defineEval } from "@caveman-ai/agent";
 
 export const refund = defineEval({
   id: "refund",
-  approved: true,
   input: "Can I get a refund?",
   quality: [
     { type: "contains", fragments: ["14 days"] },
@@ -692,8 +771,8 @@ npm run build
 npm run check
 ```
 
-Legacy unsplit Pi v2 build performs finite search with five seeds per approved
-fixture. Split-role v3 uses optional content-blind profile traces (or approved
+Legacy unsplit Pi v2 build performs finite search with five seeds per declared
+fixture. Split-role v3 uses optional content-blind profile traces (or declared
 profile evals), selects exact-native Pi candidates on `development`, freezes the
 winner, then opens untouched `holdout`. Native plan cost may not exceed baseline
 in either split. Generic/custom Pi, Vercel AI SDK, Eve, and Mastra v3 builds
@@ -717,7 +796,8 @@ ship as `@caveman-ai/adapter-pi`, `@caveman-ai/adapter-claude-agent-sdk`,
 `@caveman-ai/adapter-vercel-ai-sdk`, `@caveman-ai/adapter-eve`, and
 `@caveman-ai/adapter-mastra`. `@caveman-ai/agent/claude`,
 `@caveman-ai/agent/adapters`, and `@caveman-ai/agent/code` remain compatibility
-exports while implementation ownership migrates. Each executable adapter requires a Cave Build whose harness,
+exports for generic harness and legacy Pi/Claude/Eve bindings. Vercel and Mastra
+host integration is not duplicated there. Each compiler harness run requires a Cave Build whose harness,
 adapter version, upstream version, selected plan, and Context IR match before
 provider execution. Runtime result must then carry terminal text, actual response
 model identity, complete provider usage, transform/recovery evidence, and a
@@ -730,13 +810,10 @@ path that materializes its closed selected plan. Each
 third-party adapter recomputes cost; local result stays
 `inferred` with verified savings `$0`.
 
-Adapters accept exact-pinned upstream objects directly: Vercel `ToolLoopAgent`
-7.0.43, Eve `ClientSession` 0.29.2, and Mastra `Agent` 1.55.0. Abort signals pass
-through all three. Mastra processor retries are forced to zero. Eve aggregates
+Legacy Eve compatibility accepts exact-pinned `ClientSession` 0.29.2. Eve aggregates
 durable `step.completed` usage and verifies `session.started` runtime identity;
 because Eve 0.29.2 omits reasoning-token usage, only `reasoning: "none"` Cave
-Builds execute there. Vercel and Mastra reasoning builds require explicit
-provider-reported reasoning usage. Dynamic Eve model identity, model drift,
+Builds execute there. Dynamic Eve model identity, model drift,
 missing usage, terminal failure, unpriced models, and version drift reject.
 
 A Pi lock can never authorize Claude or third-party execution. Adapter identity

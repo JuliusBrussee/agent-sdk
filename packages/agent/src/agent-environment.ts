@@ -9,7 +9,11 @@ import {
   resolve,
   sep,
 } from "node:path";
-import { agent, type AgentDefinition } from "./definition.js";
+import {
+  agent,
+  type AgentDefinition,
+  type AgentDefinitionTransform,
+} from "./definition.js";
 import { context, schema, tool, type ContextDefinition } from "./primitives.js";
 import { parseDocument } from "yaml";
 
@@ -847,6 +851,19 @@ export function applyAgentEnvironment(
     ...(definition.memory === undefined ? {} : { memory: definition.memory }),
     ...(definition.output === undefined ? {} : { output: definition.output }),
     sandbox: definition.sandbox,
+  });
+}
+
+/** Optional compatibility adapter for products that choose workspace discovery. */
+export function createAgentEnvironmentTransform(
+  environment: AgentEnvironment,
+  options: ApplyAgentEnvironmentOptions = {},
+): AgentDefinitionTransform {
+  return Object.freeze({
+    id: "agent-environment",
+    apply(definition: AgentDefinition) {
+      return applyAgentEnvironment(definition, environment, options);
+    },
   });
 }
 

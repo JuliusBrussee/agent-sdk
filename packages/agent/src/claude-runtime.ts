@@ -86,7 +86,7 @@ async function runClaudeAgentWithOptions(
   options: ClaudeInternalRunOptions,
 ): Promise<RunResult> {
   if (options.lockedBuild !== undefined && options.candidatePlan !== undefined) {
-    throw new Error("cave_execution_authorization_ambiguous");
+    throw new Error("cave_execution_mode_ambiguous");
   }
   if (options.candidatePlan !== undefined) {
     throw new Error("cave_claude_candidate_execution_unavailable");
@@ -607,7 +607,7 @@ function rejectInternalOptions(options: ClaudeRunOptions): void {
     "queryFn" in value ||
     "modelFactsFn" in value
   ) {
-    throw new Error("cave_execution_authorization_private");
+    throw new Error("cave_internal_run_option");
   }
 }
 

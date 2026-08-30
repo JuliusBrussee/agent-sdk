@@ -43,6 +43,7 @@ export interface CatalogRecurringUTCPricing {
 }
 
 export interface CatalogPrice extends CatalogPriceRates {
+  verifiedAt: string;
   recurringUTCPricing?: CatalogRecurringUTCPricing;
 }
 
@@ -73,6 +74,7 @@ const PRICES: Readonly<Record<string, CatalogPrice>> = Object.freeze({
     cacheReadPerMillion: 0.1,
     cacheWritePerMillion: 1.25,
     reasoningPerMillion: 5,
+    verifiedAt: "2026-08-13T00:00:00.000Z",
   }),
   "anthropic/claude-haiku-4-5-20251001": Object.freeze({
     inputPerMillion: 1,
@@ -81,6 +83,7 @@ const PRICES: Readonly<Record<string, CatalogPrice>> = Object.freeze({
     cacheReadPerMillion: 0.1,
     cacheWritePerMillion: 1.25,
     reasoningPerMillion: 5,
+    verifiedAt: "2026-08-13T00:00:00.000Z",
   }),
   "anthropic/claude-opus-4-1": Object.freeze({
     inputPerMillion: 15,
@@ -89,6 +92,7 @@ const PRICES: Readonly<Record<string, CatalogPrice>> = Object.freeze({
     cacheReadPerMillion: 1.5,
     cacheWritePerMillion: 18.75,
     reasoningPerMillion: 75,
+    verifiedAt: "2026-08-13T00:00:00.000Z",
   }),
   "anthropic/claude-opus-4-8": Object.freeze({
     inputPerMillion: 5,
@@ -97,6 +101,7 @@ const PRICES: Readonly<Record<string, CatalogPrice>> = Object.freeze({
     cacheReadPerMillion: 0.5,
     cacheWritePerMillion: 6.25,
     reasoningPerMillion: 25,
+    verifiedAt: "2026-08-13T00:00:00.000Z",
   }),
   "anthropic/claude-opus-5": Object.freeze({
     inputPerMillion: 5,
@@ -105,6 +110,7 @@ const PRICES: Readonly<Record<string, CatalogPrice>> = Object.freeze({
     cacheReadPerMillion: 0.5,
     cacheWritePerMillion: 6.25,
     reasoningPerMillion: 25,
+    verifiedAt: "2026-08-13T00:00:00.000Z",
   }),
   "anthropic/claude-sonnet-4-5": Object.freeze({
     inputPerMillion: 3,
@@ -113,6 +119,7 @@ const PRICES: Readonly<Record<string, CatalogPrice>> = Object.freeze({
     cacheReadPerMillion: 0.3,
     cacheWritePerMillion: 3.75,
     reasoningPerMillion: 15,
+    verifiedAt: "2026-08-13T00:00:00.000Z",
   }),
   "anthropic/claude-sonnet-4-5-20250929": Object.freeze({
     inputPerMillion: 3,
@@ -121,6 +128,7 @@ const PRICES: Readonly<Record<string, CatalogPrice>> = Object.freeze({
     cacheReadPerMillion: 0.3,
     cacheWritePerMillion: 3.75,
     reasoningPerMillion: 15,
+    verifiedAt: "2026-08-13T00:00:00.000Z",
   }),
   "anthropic/claude-sonnet-4-6": Object.freeze({
     inputPerMillion: 3,
@@ -129,6 +137,7 @@ const PRICES: Readonly<Record<string, CatalogPrice>> = Object.freeze({
     cacheReadPerMillion: 0.3,
     cacheWritePerMillion: 3.75,
     reasoningPerMillion: 15,
+    verifiedAt: "2026-08-13T00:00:00.000Z",
   }),
   "anthropic/claude-sonnet-5": Object.freeze({
     inputPerMillion: 2,
@@ -137,6 +146,7 @@ const PRICES: Readonly<Record<string, CatalogPrice>> = Object.freeze({
     cacheReadPerMillion: 0.2,
     cacheWritePerMillion: 2.5,
     reasoningPerMillion: 10,
+    verifiedAt: "2026-08-13T00:00:00.000Z",
   }),
   "deepseek/deepseek-v4-flash": Object.freeze({
     inputPerMillion: 0.14,
@@ -145,6 +155,7 @@ const PRICES: Readonly<Record<string, CatalogPrice>> = Object.freeze({
     cacheReadPerMillion: 0.0028,
     cacheWritePerMillion: null,
     reasoningPerMillion: 0.28,
+    verifiedAt: "2026-08-13T00:00:00.000Z",
     recurringUTCPricing: Object.freeze({
       effectiveFrom: "2026-08-16T16:00:00Z",
       defaultPrice: Object.freeze({
@@ -190,6 +201,7 @@ const PRICES: Readonly<Record<string, CatalogPrice>> = Object.freeze({
     cacheReadPerMillion: 0.003625,
     cacheWritePerMillion: null,
     reasoningPerMillion: 0.87,
+    verifiedAt: "2026-08-13T00:00:00.000Z",
     recurringUTCPricing: Object.freeze({
       effectiveFrom: "2026-08-16T16:00:00Z",
       defaultPrice: Object.freeze({
@@ -235,6 +247,7 @@ const PRICES: Readonly<Record<string, CatalogPrice>> = Object.freeze({
     cacheReadPerMillion: 0.03,
     cacheWritePerMillion: null,
     reasoningPerMillion: 2.5,
+    verifiedAt: "2026-07-10T00:00:00.000Z",
   }),
   "gemini/gemini-2.5-pro": Object.freeze({
     inputPerMillion: 1.25,
@@ -243,6 +256,7 @@ const PRICES: Readonly<Record<string, CatalogPrice>> = Object.freeze({
     cacheReadPerMillion: 0.125,
     cacheWritePerMillion: null,
     reasoningPerMillion: 10,
+    verifiedAt: "2026-07-10T00:00:00.000Z",
   }),
   "groq/llama-3.1-8b-instant": Object.freeze({
     inputPerMillion: 0.05,
@@ -251,6 +265,7 @@ const PRICES: Readonly<Record<string, CatalogPrice>> = Object.freeze({
     cacheReadPerMillion: null,
     cacheWritePerMillion: null,
     reasoningPerMillion: null,
+    verifiedAt: "2026-08-13T00:00:00.000Z",
   }),
   "groq/llama-3.3-70b-versatile": Object.freeze({
     inputPerMillion: 0.59,
@@ -259,6 +274,7 @@ const PRICES: Readonly<Record<string, CatalogPrice>> = Object.freeze({
     cacheReadPerMillion: null,
     cacheWritePerMillion: null,
     reasoningPerMillion: null,
+    verifiedAt: "2026-08-13T00:00:00.000Z",
   }),
   "groq/openai/gpt-oss-120b": Object.freeze({
     inputPerMillion: 0.15,
@@ -267,6 +283,7 @@ const PRICES: Readonly<Record<string, CatalogPrice>> = Object.freeze({
     cacheReadPerMillion: 0.075,
     cacheWritePerMillion: null,
     reasoningPerMillion: 0.6,
+    verifiedAt: "2026-08-13T00:00:00.000Z",
   }),
   "groq/openai/gpt-oss-20b": Object.freeze({
     inputPerMillion: 0.075,
@@ -275,6 +292,7 @@ const PRICES: Readonly<Record<string, CatalogPrice>> = Object.freeze({
     cacheReadPerMillion: 0.037,
     cacheWritePerMillion: null,
     reasoningPerMillion: 0.3,
+    verifiedAt: "2026-08-13T00:00:00.000Z",
   }),
   "mistral/codestral-2508": Object.freeze({
     inputPerMillion: 0.3,
@@ -283,6 +301,7 @@ const PRICES: Readonly<Record<string, CatalogPrice>> = Object.freeze({
     cacheReadPerMillion: 0.03,
     cacheWritePerMillion: null,
     reasoningPerMillion: null,
+    verifiedAt: "2026-08-13T00:00:00.000Z",
   }),
   "mistral/mistral-large-2512": Object.freeze({
     inputPerMillion: 0.5,
@@ -291,6 +310,7 @@ const PRICES: Readonly<Record<string, CatalogPrice>> = Object.freeze({
     cacheReadPerMillion: 0.05,
     cacheWritePerMillion: null,
     reasoningPerMillion: null,
+    verifiedAt: "2026-08-13T00:00:00.000Z",
   }),
   "mistral/mistral-medium-3-5": Object.freeze({
     inputPerMillion: 1.5,
@@ -299,6 +319,7 @@ const PRICES: Readonly<Record<string, CatalogPrice>> = Object.freeze({
     cacheReadPerMillion: 0.15,
     cacheWritePerMillion: null,
     reasoningPerMillion: null,
+    verifiedAt: "2026-08-13T00:00:00.000Z",
   }),
   "moonshot/kimi-k2.6": Object.freeze({
     inputPerMillion: 0.95,
@@ -307,6 +328,7 @@ const PRICES: Readonly<Record<string, CatalogPrice>> = Object.freeze({
     cacheReadPerMillion: 0.16,
     cacheWritePerMillion: null,
     reasoningPerMillion: 4,
+    verifiedAt: "2026-08-13T00:00:00.000Z",
   }),
   "moonshot/kimi-k2.7-code": Object.freeze({
     inputPerMillion: 0.95,
@@ -315,6 +337,7 @@ const PRICES: Readonly<Record<string, CatalogPrice>> = Object.freeze({
     cacheReadPerMillion: 0.19,
     cacheWritePerMillion: null,
     reasoningPerMillion: null,
+    verifiedAt: "2026-08-13T00:00:00.000Z",
   }),
   "moonshot/kimi-k3": Object.freeze({
     inputPerMillion: 3,
@@ -323,6 +346,7 @@ const PRICES: Readonly<Record<string, CatalogPrice>> = Object.freeze({
     cacheReadPerMillion: 0.3,
     cacheWritePerMillion: null,
     reasoningPerMillion: 15,
+    verifiedAt: "2026-08-13T00:00:00.000Z",
   }),
   "openai/gpt-5.4-mini": Object.freeze({
     inputPerMillion: 0.75,
@@ -331,6 +355,7 @@ const PRICES: Readonly<Record<string, CatalogPrice>> = Object.freeze({
     cacheReadPerMillion: 0.075,
     cacheWritePerMillion: null,
     reasoningPerMillion: 4.5,
+    verifiedAt: "2026-08-13T00:00:00.000Z",
   }),
   "openai/gpt-5.4-mini-2026-03-17": Object.freeze({
     inputPerMillion: 0.75,
@@ -339,6 +364,7 @@ const PRICES: Readonly<Record<string, CatalogPrice>> = Object.freeze({
     cacheReadPerMillion: 0.075,
     cacheWritePerMillion: null,
     reasoningPerMillion: 4.5,
+    verifiedAt: "2026-08-13T00:00:00.000Z",
   }),
   "openai/gpt-5.4-nano": Object.freeze({
     inputPerMillion: 0.2,
@@ -347,6 +373,7 @@ const PRICES: Readonly<Record<string, CatalogPrice>> = Object.freeze({
     cacheReadPerMillion: 0.02,
     cacheWritePerMillion: null,
     reasoningPerMillion: 1.25,
+    verifiedAt: "2026-08-13T00:00:00.000Z",
   }),
   "openai/gpt-5.4-nano-2026-03-17": Object.freeze({
     inputPerMillion: 0.2,
@@ -355,6 +382,7 @@ const PRICES: Readonly<Record<string, CatalogPrice>> = Object.freeze({
     cacheReadPerMillion: 0.02,
     cacheWritePerMillion: null,
     reasoningPerMillion: 1.25,
+    verifiedAt: "2026-08-13T00:00:00.000Z",
   }),
   "openai/gpt-5.5": Object.freeze({
     inputPerMillion: 5,
@@ -363,6 +391,7 @@ const PRICES: Readonly<Record<string, CatalogPrice>> = Object.freeze({
     cacheReadPerMillion: 0.5,
     cacheWritePerMillion: null,
     reasoningPerMillion: 30,
+    verifiedAt: "2026-08-13T00:00:00.000Z",
   }),
   "openai/gpt-5.5-2026-04-23": Object.freeze({
     inputPerMillion: 5,
@@ -371,6 +400,7 @@ const PRICES: Readonly<Record<string, CatalogPrice>> = Object.freeze({
     cacheReadPerMillion: 0.5,
     cacheWritePerMillion: null,
     reasoningPerMillion: 30,
+    verifiedAt: "2026-08-13T00:00:00.000Z",
   }),
   "openai/gpt-5.6": Object.freeze({
     inputPerMillion: 5,
@@ -379,6 +409,7 @@ const PRICES: Readonly<Record<string, CatalogPrice>> = Object.freeze({
     cacheReadPerMillion: 0.5,
     cacheWritePerMillion: 6.25,
     reasoningPerMillion: 30,
+    verifiedAt: "2026-08-13T00:00:00.000Z",
   }),
   "openai/gpt-5.6-sol": Object.freeze({
     inputPerMillion: 5,
@@ -387,6 +418,7 @@ const PRICES: Readonly<Record<string, CatalogPrice>> = Object.freeze({
     cacheReadPerMillion: 0.5,
     cacheWritePerMillion: 6.25,
     reasoningPerMillion: 30,
+    verifiedAt: "2026-08-13T00:00:00.000Z",
   }),
   "openai/text-embedding-3-large": Object.freeze({
     inputPerMillion: 0.13,
@@ -395,6 +427,7 @@ const PRICES: Readonly<Record<string, CatalogPrice>> = Object.freeze({
     cacheReadPerMillion: null,
     cacheWritePerMillion: null,
     reasoningPerMillion: null,
+    verifiedAt: "2026-07-10T00:00:00.000Z",
   }),
   "openai/text-embedding-3-small": Object.freeze({
     inputPerMillion: 0.02,
@@ -403,6 +436,7 @@ const PRICES: Readonly<Record<string, CatalogPrice>> = Object.freeze({
     cacheReadPerMillion: null,
     cacheWritePerMillion: null,
     reasoningPerMillion: null,
+    verifiedAt: "2026-07-10T00:00:00.000Z",
   }),
   "vertex/claude-haiku-4-5@20251001": Object.freeze({
     inputPerMillion: 1,
@@ -411,6 +445,7 @@ const PRICES: Readonly<Record<string, CatalogPrice>> = Object.freeze({
     cacheReadPerMillion: 0.1,
     cacheWritePerMillion: 1.25,
     reasoningPerMillion: null,
+    verifiedAt: "2026-07-10T00:00:00.000Z",
   }),
   "vertex/claude-sonnet-4-6": Object.freeze({
     inputPerMillion: 3,
@@ -419,6 +454,7 @@ const PRICES: Readonly<Record<string, CatalogPrice>> = Object.freeze({
     cacheReadPerMillion: 0.3,
     cacheWritePerMillion: 3.75,
     reasoningPerMillion: null,
+    verifiedAt: "2026-07-10T00:00:00.000Z",
   }),
   "vertex/gemini-2.5-flash": Object.freeze({
     inputPerMillion: 0.3,
@@ -427,6 +463,7 @@ const PRICES: Readonly<Record<string, CatalogPrice>> = Object.freeze({
     cacheReadPerMillion: 0.03,
     cacheWritePerMillion: null,
     reasoningPerMillion: 2.5,
+    verifiedAt: "2026-07-10T00:00:00.000Z",
   }),
   "vertex/gemini-2.5-pro": Object.freeze({
     inputPerMillion: 1.25,
@@ -435,6 +472,7 @@ const PRICES: Readonly<Record<string, CatalogPrice>> = Object.freeze({
     cacheReadPerMillion: 0.125,
     cacheWritePerMillion: null,
     reasoningPerMillion: 10,
+    verifiedAt: "2026-07-10T00:00:00.000Z",
   }),
   "xai/grok-4.3": Object.freeze({
     inputPerMillion: 1.25,
@@ -443,6 +481,7 @@ const PRICES: Readonly<Record<string, CatalogPrice>> = Object.freeze({
     cacheReadPerMillion: 0.2,
     cacheWritePerMillion: null,
     reasoningPerMillion: 2.5,
+    verifiedAt: "2026-08-13T00:00:00.000Z",
   }),
   "xai/grok-4.5": Object.freeze({
     inputPerMillion: 2,
@@ -451,6 +490,7 @@ const PRICES: Readonly<Record<string, CatalogPrice>> = Object.freeze({
     cacheReadPerMillion: 0.3,
     cacheWritePerMillion: null,
     reasoningPerMillion: 6,
+    verifiedAt: "2026-08-13T00:00:00.000Z",
   }),
   "xai/grok-4.6": Object.freeze({
     inputPerMillion: 2,
@@ -459,6 +499,7 @@ const PRICES: Readonly<Record<string, CatalogPrice>> = Object.freeze({
     cacheReadPerMillion: 0.5,
     cacheWritePerMillion: null,
     reasoningPerMillion: 6,
+    verifiedAt: "2026-08-13T00:00:00.000Z",
   }),
 });
 
@@ -1214,10 +1255,9 @@ export function catalogPriceFingerprint(
   model: string,
   accountingAt?: Date,
 ): string | undefined {
-  const resolution = catalogPriceResolution(
-    PRICES[`${catalogProvider(provider)}/${model}`],
-    accountingAt,
-  );
+  const catalogPrice = PRICES[`${catalogProvider(provider)}/${model}`];
+  if (catalogPrice === undefined) return undefined;
+  const resolution = catalogPriceResolution(catalogPrice, accountingAt);
   if (resolution === undefined) return undefined;
   const price = resolution.price;
   return JSON.stringify([
@@ -1229,7 +1269,16 @@ export function catalogPriceFingerprint(
     price.cacheReadPerMillion,
     price.cacheWritePerMillion,
     price.reasoningPerMillion,
+    catalogPrice.verifiedAt,
   ]);
+}
+
+/** Exact pricing-review instant from the generated catalog source. */
+export function catalogPriceVerifiedAt(
+  provider: string,
+  model: string,
+): string | undefined {
+  return PRICES[`${catalogProvider(provider)}/${model}`]?.verifiedAt;
 }
 
 export function catalogCost(

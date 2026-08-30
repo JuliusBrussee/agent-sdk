@@ -1,0 +1,65 @@
+{
+  "name": "@caveman-ai/adapter-langgraph",
+  "version": "0.1.0",
+  "description": "Native observation adapter for LangGraph.js.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JuliusBrussee/agent-sdk.git",
+    "directory": "packages/adapters/langgraph"
+  },
+  "homepage": "https://caveman.so/products/caveman-agent",
+  "bugs": {
+    "url": "https://github.com/JuliusBrussee/agent-sdk/issues"
+  },
+  "type": "module",
+  "keywords": [
+    "agents",
+    "ai",
+    "langgraph",
+    "langchain",
+    "observability"
+  ],
+  "main": "src/index.js",
+  "types": "src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "import": "./src/index.js"
+    },
+    "./manifest": {
+      "types": "./src/manifest.d.ts",
+      "import": "./src/manifest.js"
+    }
+  },
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "npm run test:runtime && npm run test:types",
+    "test:runtime": "node --test tests/*.test.mjs",
+    "test:types": "tsc --project tsconfig.test.json"
+  },
+  "dependencies": {
+    "@caveman-ai/adapter-kit": "0.1.0"
+  },
+  "peerDependencies": {
+    "@caveman-ai/agent": "0.2.0",
+    "@langchain/core": "1.2.9",
+    "@langchain/langgraph": "1.4.13"
+  },
+  "devDependencies": {
+    "@langchain/core": "1.2.9",
+    "@langchain/langgraph": "1.4.13",
+    "@types/node": "24.10.1",
+    "typescript": "5.9.3"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

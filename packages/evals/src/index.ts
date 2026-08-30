@@ -69,8 +69,7 @@ export type Grader =
   | ({ type: "llm_pairwise"; baseline: string; criteria: string } & JudgeTransport)
   | ({ type: "llm_answer_match"; expected: string } & JudgeTransport);
 
-/** Public taxonomy used by build/evidence validators outside this package. */
-export const SUPPORTED_GRADER_TYPES = new Set<Grader["type"]>([
+const GRADER_TYPES = Object.freeze([
   "exact_match",
   "contains",
   "not_contains",
@@ -98,7 +97,41 @@ export const SUPPORTED_GRADER_TYPES = new Set<Grader["type"]>([
   "llm_category",
   "llm_pairwise",
   "llm_answer_match",
-]);
+] as const satisfies readonly Grader["type"][]);
+
+function immutableSetView<T>(values: readonly T[]): ReadonlySet<T> {
+  const backing = new Set(values);
+  let view!: ReadonlySet<T>;
+  view = Object.freeze({
+    size: backing.size,
+    has(value: T): boolean {
+      return backing.has(value);
+    },
+    entries() {
+      return backing.entries();
+    },
+    keys() {
+      return backing.keys();
+    },
+    values() {
+      return backing.values();
+    },
+    [Symbol.iterator]() {
+      return backing[Symbol.iterator]();
+    },
+    forEach(
+      callback: (value: T, key: T, set: ReadonlySet<T>) => void,
+      thisArg?: unknown,
+    ): void {
+      for (const value of backing) callback.call(thisArg, value, value, view);
+    },
+  } satisfies ReadonlySet<T>);
+  return view;
+}
+
+/** Immutable public taxonomy used by every build and evidence validator. */
+export const SUPPORTED_GRADER_TYPES: ReadonlySet<Grader["type"]> =
+  immutableSetView(GRADER_TYPES);
 
 export interface GradeResult {
   passed: boolean;
@@ -319,6 +352,16 @@ function jsonPathGet(obj: unknown, path: string): { found: boolean; value: unkno
 
 // ─── minimal JSON-schema subset validator (type/enum/required/properties/items) ──
 
+const JSON_SCHEMA_PRIMITIVE_TYPES = new Set([
+  "object",
+  "array",
+  "string",
+  "number",
+  "integer",
+  "boolean",
+  "null",
+]);
+
 function typeOk(value: unknown, typeName: string): boolean {
   switch (typeName) {
     case "object":
@@ -328,9 +371,9 @@ function typeOk(value: unknown, typeName: string): boolean {
     case "string":
       return typeof value === "string";
     case "number":
-      return typeof value === "number";
+      return typeof value === "number" && Number.isFinite(value);
     case "integer":
-      return typeof value === "number" && Number.isInteger(value);
+      return typeof value === "number" && Number.isFinite(value) && Number.isInteger(value);
     case "boolean":
       return typeof value === "boolean";
     case "null":
@@ -343,8 +386,73 @@ function typeOk(value: unknown, typeName: string): boolean {
   }
 }
 
+const SUPPORTED_JSON_SCHEMA_KEYWORDS = new Set([
+  "type", "enum", "required", "properties", "items",
+  // Pure annotations carry no validation semantics, so ignoring them cannot
+  // weaken a caller's gate. Rejecting them only broke schemas copied from a
+  // tool definition or emitted by a JSON-Schema library.
+  "$schema", "$id", "$comment", "title", "description",
+  "default", "examples", "deprecated", "readOnly", "writeOnly",
+]);
+
+function schemaRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+/**
+ * This zero-dependency evaluator implements an explicit JSON Schema subset.
+ * Reject every unimplemented validation keyword instead of silently weakening a
+ * caller's gate. Definition validation is recursive and independent of candidate
+ * shape, so an invalid schema under an absent optional property still fails.
+ */
+function validateSchemaDefinition(schema: unknown, path = "$"): string[] {
+  if (!schemaRecord(schema)) return [`${path}: schema is not an object`];
+  const errors: string[] = [];
+  const unsupported = Object.keys(schema).filter((key) => !SUPPORTED_JSON_SCHEMA_KEYWORDS.has(key));
+  if (unsupported.length > 0) {
+    errors.push(`${path}: unsupported schema keywords ${JSON.stringify(unsupported.sort())}`);
+  }
+  if (Object.hasOwn(schema, "type")) {
+    const rawTypes = schema.type;
+    const types = typeof rawTypes === "string"
+      ? [rawTypes]
+      : Array.isArray(rawTypes) && rawTypes.length > 0 && rawTypes.every((type) => typeof type === "string")
+        ? rawTypes
+        : null;
+    if (
+      types === null ||
+      new Set(types).size !== types.length ||
+      types.some((type) => !JSON_SCHEMA_PRIMITIVE_TYPES.has(type))
+    ) {
+      errors.push(`${path}: invalid type declaration`);
+    }
+  }
+  if (Object.hasOwn(schema, "enum") && (!Array.isArray(schema.enum) || schema.enum.length === 0)) {
+    errors.push(`${path}: enum must be a non-empty array`);
+  }
+  if (Object.hasOwn(schema, "required")) {
+    const required = schema.required;
+    if (!Array.isArray(required) || required.some((key) => typeof key !== "string") || new Set(required).size !== required.length) {
+      errors.push(`${path}: required must contain unique strings`);
+    }
+  }
+  if (Object.hasOwn(schema, "properties")) {
+    if (!schemaRecord(schema.properties)) {
+      errors.push(`${path}: properties must be an object`);
+    } else {
+      for (const [key, child] of Object.entries(schema.properties)) {
+        errors.push(...validateSchemaDefinition(child, `${path}.properties.${key}`));
+      }
+    }
+  }
+  if (Object.hasOwn(schema, "items")) {
+    errors.push(...validateSchemaDefinition(schema.items, `${path}.items`));
+  }
+  return errors;
+}
+
 function validateSchema(value: unknown, schema: unknown, path = "$"): string[] {
-  if (!schema || typeof schema !== "object") return [`${path}: schema is not an object`];
+  if (!schemaRecord(schema)) return [`${path}: schema is not an object`];
   const s = schema as Record<string, unknown>;
   const errors: string[] = [];
   if (Object.hasOwn(s, "type")) {
@@ -353,7 +461,7 @@ function validateSchema(value: unknown, schema: unknown, path = "$"): string[] {
       return [`${path}: expected type ${JSON.stringify(s.type)}`];
     }
   }
-  if (Array.isArray(s.enum) && !s.enum.some((e) => JSON.stringify(e) === JSON.stringify(value))) {
+  if (Array.isArray(s.enum) && !s.enum.some((e) => stableStringify(e) === stableStringify(value))) {
     errors.push(`${path}: value not in enum`);
   }
   if (value && typeof value === "object" && !Array.isArray(value)) {
@@ -726,8 +834,8 @@ async function gradeLlmJudge(
 // or compact "path:start-end" text lines) and a gold localization set of the same
 // shape, then scores file-level F1 (over the set of cited files) AND line-range F1
 // (mean IoU of cited vs gold line ranges per shared file). Fails CLOSED: a missing
-// or unparseable candidate/reference returns passed:false, never true. Kept
-// byte-identical in verdict with cloud/optimizer grade_localization_f1.
+// or unparseable candidate/reference returns passed:false, never true. Verdict
+// text is a stable cross-runtime contract.
 
 type LineRange = [number, number];
 type LocSet = Map<string, LineRange[]>;
@@ -1382,9 +1490,9 @@ function gradeNoPii(grader: Extract<Grader, { type: "no_pii" }>, value: unknown)
 // refusal or ordering disagreement fails CLOSED. A judge score is a grader verdict, never
 // a `measured` number.
 
-// The prompt templates below are BYTE CONTRACTS shared with the Python mirror in
-// cloud/optimizer: for identical inputs both languages must emit identical prompt strings
-// (asserted by the `expected_prompts` field of tests/langevals-judge.vectors.json). Do not
+// Prompt templates below are BYTE CONTRACTS: identical inputs must emit identical
+// prompt strings across runtimes (asserted by `expected_prompts` in
+// tests/judge-vectors.json). Do not
 // reflow, re-punctuate or re-wrap them, and note that none ends with a trailing newline.
 // Interpolation is STRING-ONLY: every option is validated as a string and the candidate
 // goes through the same candidateText path as the other langevals-ported graders, so an
@@ -1676,12 +1784,15 @@ async function gradeLlmAnswerMatch(
 // ─── dispatch ──────────────────────────────────────────────────────────────────
 
 export async function grade(grader: Grader, value: unknown, deps: GradeDeps = {}): Promise<GradeResult> {
-  switch (grader.type) {
+  if (!grader || typeof grader !== "object" || Array.isArray(grader)) {
+    return fail("invalid grader: expected an object");
+  }
+  try {
+    switch (grader.type) {
     case "exact_match": {
-      // Mirror the Python grader (the live /v1/grade service): normalise both
-      // sides — case-insensitive, and key-order-insensitive for structured values
-      // — so the same input yields the same verdict in both languages. Previously
-      // raw JSON.stringify made TS case/order-sensitive (diverged from Python).
+      if (!Object.hasOwn(grader, "expected")) return fail("exact_match requires expected");
+      // Normalise both sides case-insensitively and compare structured values
+      // independent of key order, producing one verdict across runtimes.
       // Both knobs are optional booleans; only an ABSENT key takes the default, and
       // any non-boolean value is an INVALID OPTION that fails CLOSED rather than
       // being silently read as false (the Python grader validates identically).
@@ -1760,6 +1871,8 @@ export async function grade(grader: Grader, value: unknown, deps: GradeDeps = {}
           return fail("candidate is not valid JSON");
         }
       }
+      const definitionErrors = validateSchemaDefinition(grader.schema);
+      if (definitionErrors.length > 0) return fail(definitionErrors.slice(0, 5).join("; "));
       const errors = validateSchema(v, grader.schema);
       return errors.length === 0 ? pass("candidate satisfies schema") : fail(errors.slice(0, 5).join("; "));
     }
@@ -1863,5 +1976,11 @@ export async function grade(grader: Grader, value: unknown, deps: GradeDeps = {}
     default:
       // Fail CLOSED: an unknown/misspelled grader type never silently passes.
       return fail(`unknown grader type: ${String((grader as { type?: string }).type)}`);
+    }
+  } catch {
+    // Runtime callers often load grader JSON. Malformed values and hostile
+    // accessors must close the gate without leaking candidate data through an
+    // exception string.
+    return fail("grader evaluation failed closed");
   }
 }

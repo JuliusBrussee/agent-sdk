@@ -136,6 +136,109 @@ test("nested dispatch preserves names, errors, and hides raw results from provid
   assert.equal(observedContexts[1].includes("SECRET:private"), false);
 });
 
+test("nested dispatch rejects undeclared output before durable/result exposure", async () => {
+  const malformed = tool({
+    name: "malformed_nested_output",
+    description: "Return malformed nested output.",
+    input: schema.object({}),
+    output: schema.object({ value: schema.string() }),
+    effect: "read",
+    result: "inline",
+    execute: () => ({ value: 7, secret: "RAW_NESTED_VALUE" }),
+  });
+  const composite = compositeTool([malformed], async (_input, _signal, context) => {
+    await assert.rejects(
+      context.dispatch("malformed_nested_output", {}),
+      /cave_tool_output_schema_mismatch:malformed_nested_output/,
+    );
+    return "filtered";
+  });
+  let providerCall = 0;
+  let observed = "";
+  const result = await run(definedAgent("nested-output-contract", composite), "go", {
+    ensureRuntime: false,
+    model: fauxModel(),
+    streamFn: (selected, context) => {
+      observed = JSON.stringify(context);
+      providerCall += 1;
+      return providerCall === 1
+        ? message(selected, [{
+          type: "toolCall",
+          id: "nested-output-cell",
+          name: "code_cell",
+          arguments: { cell: "one" },
+        }])
+        : message(selected, [{ type: "text", text: "done" }], "stop");
+    },
+  });
+  assert.equal(result.text, "done");
+  assert.deepEqual(result.receipt.tools, [
+    { name: "code_cell", calls: 1, errors: 0 },
+    { name: "malformed_nested_output", calls: 1, errors: 1 },
+  ]);
+  assert.doesNotMatch(observed, /RAW_NESTED_VALUE/);
+});
+
+test("nested deadline rejects promptly but parent waits for raw output settlement", async () => {
+  let validatorResolved = false;
+  let dispatchRejectedBeforeValidator = false;
+  const slow = tool({
+    name: "slow_output_validation",
+    description: "Validate after nested deadline.",
+    input: schema.object({}),
+    output: {
+      "~standard": {
+        version: 1,
+        vendor: "fixture-nested-timeout",
+        validate(value) {
+          return new Promise((resolve) => setTimeout(() => {
+            validatorResolved = true;
+            resolve({ value });
+          }, 80));
+        },
+      },
+    },
+    outputJSONSchema: schema.string(),
+    effect: "read",
+    timeoutMs: 20,
+    execute: () => "done",
+  });
+  const composite = compositeTool([slow], async (_input, _signal, context) => {
+    await assert.rejects(
+      context.dispatch("slow_output_validation", {}),
+      (error) => {
+        dispatchRejectedBeforeValidator = !validatorResolved;
+        assert.match(error.message, /cave_tool_timeout/);
+        return true;
+      },
+    );
+    return "handled";
+  }, { timeoutMs: 300 });
+  let providerCall = 0;
+  const result = await run(definedAgent("nested-output-timeout", composite), "go", {
+    ensureRuntime: false,
+    model: fauxModel(),
+    streamFn: (selected) => {
+      providerCall += 1;
+      return providerCall === 1
+        ? message(selected, [{
+          type: "toolCall",
+          id: "nested-timeout-cell",
+          name: "code_cell",
+          arguments: { cell: "one" },
+        }])
+        : message(selected, [{ type: "text", text: "done" }], "stop");
+    },
+  });
+  assert.equal(result.text, "done");
+  assert.equal(dispatchRejectedBeforeValidator, true);
+  assert.equal(validatorResolved, true);
+  assert.deepEqual(result.receipt.tools, [
+    { name: "code_cell", calls: 1, errors: 0 },
+    { name: "slow_output_validation", calls: 1, errors: 1 },
+  ]);
+});
+
 test("programmatic nested subagent uses canonical child runner and receipt rollup", async () => {
   const explorer = agent({
     id: "programmatic-explorer",
@@ -770,8 +873,31 @@ test("durable journal records nested tool outcomes", async () => {
     });
     assert.equal(result.stopReason, "complete");
     const events = (await store.load(runId)).map((line) => JSON.parse(line));
+    const toolEvents = events.filter((event) =>
+      event.type === "tool_intent" || event.type === "tool_settled"
+    );
     assert.deepEqual(
-      events.filter((event) => event.type === "tool").map((event) => [event.name, event.isError]),
+      toolEvents.map((event) => [event.type, event.name]),
+      [
+        ["tool_intent", "code_cell"],
+        ["tool_intent", "journal_read"],
+        ["tool_settled", "journal_read"],
+        ["tool_settled", "code_cell"],
+      ],
+    );
+    for (const name of ["journal_read", "code_cell"]) {
+      const intent = toolEvents.find((event) => event.type === "tool_intent" && event.name === name);
+      const settled = toolEvents.find((event) => event.type === "tool_settled" && event.name === name);
+      assert.ok(intent);
+      assert.ok(settled);
+      assert.equal(settled.toolCallId, intent.toolCallId);
+      assert.equal(settled.effect, intent.effect);
+      assert.equal(settled.argsSha256, intent.argsSha256);
+      assert.equal(settled.idempotencyKey, intent.idempotencyKey);
+    }
+    assert.deepEqual(
+      toolEvents.filter((event) => event.type === "tool_settled")
+        .map((event) => [event.name, event.outcome === "threw"]),
       [["journal_read", false], ["code_cell", false]],
     );
   } finally {

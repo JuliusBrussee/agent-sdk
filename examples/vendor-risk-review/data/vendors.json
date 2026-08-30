@@ -1,0 +1,20 @@
+[
+  {
+    "tenantId": "northwind",
+    "id": "acme-analytics",
+    "name": "Acme Analytics",
+    "evidence": [
+      {"id":"soc2-2026","kind":"audit_report","summary":"SOC 2 Type II period ended 2026-06-30; IAM and encryption controls tested without exception."},
+      {"id":"ir-exercise-2026","kind":"exercise_record","summary":"Tabletop completed 2026-05-12; notification occurred at 18 hours."},
+      {"id":"subprocessor-list","kind":"registry","summary":"Lists processors and purposes but omits processing locations."}
+    ]
+  },
+  {
+    "tenantId": "contoso",
+    "id": "beta-payroll",
+    "name": "Beta Payroll",
+    "evidence": [
+      {"id":"security-policy","kind":"policy","summary":"Undated security policy states MFA and encryption requirements."}
+    ]
+  }
+]

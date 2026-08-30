@@ -95,18 +95,33 @@ export {
 export type {
   AcpMethod,
   AcpMappingRow,
-  AcpPermissionOptionKind,
   AcpStopReason,
   AcpUpdateVariant,
 } from "./acp.ts";
 export {
   ACP_MAPPING,
   ACP_METHODS,
-  ACP_PERMISSION_OPTION_KINDS,
   ACP_STOP_REASONS,
   ACP_UPDATE_VARIANTS,
   acpRowFor,
-  PERMISSION_DECISION_TO_ACP,
   STOP_REASON_TO_ACP,
   TOOL_OUTCOME_TO_ACP_STATUS,
 } from "./acp.ts";
+
+export type {
+  SessionEventSequenceCoordinatorOptions,
+  SessionEventSequenceSummary,
+  TurnEventSequenceErrorCode,
+  TurnEventSequenceSummary,
+  TurnEventSequenceValidatorOptions,
+} from "./sequence.ts";
+export {
+  DEFAULT_MAX_OPEN_LIFECYCLES,
+  DEFAULT_MAX_RETAINED_IDENTITY_BYTES,
+  DEFAULT_MAX_SEEN_LIFECYCLE_IDS,
+  DEFAULT_MAX_SEEN_SESSION_TOOL_IDS,
+  SessionEventSequenceCoordinator,
+  TURN_EVENT_SEQUENCE_ERROR_CODES,
+  TurnEventSequenceError,
+  TurnEventSequenceValidator,
+} from "./sequence.ts";

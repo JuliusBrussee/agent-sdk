@@ -28,8 +28,9 @@ Skip dependency installation when another tool owns it:
 npm create @caveman-ai/agent@latest my-agent -- --provider openai --no-install
 ```
 
-Generated eval starts unapproved. Review expected behavior, set
-`approved: true`, then run `npm run build`. Local evidence remains `inferred`;
+Review generated expected behavior, then invoke `npm run build`; that command
+runs every declared fixture within configured search budget. No separate
+approval or permission state exists. Local evidence remains `inferred`;
 verified savings remain `$0` until active production traffic earns them.
 After a locked build, run `npm run check` before deployment. Doctor makes no
 provider call; if signed runtime artifacts are absent, follow its single

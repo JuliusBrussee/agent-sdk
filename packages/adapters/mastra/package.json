@@ -1,7 +1,7 @@
 {
   "name": "@caveman-ai/adapter-mastra",
   "version": "0.1.0",
-  "description": "Caveman adapter for Mastra Agent.",
+  "description": "Native Caveman Processor adapter for Mastra.",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
@@ -16,15 +16,29 @@
       "types": "./src/index.d.ts",
       "import": "./src/index.js"
     },
-    "./manifest": "./src/manifest.js"
+    "./manifest": {
+      "types": "./src/manifest.d.ts",
+      "import": "./src/manifest.js"
+    }
   },
-  "files": ["src", "README.md"],
+  "files": ["src", "README.md", "LICENSE"],
+  "scripts": {
+    "bench": "node bench/hooks.mjs",
+    "test": "npm run test:runtime && npm run test:types",
+    "test:runtime": "node --test tests/*.test.mjs",
+    "test:types": "tsc --project tsconfig.test.json"
+  },
   "dependencies": {
     "@caveman-ai/adapter-kit": "0.1.0"
   },
   "peerDependencies": {
     "@caveman-ai/agent": "0.2.0",
-    "@mastra/core": "1.55.0"
+    "@mastra/core": "1.63.2"
+  },
+  "devDependencies": {
+    "@mastra/core": "1.63.2",
+    "@types/node": "24.10.1",
+    "typescript": "5.9.3"
   },
   "engines": { "node": ">=22.19.0" },
   "publishConfig": { "access": "public" }

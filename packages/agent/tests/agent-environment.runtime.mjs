@@ -6,6 +6,7 @@ import { test } from "node:test";
 import {
   AGENT_PLUGINS_SCHEMA,
   applyAgentEnvironment,
+  createAgentEnvironmentTransform,
   expandAgentEnvironmentSlashCommand,
   loadAgentEnvironment,
   loadAgentPlugin,
@@ -163,7 +164,7 @@ test("coding-agent environment collapses load_skill under one programmatic tool"
       toolSet: "pebble-v1",
       toolMode: "programmatic",
       programmaticToolName: "pebble_code",
-      environment,
+      definitionTransforms: [createAgentEnvironmentTransform(environment)],
     });
     assert.deepEqual(coding.definition.tools.map((entry) => entry.name), ["pebble_code"]);
     const nested = coding.definition.tools[0].nestedTools;

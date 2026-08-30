@@ -55,6 +55,7 @@ function localKernelContext(
 ): ToolExecutionContext {
   const byName = new Map(definitions.map((definition) => [definition.name, definition]));
   return {
+    toolCallId: parentToolCallId,
     parentToolCallId,
     async dispatch(name, input, options) {
       const definition = byName.get(name);
@@ -579,6 +580,7 @@ test("nested calls use kernel dispatch and composite does not fake write effect"
   const result = await codeTool.execute({
     code: 'const value = await lookup({"key":"x"}); print(value.toUpperCase());',
   }, undefined, {
+    toolCallId: "parent-1",
     parentToolCallId: "parent-1",
     async dispatch(name, input, options) {
       dispatched++;

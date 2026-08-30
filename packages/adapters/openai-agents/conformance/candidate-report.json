@@ -1,0 +1,323 @@
+{
+  "schema": "caveman.adapter-conformance.report.v4",
+  "suite": "@caveman-ai/adapter-conformance/candidate/v4",
+  "adapter": {
+    "id": "openai-agents",
+    "packageName": "@caveman-ai/adapter-openai-agents",
+    "version": "0.1.0"
+  },
+  "upstream": {
+    "packageName": "@openai/agents",
+    "version": "0.17.0"
+  },
+  "environment": {
+    "runtime": {
+      "name": "node",
+      "version": "22.22.2"
+    },
+    "platform": {
+      "name": "darwin",
+      "architecture": "arm64"
+    },
+    "execution": "uncontained-host"
+  },
+  "packages": [
+    {
+      "role": "adapter",
+      "name": "@caveman-ai/adapter-openai-agents",
+      "version": "0.1.0",
+      "sha256": "c6554c2d2bacd5f192e55e5737b9e0dd80ffb688a98451472e172aae2ad471a9"
+    },
+    {
+      "role": "upstream",
+      "name": "@openai/agents",
+      "version": "0.17.0",
+      "sha256": "b5f7edae12c4da96ecf35a501fd0b4c647accf866d44a8722e287743bd574b9c"
+    }
+  ],
+  "testVector": {
+    "id": "adapter-capabilities-v4",
+    "version": "4.0.0",
+    "sha256": "8dec2730881a52e2f924f0b5368eda07eb0d39da4188e8fc3ea4935b18fc23f9",
+    "executedSetSHA256": "d040064608f3846e7530f9a8245475edf70f45b406b2e904d29190648231754e"
+  },
+  "capabilities": [
+    {
+      "name": "modelInterception",
+      "cases": [
+        {
+          "id": "model-interception.request",
+          "status": "passed",
+          "code": null,
+          "evidenceSHA256": "8d4f29971a182e07d1c1135c561f409d7510a88b5a5231cf90e1c180a48ee345"
+        },
+        {
+          "id": "model-interception.response",
+          "status": "passed",
+          "code": null,
+          "evidenceSHA256": "0e48866af55ad89f8eed8bd3926c7c3272301b9cf89293e33f129933dc47b611"
+        },
+        {
+          "id": "model-interception.error",
+          "status": "passed",
+          "code": null,
+          "evidenceSHA256": "fc5aedfb0c9cf2eae94be6ed9ae8cf576c468a1ede4a61daf27f58f62f6e77df"
+        }
+      ],
+      "caseCounts": {
+        "passed": 3,
+        "failed": 0,
+        "skipped": 0,
+        "total": 3
+      },
+      "performanceCounts": {
+        "passed": 0,
+        "failed": 0,
+        "skipped": 1,
+        "total": 1
+      },
+      "qualification": {
+        "status": "blocked",
+        "blockers": [
+          "performance_skipped"
+        ]
+      }
+    },
+    {
+      "name": "contextTransformation",
+      "cases": [
+        {
+          "id": "context-transformation.deterministic",
+          "status": "passed",
+          "code": null,
+          "evidenceSHA256": "79f03fe809abddb5943a9a6156cf4691a26eae3b068608c19429ee4f1e544cf1"
+        },
+        {
+          "id": "context-transformation.cache-prefix-stable",
+          "status": "passed",
+          "code": null,
+          "evidenceSHA256": "ce5001f31d95d977ef19fa4edf5b1c6e7ef0462f1bd28c70b1bd699301022ede"
+        }
+      ],
+      "caseCounts": {
+        "passed": 2,
+        "failed": 0,
+        "skipped": 0,
+        "total": 2
+      },
+      "performanceCounts": {
+        "passed": 0,
+        "failed": 0,
+        "skipped": 1,
+        "total": 1
+      },
+      "qualification": {
+        "status": "blocked",
+        "blockers": [
+          "performance_skipped"
+        ]
+      }
+    },
+    {
+      "name": "usageAccounting",
+      "cases": [
+        {
+          "id": "usage-accounting.known",
+          "status": "passed",
+          "code": null,
+          "evidenceSHA256": "7cd54e85654ae7b3596fd8eabf53d0fd9acb0abf53017e56c66ac58231c7cfd5"
+        },
+        {
+          "id": "usage-accounting.unknown-fails-closed",
+          "status": "passed",
+          "code": null,
+          "evidenceSHA256": "c770b2cd1742da8e2834545d4ef6d18b6ff874cf01d07de98e107d20da73d689"
+        }
+      ],
+      "caseCounts": {
+        "passed": 2,
+        "failed": 0,
+        "skipped": 0,
+        "total": 2
+      },
+      "performanceCounts": {
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0,
+        "total": 1
+      },
+      "qualification": {
+        "status": "passed",
+        "blockers": []
+      }
+    },
+    {
+      "name": "streaming",
+      "cases": [
+        {
+          "id": "streaming.ordered-chunks",
+          "status": "passed",
+          "code": null,
+          "evidenceSHA256": "61bb4bff985165e764f5b445577dbbe4416b8b621c095921c90970cd5d9a6ae7"
+        },
+        {
+          "id": "streaming.terminal",
+          "status": "passed",
+          "code": null,
+          "evidenceSHA256": "0d3508fa5118b1944644d0df669e460822e92a6b7d9d29356d648dbd8efbc97d"
+        },
+        {
+          "id": "streaming.error",
+          "status": "passed",
+          "code": null,
+          "evidenceSHA256": "24bbd1849cebf6f64827ed12b5e1ec53a2aa97c4eeeabd5f283d40d8259cd308"
+        }
+      ],
+      "caseCounts": {
+        "passed": 3,
+        "failed": 0,
+        "skipped": 0,
+        "total": 3
+      },
+      "performanceCounts": {
+        "passed": 0,
+        "failed": 0,
+        "skipped": 1,
+        "total": 1
+      },
+      "qualification": {
+        "status": "blocked",
+        "blockers": [
+          "performance_skipped"
+        ]
+      }
+    },
+    {
+      "name": "abort",
+      "cases": [
+        {
+          "id": "abort.pre-start",
+          "status": "passed",
+          "code": null,
+          "evidenceSHA256": "f1ce04d38bdd59418b553b09f5e1e65bf8672f7127fe2762bda294d9a6124778"
+        },
+        {
+          "id": "abort.in-flight",
+          "status": "passed",
+          "code": null,
+          "evidenceSHA256": "4602a12ad6df4dcaf32f8d6f19e9716877ce50f1766f894f6d15d0eacb039543"
+        }
+      ],
+      "caseCounts": {
+        "passed": 2,
+        "failed": 0,
+        "skipped": 0,
+        "total": 2
+      },
+      "performanceCounts": {
+        "passed": 0,
+        "failed": 0,
+        "skipped": 0,
+        "total": 0
+      },
+      "qualification": {
+        "status": "passed",
+        "blockers": []
+      }
+    }
+  ],
+  "performance": [
+    {
+      "id": "model-interception.hook-overhead-p99",
+      "capability": "modelInterception",
+      "metric": "hook-overhead-p99",
+      "unit": "microseconds",
+      "clock": "node:process.hrtime.bigint:captured",
+      "percentile": 99,
+      "warmupCount": 250,
+      "requiredSampleCount": 2000,
+      "threshold": {
+        "operator": "lte",
+        "value": 100
+      },
+      "sampleCount": 0,
+      "observed": null,
+      "status": "skipped",
+      "code": "fixture_unavailable"
+    },
+    {
+      "id": "context-transformation.hook-overhead-p99",
+      "capability": "contextTransformation",
+      "metric": "hook-overhead-p99",
+      "unit": "microseconds",
+      "clock": "node:process.hrtime.bigint:captured",
+      "percentile": 99,
+      "warmupCount": 250,
+      "requiredSampleCount": 2000,
+      "threshold": {
+        "operator": "lte",
+        "value": 250
+      },
+      "sampleCount": 0,
+      "observed": null,
+      "status": "skipped",
+      "code": "fixture_unavailable"
+    },
+    {
+      "id": "usage-accounting.hook-overhead-p99",
+      "capability": "usageAccounting",
+      "metric": "hook-overhead-p99",
+      "unit": "microseconds",
+      "clock": "node:process.hrtime.bigint:captured",
+      "percentile": 99,
+      "warmupCount": 250,
+      "requiredSampleCount": 2000,
+      "threshold": {
+        "operator": "lte",
+        "value": 100
+      },
+      "sampleCount": 2000,
+      "observed": 4.583,
+      "status": "passed",
+      "code": null
+    },
+    {
+      "id": "streaming.chunk-overhead-p99",
+      "capability": "streaming",
+      "metric": "hook-overhead-p99",
+      "unit": "microseconds",
+      "clock": "node:process.hrtime.bigint:captured",
+      "percentile": 99,
+      "warmupCount": 1000,
+      "requiredSampleCount": 10000,
+      "threshold": {
+        "operator": "lte",
+        "value": 50
+      },
+      "sampleCount": 0,
+      "observed": null,
+      "status": "skipped",
+      "code": "fixture_unavailable"
+    }
+  ],
+  "totals": {
+    "capabilities": {
+      "passed": 2,
+      "blocked": 3,
+      "total": 5
+    },
+    "cases": {
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0,
+      "total": 12
+    },
+    "performance": {
+      "passed": 1,
+      "failed": 0,
+      "skipped": 3,
+      "total": 4
+    }
+  },
+  "reportDigest": "sha256:2aaab8a4a9a2dd2ba4ec0681fcdee434e62824f83375a0eef408c8a7227b3ff1"
+}

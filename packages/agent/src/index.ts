@@ -3,11 +3,13 @@ import { schema, tool } from "./primitives.js";
 import type { AgentDefinition } from "./definition.js";
 import {
   runAgent,
+  runLockedAgent,
   streamAgent,
   type RunOptions,
 } from "./runtime.js";
 import { agentDirRunDefaults } from "./dir-loader.js";
 import { writeRunReceipt } from "./receipt-print.js";
+import type { AgentInput } from "./input.js";
 
 export * from "./context-ir.js";
 export * from "./trajectory-ir.js";
@@ -15,10 +17,26 @@ export * from "./profile.js";
 export * from "./compiler.js";
 export * from "./primitives.js";
 export * from "./programmatic-tools.js";
-export * from "./agent-environment.js";
+export * from "./connect.js";
+export * from "./session.js";
+export * from "./model-boundary.js";
+export * from "./model-usage.js";
+export * from "./model-router.js";
+export * from "./input.js";
+export * from "./credentials.js";
+export * from "./runtime-descriptor.js";
+export * from "./runtime-model.js";
+export * from "./checkpoints.js";
+export * from "./tracing.js";
+export * from "./run-receipt.js";
 export * from "./memory.js";
 export * from "./memory-adapters.js";
-export { agent, type AgentDefinition } from "./definition.js";
+export {
+  agent,
+  applyAgentDefinitionTransforms,
+  type AgentDefinition,
+  type AgentDefinitionTransform,
+} from "./definition.js";
 export {
   AGENT_RUN_RECEIPT_SCHEMA,
   OUTPUT_CLAMP_FLOOR_TOKENS,
@@ -137,7 +155,7 @@ function withAgentDirDefaults(
 
 export async function run(
   definition: AgentDefinition,
-  input: string,
+  input: AgentInput,
   options?: RunOptions,
 ) {
   const merged = withAgentDirDefaults(definition, options);
@@ -162,9 +180,19 @@ export async function run(
   return result;
 }
 
+/** Execute a validated Pi Cave Build from an embedded application. */
+export async function runLocked(
+  definition: AgentDefinition,
+  input: AgentInput,
+  build: import("./build.js").AnyCaveBuildLock,
+  options?: RunOptions,
+) {
+  return runLockedAgent(definition, input, build, withAgentDirDefaults(definition, options));
+}
+
 export function stream(
   definition: AgentDefinition,
-  input: string,
+  input: AgentInput,
   options?: RunOptions,
 ) {
   // Streaming has no receipt print site yet, so the flag stays unset here

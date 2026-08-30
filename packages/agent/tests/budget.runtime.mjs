@@ -1154,7 +1154,7 @@ test("the escalation hook tops up a tranche or takes the default stop", async ()
     onBudgetExhausted: async (context) => {
       seen.push(context);
       // Escalate once, then let the run take the default outcome.
-      if (seen.length === 1) return { release: 8_000, reason: "operator approved" };
+      if (seen.length === 1) return { release: 8_000, reason: "operator tranche" };
       return "stop";
     },
     streamFn: endlessToolProvider(observed),
@@ -1170,7 +1170,7 @@ test("the escalation hook tops up a tranche or takes the default stop", async ()
   assert.equal(result.receipt.spent <= 16_000, true);
   assert.deepEqual(
     result.receipt.tranches.map((entry) => entry.reason),
-    ["operator approved"],
+    ["operator tranche"],
   );
 });
 
@@ -1195,7 +1195,7 @@ test("an escalation cannot cross max, and a malformed answer fails closed", asyn
       onBudgetExhausted: async () => "carry on",
       streamFn: endlessToolProvider({ calls: [], inputTokens: 400, outputTokens: 100 }),
     }),
-    /cave_budget_escalation_result_invalid/,
+    /cave_budget_exhaustion_result_invalid/,
   );
 });
 

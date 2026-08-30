@@ -3,6 +3,10 @@
   "version": "1.0.0",
   "type": "module",
   "private": true,
+  "cavemanSample": {
+    "workflow": "interactive host coding session",
+    "minNodeMajor": 22
+  },
   "scripts": {
     "build": "node --check agent.mjs",
     "lint": "node --check agent.mjs",

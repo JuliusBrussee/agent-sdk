@@ -1,0 +1,37 @@
+import { defineAdapterManifest } from "@caveman-ai/adapter-kit";
+
+export const adapterManifest = defineAdapterManifest({
+  schemaVersion: 2,
+  id: "strands-agents",
+  packageName: "@caveman-ai/adapter-strands-agents",
+  adapterVersion: "0.1.0",
+  upstream: { package: "@strands-agents/sdk", version: "1.15.0" },
+  capabilities: {
+    runLifecycle: "experimental",
+    modelInterception: "experimental",
+    contextTransformation: "experimental",
+    toolObservation: "experimental",
+    usageAccounting: "experimental",
+    streaming: "experimental",
+    abort: "experimental",
+    replayAwareness: "unsupported",
+    durableObservation: "unsupported",
+    tracing: "unsupported",
+    compilation: "unsupported",
+  },
+  lifecycle: {
+    "run.started": "observe",
+    "run.completed": "observe",
+    "run.error": "unsupported",
+    "model.requested": "intercept",
+    "model.responded": "observe",
+    "model.error": "observe",
+    "tool.proposed": "unsupported",
+    "tool.started": "observe",
+    "tool.completed": "observe",
+    "tool.error": "observe",
+    "checkpoint.committed": "unsupported",
+    "session.committed": "unsupported",
+  },
+  certifications: {},
+});

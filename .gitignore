@@ -1,11 +1,57 @@
+# Dependencies and package-manager state
 node_modules/
+.pnpm-store/
+.yarn/
+.pnp.*
+
+# Compiled and packaged output
 dist/
+*.tsbuildinfo
 *.tgz
-.DS_Store
+*.tar.gz
+
+# Test and analysis output
+coverage/
+.nyc_output/
+.c8_output/
+test-results/
+playwright-report/
+blob-report/
+
+# Caveman and tool runtime state
 .caveman/
+.cache/
+*.log
+!**/tests/fixtures/**/*.log
+!**/goldens/**/*.log
+*.pid
+*.pid.lock
+
+# Local credentials and machine-specific configuration
 .env
 .env.*
 !.env.example
-coverage/
-.cache/
-*.log
+!.env.*.example
+.envrc
+.direnv/
+.npmrc
+**/.claude/settings.local.json
+
+# Editors, operating systems, and temporary files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+.fleet/
+.eslintcache
+.stylelintcache
+.turbo/
+.vite/
+*.swp
+*.swo
+*~
+*.tmp
+*.temp
+*.orig
+*.rej
+/context

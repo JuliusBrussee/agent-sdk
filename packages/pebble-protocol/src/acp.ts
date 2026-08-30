@@ -8,15 +8,10 @@
  * internal or ride `_meta` extensions; the notes column says which.
  *
  * Reference: https://agentclientprotocol.com — session/update notification
- * variants, StopReason, PermissionOption kinds as of protocol v1.
+ * variants and StopReason as of protocol v1.
  */
 
-import type {
-  PermissionDecision,
-  StopReason,
-  ToolOutcome,
-  TurnEventKind,
-} from "./events.ts";
+import type { StopReason, ToolOutcome, TurnEventKind } from "./events.ts";
 
 // ---------------------------------------------------------------------------
 // ACP vocabulary constants (what the other side speaks)
@@ -32,17 +27,6 @@ export const ACP_STOP_REASONS = [
 ] as const;
 
 export type AcpStopReason = (typeof ACP_STOP_REASONS)[number];
-
-/** PermissionOption.kind values defined by ACP session/request_permission. */
-export const ACP_PERMISSION_OPTION_KINDS = [
-  "allow_once",
-  "allow_always",
-  "reject_once",
-  "reject_always",
-] as const;
-
-export type AcpPermissionOptionKind =
-  (typeof ACP_PERMISSION_OPTION_KINDS)[number];
 
 /** session/update variant discriminators referenced by the mapping table. */
 export const ACP_UPDATE_VARIANTS = [
@@ -63,7 +47,6 @@ export type AcpUpdateVariant = (typeof ACP_UPDATE_VARIANTS)[number];
 export const ACP_METHODS = [
   "session/prompt",
   "session/update",
-  "session/request_permission",
 ] as const;
 
 export type AcpMethod = (typeof ACP_METHODS)[number];
@@ -75,9 +58,7 @@ export type AcpMethod = (typeof ACP_METHODS)[number];
 /**
  * Pebble stop_reason → ACP StopReason returned from session/prompt.
  *
- * awaiting_input / awaiting_approval both end the ACP turn ("end_turn"): in
- * ACP mode approval blocks inside session/request_permission instead, so a
- * turn that still ends while waiting maps to a clean end of turn.
+ * awaiting_input / legacy awaiting_approval both map to a clean end of turn.
  * budget_paused and error map to "refusal" — the agent declines to continue —
  * with the precise reason carried on the event stream / _meta, because ACP has
  * no budget- or error-specific stop reason.
@@ -91,20 +72,6 @@ export const STOP_REASON_TO_ACP: Readonly<
   budget_paused: "refusal",
   interrupted: "cancelled",
   error: "refusal",
-};
-
-/**
- * Pebble permission decision → ACP PermissionOption kind offered to clients.
- * allow-session maps to allow_always under ACP semantics (client-side
- * persistence for the session); pebble deny maps to reject_once (pebble asks
- * again per request; nothing is remembered).
- */
-export const PERMISSION_DECISION_TO_ACP: Readonly<
-  Record<PermissionDecision, AcpPermissionOptionKind>
-> = {
-  "allow-once": "allow_once",
-  "allow-session": "allow_always",
-  deny: "reject_once",
 };
 
 /**
@@ -221,17 +188,17 @@ export const ACP_MAPPING = {
   },
   "permission.request": {
     pebbleKind: "permission.request",
-    acpMethod: "session/request_permission",
+    acpMethod: null,
     acpUpdate: null,
     notes:
-      "Options built from PERMISSION_DECISION_TO_ACP; plainLanguage→option names, technical detail rides the ToolCallUpdate.",
+      "Legacy schema-only compatibility data; never mapped, dispatched, or interpreted.",
   },
   "permission.resolve": {
     pebbleKind: "permission.resolve",
     acpMethod: null,
     acpUpdate: null,
     notes:
-      "Direction-reversed: arrives as the client's RequestPermissionOutcome (selected optionId / cancelled), not an agent notification.",
+      "Legacy schema-only compatibility data; never mapped, dispatched, or interpreted.",
   },
   "queue.changed": {
     pebbleKind: "queue.changed",

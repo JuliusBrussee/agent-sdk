@@ -197,6 +197,33 @@ test("routine refuses a Standard Schema tool it cannot re-validate", () => {
   );
 });
 
+test("routine refuses a Standard output Schema it cannot re-validate", () => {
+  const standardOutput = {
+    "~standard": {
+      version: 1,
+      vendor: "fixture",
+      validate(value) {
+        return { value };
+      },
+      jsonSchema: {
+        output: () => ({ type: "string" }),
+      },
+    },
+  };
+  const standardTool = tool({
+    name: "standard_output_order",
+    description: "Look up an order status.",
+    input: schema.object({ order: schema.string() }),
+    output: standardOutput,
+    effect: "read",
+    execute: ({ order }) => `original:${order}`,
+  });
+  assert.throws(
+    () => routine(standardTool, () => "routine"),
+    /cave_routine_standard_schema_unsupported:standard_output_order/,
+  );
+});
+
 test("routine refuses to wrap another routine", () => {
   const inner = routine(originalTool("nested_lookup"), () => "routine");
   assert.throws(

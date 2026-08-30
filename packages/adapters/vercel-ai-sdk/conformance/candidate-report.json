@@ -1,0 +1,427 @@
+{
+  "schema": "caveman.adapter-conformance.report.v4",
+  "suite": "@caveman-ai/adapter-conformance/candidate/v4",
+  "adapter": {
+    "id": "vercel-ai-sdk",
+    "packageName": "@caveman-ai/adapter-vercel-ai-sdk",
+    "version": "0.1.0"
+  },
+  "upstream": {
+    "packageName": "ai",
+    "version": "7.0.84"
+  },
+  "environment": {
+    "runtime": {
+      "name": "node",
+      "version": "22.22.2"
+    },
+    "platform": {
+      "name": "darwin",
+      "architecture": "arm64"
+    },
+    "execution": "uncontained-host"
+  },
+  "packages": [
+    {
+      "role": "adapter",
+      "name": "@caveman-ai/adapter-vercel-ai-sdk",
+      "version": "0.1.0",
+      "sha256": "89d3223a60860ea667fe3ade4841d2cf8ee174ce366ab3171cf276add8d51654"
+    },
+    {
+      "role": "upstream",
+      "name": "ai",
+      "version": "7.0.84",
+      "sha256": "389b525dbe9f5777f07d88a48e227dbe532a757f6a2d08e838ea6d9dabf5a068"
+    }
+  ],
+  "testVector": {
+    "id": "adapter-capabilities-v4",
+    "version": "4.0.0",
+    "sha256": "8dec2730881a52e2f924f0b5368eda07eb0d39da4188e8fc3ea4935b18fc23f9",
+    "executedSetSHA256": "468be61151217ac322eb6f083743859892ce2d8c3f6b8dccb92f7215006e6c57"
+  },
+  "capabilities": [
+    {
+      "name": "runLifecycle",
+      "cases": [
+        {
+          "id": "run-lifecycle.success",
+          "status": "passed",
+          "code": null,
+          "evidenceSHA256": "3acc1cfdd8a3e6581a6a78b1bb77b11978f9c1b3fd0dcbbf4a8b0434cad9cbd3"
+        },
+        {
+          "id": "run-lifecycle.failure",
+          "status": "skipped",
+          "code": "fixture_unavailable",
+          "evidenceSHA256": null
+        }
+      ],
+      "caseCounts": {
+        "passed": 1,
+        "failed": 0,
+        "skipped": 1,
+        "total": 2
+      },
+      "performanceCounts": {
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0,
+        "total": 1
+      },
+      "qualification": {
+        "status": "blocked",
+        "blockers": [
+          "case_skipped"
+        ]
+      }
+    },
+    {
+      "name": "modelInterception",
+      "cases": [
+        {
+          "id": "model-interception.request",
+          "status": "passed",
+          "code": null,
+          "evidenceSHA256": "0023b0bbd74e4c4903bfdc05ed5cda224f11e8b3a685151f39b8d2f49a48bfb4"
+        },
+        {
+          "id": "model-interception.response",
+          "status": "passed",
+          "code": null,
+          "evidenceSHA256": "0e48866af55ad89f8eed8bd3926c7c3272301b9cf89293e33f129933dc47b611"
+        },
+        {
+          "id": "model-interception.error",
+          "status": "passed",
+          "code": null,
+          "evidenceSHA256": "fc5aedfb0c9cf2eae94be6ed9ae8cf576c468a1ede4a61daf27f58f62f6e77df"
+        }
+      ],
+      "caseCounts": {
+        "passed": 3,
+        "failed": 0,
+        "skipped": 0,
+        "total": 3
+      },
+      "performanceCounts": {
+        "passed": 0,
+        "failed": 0,
+        "skipped": 1,
+        "total": 1
+      },
+      "qualification": {
+        "status": "blocked",
+        "blockers": [
+          "performance_skipped"
+        ]
+      }
+    },
+    {
+      "name": "contextTransformation",
+      "cases": [
+        {
+          "id": "context-transformation.deterministic",
+          "status": "passed",
+          "code": null,
+          "evidenceSHA256": "fd9ca0d8d89c1a8886c94e87fcb911f22a4f784209d96246688369d64336028e"
+        },
+        {
+          "id": "context-transformation.cache-prefix-stable",
+          "status": "passed",
+          "code": null,
+          "evidenceSHA256": "ce5001f31d95d977ef19fa4edf5b1c6e7ef0462f1bd28c70b1bd699301022ede"
+        }
+      ],
+      "caseCounts": {
+        "passed": 2,
+        "failed": 0,
+        "skipped": 0,
+        "total": 2
+      },
+      "performanceCounts": {
+        "passed": 0,
+        "failed": 0,
+        "skipped": 1,
+        "total": 1
+      },
+      "qualification": {
+        "status": "blocked",
+        "blockers": [
+          "performance_skipped"
+        ]
+      }
+    },
+    {
+      "name": "toolObservation",
+      "cases": [
+        {
+          "id": "tool-observation.success",
+          "status": "passed",
+          "code": null,
+          "evidenceSHA256": "70421f23307d08d1bb1d497372a63de508660d9516f4e7f68ef12c4c1597fef8"
+        },
+        {
+          "id": "tool-observation.failure",
+          "status": "passed",
+          "code": null,
+          "evidenceSHA256": "da283c3ec92a76dac4620c0904c94d5d10b09702c42e57d3034c7b7eeab9ba99"
+        }
+      ],
+      "caseCounts": {
+        "passed": 2,
+        "failed": 0,
+        "skipped": 0,
+        "total": 2
+      },
+      "performanceCounts": {
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0,
+        "total": 1
+      },
+      "qualification": {
+        "status": "passed",
+        "blockers": []
+      }
+    },
+    {
+      "name": "usageAccounting",
+      "cases": [
+        {
+          "id": "usage-accounting.known",
+          "status": "passed",
+          "code": null,
+          "evidenceSHA256": "b3975d246a1294347b0fc7c139f5cc204442bcf7440a5bb8189ce15814fd7110"
+        },
+        {
+          "id": "usage-accounting.unknown-fails-closed",
+          "status": "passed",
+          "code": null,
+          "evidenceSHA256": "c770b2cd1742da8e2834545d4ef6d18b6ff874cf01d07de98e107d20da73d689"
+        }
+      ],
+      "caseCounts": {
+        "passed": 2,
+        "failed": 0,
+        "skipped": 0,
+        "total": 2
+      },
+      "performanceCounts": {
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0,
+        "total": 1
+      },
+      "qualification": {
+        "status": "passed",
+        "blockers": []
+      }
+    },
+    {
+      "name": "streaming",
+      "cases": [
+        {
+          "id": "streaming.ordered-chunks",
+          "status": "passed",
+          "code": null,
+          "evidenceSHA256": "64772f7e249573753b84c4fc40b74edff81e00fb46a72d9f4d3d648f901d63cf"
+        },
+        {
+          "id": "streaming.terminal",
+          "status": "passed",
+          "code": null,
+          "evidenceSHA256": "062a8c4730a70a3d98066fa1500e15c0659b89728999fd5867de826f270b213e"
+        },
+        {
+          "id": "streaming.error",
+          "status": "passed",
+          "code": null,
+          "evidenceSHA256": "24bbd1849cebf6f64827ed12b5e1ec53a2aa97c4eeeabd5f283d40d8259cd308"
+        }
+      ],
+      "caseCounts": {
+        "passed": 3,
+        "failed": 0,
+        "skipped": 0,
+        "total": 3
+      },
+      "performanceCounts": {
+        "passed": 0,
+        "failed": 0,
+        "skipped": 1,
+        "total": 1
+      },
+      "qualification": {
+        "status": "blocked",
+        "blockers": [
+          "performance_skipped"
+        ]
+      }
+    },
+    {
+      "name": "abort",
+      "cases": [
+        {
+          "id": "abort.pre-start",
+          "status": "passed",
+          "code": null,
+          "evidenceSHA256": "f1ce04d38bdd59418b553b09f5e1e65bf8672f7127fe2762bda294d9a6124778"
+        },
+        {
+          "id": "abort.in-flight",
+          "status": "passed",
+          "code": null,
+          "evidenceSHA256": "ed76f01c6ce0acc0db47a0640786b5e6c56e04165cd907f9bbab89b351715a59"
+        }
+      ],
+      "caseCounts": {
+        "passed": 2,
+        "failed": 0,
+        "skipped": 0,
+        "total": 2
+      },
+      "performanceCounts": {
+        "passed": 0,
+        "failed": 0,
+        "skipped": 0,
+        "total": 0
+      },
+      "qualification": {
+        "status": "passed",
+        "blockers": []
+      }
+    }
+  ],
+  "performance": [
+    {
+      "id": "run-lifecycle.hook-overhead-p99",
+      "capability": "runLifecycle",
+      "metric": "hook-overhead-p99",
+      "unit": "microseconds",
+      "clock": "node:process.hrtime.bigint:captured",
+      "percentile": 99,
+      "warmupCount": 250,
+      "requiredSampleCount": 2000,
+      "threshold": {
+        "operator": "lte",
+        "value": 100
+      },
+      "sampleCount": 2000,
+      "observed": 20.084,
+      "status": "passed",
+      "code": null
+    },
+    {
+      "id": "model-interception.hook-overhead-p99",
+      "capability": "modelInterception",
+      "metric": "hook-overhead-p99",
+      "unit": "microseconds",
+      "clock": "node:process.hrtime.bigint:captured",
+      "percentile": 99,
+      "warmupCount": 250,
+      "requiredSampleCount": 2000,
+      "threshold": {
+        "operator": "lte",
+        "value": 100
+      },
+      "sampleCount": 0,
+      "observed": null,
+      "status": "skipped",
+      "code": "fixture_unavailable"
+    },
+    {
+      "id": "context-transformation.hook-overhead-p99",
+      "capability": "contextTransformation",
+      "metric": "hook-overhead-p99",
+      "unit": "microseconds",
+      "clock": "node:process.hrtime.bigint:captured",
+      "percentile": 99,
+      "warmupCount": 250,
+      "requiredSampleCount": 2000,
+      "threshold": {
+        "operator": "lte",
+        "value": 250
+      },
+      "sampleCount": 0,
+      "observed": null,
+      "status": "skipped",
+      "code": "fixture_unavailable"
+    },
+    {
+      "id": "tool-observation.hook-overhead-p99",
+      "capability": "toolObservation",
+      "metric": "hook-overhead-p99",
+      "unit": "microseconds",
+      "clock": "node:process.hrtime.bigint:captured",
+      "percentile": 99,
+      "warmupCount": 250,
+      "requiredSampleCount": 2000,
+      "threshold": {
+        "operator": "lte",
+        "value": 100
+      },
+      "sampleCount": 2000,
+      "observed": 21.333,
+      "status": "passed",
+      "code": null
+    },
+    {
+      "id": "usage-accounting.hook-overhead-p99",
+      "capability": "usageAccounting",
+      "metric": "hook-overhead-p99",
+      "unit": "microseconds",
+      "clock": "node:process.hrtime.bigint:captured",
+      "percentile": 99,
+      "warmupCount": 250,
+      "requiredSampleCount": 2000,
+      "threshold": {
+        "operator": "lte",
+        "value": 100
+      },
+      "sampleCount": 2000,
+      "observed": 12.958,
+      "status": "passed",
+      "code": null
+    },
+    {
+      "id": "streaming.chunk-overhead-p99",
+      "capability": "streaming",
+      "metric": "hook-overhead-p99",
+      "unit": "microseconds",
+      "clock": "node:process.hrtime.bigint:captured",
+      "percentile": 99,
+      "warmupCount": 1000,
+      "requiredSampleCount": 10000,
+      "threshold": {
+        "operator": "lte",
+        "value": 50
+      },
+      "sampleCount": 0,
+      "observed": null,
+      "status": "skipped",
+      "code": "fixture_unavailable"
+    }
+  ],
+  "totals": {
+    "capabilities": {
+      "passed": 3,
+      "blocked": 4,
+      "total": 7
+    },
+    "cases": {
+      "passed": 15,
+      "failed": 0,
+      "skipped": 1,
+      "total": 16
+    },
+    "performance": {
+      "passed": 3,
+      "failed": 0,
+      "skipped": 3,
+      "total": 6
+    }
+  },
+  "reportDigest": "sha256:e53848e7b0a97bfe45cdbaa8f01aa407c04da531eb52b94863c3a80c8c2039bb"
+}

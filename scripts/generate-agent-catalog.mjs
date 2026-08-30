@@ -123,6 +123,11 @@ export function selectRows(rows, label = CATALOG_LABEL) {
     seenPrices.add(key);
     const mode = cacheMode(row.cache_profile, key, label);
     const schedule = recurringUTCPricing(row.recurring_utc_pricing, mode, key, label);
+    const priceVerifiedAt = verifiedAt(
+      row.recurring_utc_pricing?.verified_at ?? row.verified_at,
+      `${key}.pricing_verified_at`,
+      label,
+    );
     selected.push({
       key,
       price: {
@@ -132,6 +137,7 @@ export function selectRows(rows, label = CATALOG_LABEL) {
         cacheReadPerMillion: rate(row.pricing.cache_read_input_per_million, `${key}.cache_read_input_per_million`, label),
         cacheWritePerMillion: rate(row.pricing.cache_write_input_per_million, `${key}.cache_write_input_per_million`, label),
         reasoningPerMillion: rate(row.pricing.reasoning_output_per_million, `${key}.reasoning_output_per_million`, label),
+        verifiedAt: priceVerifiedAt,
         ...(schedule === null ? {} : { recurringUTCPricing: schedule }),
       },
     });
@@ -224,6 +230,17 @@ function rate(value, field, label) {
     throw new Error(`${label}: ${field} must be a finite non-negative number`);
   }
   return value;
+}
+
+function verifiedAt(value, field, label) {
+  if (typeof value !== "string") {
+    throw new Error(`${label}: ${field} must be an ISO timestamp`);
+  }
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.valueOf())) {
+    throw new Error(`${label}: ${field} must be an ISO timestamp`);
+  }
+  return parsed.toISOString();
 }
 
 function recurringUTCPricing(value, mode, key, label) {
@@ -369,6 +386,7 @@ export function renderCatalogModule(catalogBytes, artifact, label = CATALOG_LABE
   const entries = selected.map(({ key, price }) => [
     `  ${JSON.stringify(key)}: Object.freeze({`,
     ...renderPriceRates(price, "    "),
+    `    verifiedAt: ${JSON.stringify(price.verifiedAt)},`,
     ...renderRecurringUTCPricing(price.recurringUTCPricing, "    "),
     `  }),`,
   ].join("\n")).join("\n");
@@ -435,6 +453,7 @@ export interface CatalogRecurringUTCPricing {
 }
 
 export interface CatalogPrice extends CatalogPriceRates {
+  verifiedAt: string;
   recurringUTCPricing?: CatalogRecurringUTCPricing;
 }
 
@@ -632,10 +651,9 @@ export function catalogPriceFingerprint(
   model: string,
   accountingAt?: Date,
 ): string | undefined {
-  const resolution = catalogPriceResolution(
-    PRICES[\`\${catalogProvider(provider)}/\${model}\`],
-    accountingAt,
-  );
+  const catalogPrice = PRICES[\`\${catalogProvider(provider)}/\${model}\`];
+  if (catalogPrice === undefined) return undefined;
+  const resolution = catalogPriceResolution(catalogPrice, accountingAt);
   if (resolution === undefined) return undefined;
   const price = resolution.price;
   return JSON.stringify([
@@ -647,7 +665,16 @@ export function catalogPriceFingerprint(
     price.cacheReadPerMillion,
     price.cacheWritePerMillion,
     price.reasoningPerMillion,
+    catalogPrice.verifiedAt,
   ]);
+}
+
+/** Exact pricing-review instant from the generated catalog source. */
+export function catalogPriceVerifiedAt(
+  provider: string,
+  model: string,
+): string | undefined {
+  return PRICES[\`\${catalogProvider(provider)}/\${model}\`]?.verifiedAt;
 }
 
 export function catalogCost(

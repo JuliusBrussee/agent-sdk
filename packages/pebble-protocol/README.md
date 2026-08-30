@@ -44,7 +44,7 @@ Every event carries exactly these envelope fields, before `kind` and payload:
 | Field | Type | Rule |
 |---|---|---|
 | `v` | `1` | Protocol version. Literally `1` inside this major line. |
-| `seq` | number | Producer-assigned, monotonically increasing, gap-free per session stream, starting at 0. Validators do NOT enforce continuity (transports may reorder/duplicate) but consumers SHOULD detect gaps loudly. |
+| `seq` | number | Producer-assigned, monotonically increasing, gap-free per session stream, starting at 0. Stateless shape guards cannot enforce continuity; `TurnEventSequenceValidator` and `SessionEventSequenceCoordinator` reject gaps, duplicates, and session changes. |
 | `ts` | string | RFC 3339 / ISO 8601 timestamp at emission; UTC recommended (`2026-08-25T09:30:00.000Z`). |
 | `sessionId` | string | Non-empty session identifier. |
 
@@ -73,8 +73,8 @@ semantically enforced on decode.
 | `stage.rewrite` | `id`, `label` | Retitles the open stage in place. |
 | `stage.close` | `id` | Stage closes (completed, not failed). |
 | `error` | `message`, `retryable: false` | **Post-retry ONLY.** Emitted after the retry budget is exhausted; one transient 429 must never paint N red blocks downstream. |
-| `permission.request` | `id`, `tool`, `plainLanguage`, `detail?` | Permission gate. Plain language inline; technical detail collapsed behind it. Resolved by exactly one `permission.resolve`. |
-| `permission.resolve` | `id`, `decision` | `decision ∈ allow-once \| allow-session \| deny`. |
+| `permission.request` | `id`, `tool`, `plainLanguage`, `detail?` | **Legacy schema-only compatibility data.** Opaque to validators/coordinators; never opens a lifecycle or triggers a request. |
+| `permission.resolve` | `id`, `decision` | **Legacy schema-only compatibility data.** `decision ∈ allow-once \| allow-session \| deny`; no operational effect. |
 | `queue.changed` | `queued`, `heldAfterInterrupt` | Kernel-owned queue state (steering, typing-while-streaming, interrupt-pause). |
 | `checkpoint.created` | `ref`, `n` | Checkpoint landed; `ref` opaque, `n` = running count. |
 | `route.decided` | `model`, `reason`, `signals[]` | Structural routing decision. Surfaces render REASONS — never savings deltas. |
@@ -89,6 +89,21 @@ end_turn | awaiting_input | awaiting_approval | budget_paused | interrupted | er
 
 Producers must not invent synonyms; consumers treat unknown values as protocol
 violations.
+
+`awaiting_approval` remains frozen legacy vocabulary only. Caveman-owned
+runtimes do not implement approval or permission mechanisms.
+
+## Stateful sequence validation
+
+`TurnEventSequenceValidator` validates one complete turn from a caller-selected
+`firstSeq`. `SessionEventSequenceCoordinator` validates a complete session from
+sequence zero, composes one turn validator at a time, and enforces tool-call-id
+uniqueness across turns. Both return detached frozen evidence and stay poisoned
+after any error. Memory is bounded by explicit open-lifecycle, seen-identity,
+and UTF-8 identity-byte caps; completed turn bodies are not retained.
+
+Legacy `permission.*` frames receive only normal event-shape validation. Their
+ids and decisions remain opaque and create no state in either validator.
 
 ### Usage honesty rules
 
@@ -191,8 +206,8 @@ PermissionOption kinds).
 | `stage.rewrite` | `session/update` | `plan` | Retitles the open plan entry in place. |
 | `stage.close` | `session/update` | `plan` | Marks the entry completed. |
 | `error` | — | — | No standard ACP error notification; post-retry failures surface via prompt StopReason (`error→refusal`); optionally `_meta.pebble.error`. |
-| `permission.request` | `session/request_permission` | — | Options built from `PERMISSION_DECISION_TO_ACP`; plainLanguage→option names; technical detail rides the ToolCallUpdate. |
-| `permission.resolve` | — (client→agent) | — | Arrives as the client's RequestPermissionOutcome (`selected` optionId / `cancelled`), direction-reversed. |
+| `permission.request` | — | — | Frozen legacy schema-only compatibility data; never mapped, dispatched, or interpreted. |
+| `permission.resolve` | — | — | Frozen legacy schema-only compatibility data; never mapped, dispatched, or interpreted. |
 | `queue.changed` | — | — | TUI-native queue state. |
 | `checkpoint.created` | — | — | Optionally `_meta.pebble.checkpoint`. |
 | `route.decided` | — | — | Route reason display is Pebble-native (never savings deltas); optionally `_meta.pebble.route`. |
@@ -205,7 +220,7 @@ Value mappings:
 |---|---|---|
 | `end_turn` | `end_turn` | identity |
 | `awaiting_input` | `end_turn` | agent waits for the next prompt |
-| `awaiting_approval` | `end_turn` | in ACP mode approval blocks inside `session/request_permission` instead |
+| `awaiting_approval` | `end_turn` | frozen legacy mapping only; no runtime approval flow |
 | `budget_paused` | `refusal` | agent declines to continue spending; precise reason stays on the stream |
 | `interrupted` | `cancelled` | identity |
 | `error` | `refusal` | post-retry terminal failure |

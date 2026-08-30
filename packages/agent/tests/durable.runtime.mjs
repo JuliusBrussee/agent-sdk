@@ -9,12 +9,14 @@ import {
   DiskDurableStore,
   agent,
   auto,
+  createConversation,
   run,
   schema,
   stream,
   subagent,
   tool,
 } from "../dist/index.js";
+import sandboxAgent from "./fixtures/sandbox-agent.mjs";
 import { fauxProvider as upstreamFauxProvider } from "@earendil-works/pi-ai/providers/faux";
 import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
 
@@ -76,6 +78,50 @@ function pushMessage(selected, content, stopReason, used) {
   return messageStream;
 }
 
+function durableCompactionOptions(runId, store) {
+  const model = {
+    ...pricedFauxModel(),
+    id: "claude-opus-4-1",
+    contextWindow: 200_000,
+    maxTokens: 4_000,
+  };
+  const summarizerModel = pricedFauxModel();
+  return (streamFn) => ({
+    ensureRuntime: false,
+    model,
+    durable: { runId, store },
+    budget: {
+      maxUsd: 4,
+      onExhausted: "compact",
+      compaction: {
+        minYieldTokens: 1_000,
+        headroomCalls: 1,
+        keepRecentTokens: 2_000,
+        summarizerModel,
+      },
+    },
+    streamFn,
+  });
+}
+
+function isSummarizerContext(runContext) {
+  const last = runContext.messages.at(-1);
+  return typeof last?.content === "string" &&
+    last.content.includes("Reply with a single JSON object");
+}
+
+function compactionWorkingTurn(selected, call) {
+  return pushMessage(
+    selected,
+    [
+      { type: "text", text: `${"x".repeat(8_000)}-${call}` },
+      { type: "toolCall", id: `poll-${call}`, name: "poll", arguments: {} },
+    ],
+    "toolUse",
+    usage({ input: 500, output: 800, cacheRead: 8_000 }),
+  );
+}
+
 function pollingAgent(id, onPoll = () => "polled: 3 items") {
   return agent({
     id,
@@ -96,6 +142,44 @@ function pollingAgent(id, onPoll = () => "polled: 3 items") {
 async function scratchStore() {
   const dir = await mkdtemp(resolve(tmpdir(), "cave-durable-"));
   return { dir, store: new DiskDurableStore(dir) };
+}
+
+function batchHasEvent(data, type) {
+  return data.trim().split("\n").some((line) => JSON.parse(line).type === type);
+}
+
+function failOnceAt(store, type, timing) {
+  let armed = true;
+  return {
+    load: (runId) => store.load(runId),
+    acquire: (runId) => store.acquire(runId),
+    close: (runId) => store.close(runId),
+    async append(runId, data) {
+      if (armed && batchHasEvent(data, type)) {
+        armed = false;
+        if (timing === "after") await store.append(runId, data);
+        throw new Error(`simulated_${type}_${timing}_failure`);
+      }
+      await store.append(runId, data);
+    },
+  };
+}
+
+function effectAgent(id, effect, execute, input = schema.object({})) {
+  return agent({
+    id,
+    instructions: "Call act, then answer.",
+    model: auto(),
+    sandbox: effect === "write" || effect === "external" ? "host" : "fixture",
+    tools: [tool({
+      name: "act",
+      description: "Execute one test effect.",
+      input,
+      effect,
+      allowRepeat: true,
+      execute,
+    })],
+  });
 }
 
 async function journalPath(dir, runId) {
@@ -147,6 +231,16 @@ test("a run crashed mid-call resumes from its last completed turn without re-ask
   assert.equal(events.at(-1).type, "run_error");
   assert.equal(firstAttemptCalls, 2);
 
+  // The in-process abort unwinds cleanly enough to close a pre-stream intent.
+  // A process death cannot write that final abandonment, so trim it to model
+  // the exact crash window this test covers.
+  const crashedPath = await journalPath(dir, runId);
+  const written = (await readFile(crashedPath, "utf8")).split("\n").filter(Boolean);
+  const lastIntent = written.findLastIndex((entry) => JSON.parse(entry).type === "call_started");
+  const survived = written.filter((entry, index) =>
+    !(index > lastIntent && JSON.parse(entry).type === "call_abandoned"));
+  await writeFile(crashedPath, `${survived.join("\n")}\n`);
+
   // The journal is pending (no terminal event), holds the completed turn,
   // the settled first call, and the unmatched second intent.
   const lines = await journalLines(dir, runId);
@@ -194,7 +288,7 @@ test("a run crashed mid-call resumes from its last completed turn without re-ask
 // Crash mid-tool (no completed turn): fresh restart, spend still counted.
 // ---------------------------------------------------------------------------
 
-test("a run whose crash lost the turn restarts fresh but never loses settled spend", async (t) => {
+test("a run whose crash lost the turn replays its settled tool without losing spend", async (t) => {
   const { dir, store } = await scratchStore();
   t.after(() => rm(dir, { recursive: true, force: true }));
   const controller = new AbortController();
@@ -232,40 +326,51 @@ test("a run whose crash lost the turn restarts fresh but never loses settled spe
   const lastIntent = written.findLastIndex((line) => JSON.parse(line).type === "call_started");
   const survived = written.filter((line, index) => {
     const type = JSON.parse(line).type;
-    if (type === "turn" || type === "tool") return false;
-    // The graceful in-process teardown also flushed a worst-case settle for
-    // the in-flight call; a killed process never writes it.
-    if (type === "call_settled" && index > lastIntent) return false;
+    if (type === "turn") return false;
+    // The graceful in-process teardown may close or settle the last intent;
+    // a killed process writes neither terminal provider event.
+    if ((type === "call_settled" || type === "call_abandoned") && index > lastIntent) return false;
     return true;
   });
   await writeFile(truncatedPath, `${survived.join("\n")}\n`);
 
-  let roles;
+  const contexts = [];
+  let resumedCalls = 0;
   const result = await run(defined, "poll once", {
     ensureRuntime: false,
     model: fauxModel(),
     durable: { runId, store },
     budget: { maxTokens: 100_000 },
     streamFn: (selected, context) => {
-      roles = context.messages.map((message) => message.role);
+      contexts.push(context.messages.map((message) => message.role));
+      resumedCalls++;
+      if (resumedCalls === 1) {
+        return pushMessage(
+          selected,
+          [{ type: "toolCall", id: "p1", name: "poll", arguments: {} }],
+          "toolUse",
+          usage({ input: 150, output: 12 }),
+        );
+      }
       return pushMessage(
         selected,
         [{ type: "text", text: "done" }],
         "stop",
-        usage({ input: 150, output: 12 }),
+        usage({ input: 100, output: 10 }),
       );
     },
   });
   // No completed turn survived, so the run restarted from the prompt alone…
-  assert.equal(roles.filter((role) => role === "user").length, 1);
-  assert.equal(roles.at(-1), "user");
+  assert.equal(contexts[0].filter((role) => role === "user").length, 1);
+  assert.equal(contexts[0].at(-1), "user");
+  assert.equal(contexts[1].at(-1), "toolResult");
   // …but the crashed attempt's settled call is preloaded, not forgotten: the
   // meter's spent figure covers both attempts, and the call that was in
   // flight at the crash is surfaced, not guessed at.
   assert.equal(result.receipt.resume.priorCalls, 1);
   assert.equal(result.receipt.resume.priorSettled, 330);
   assert.equal(result.receipt.resume.possibleDoubleCountCalls, 1);
-  assert.equal(result.receipt.spent, 330 + 162);
+  assert.equal(result.receipt.spent, 330 + 162 + 110);
   assert.equal(result.resumed, true);
   assertSharedReceiptContract(result.receipt);
 });
@@ -335,6 +440,210 @@ test("a failed durable run replays its error without spending again", async (t) 
   assert.equal(replayCalls, 0);
   assert.notEqual(replayError, undefined);
   assert.equal(replayError.message, firstError.message);
+});
+
+test("budgeted unavailable compaction journals its reservation and replays terminal failure", async (t) => {
+  const { dir, store } = await scratchStore();
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const defined = pollingAgent("durable-unavailable-compaction");
+  const runId = "durable-unavailable-compaction";
+  const summary = JSON.stringify({
+    schema_version: 2,
+    generation: 1,
+    objective: "Answer the user's question.",
+    anchors: [],
+    constraints_restated: ["reply in one word"],
+    decisions: [{ decision: "polled", why: "pending" }],
+    artifacts: [{ path: "queue", change: "observed" }],
+    facts: ["job id 7"],
+    state: { completed: ["polled"], active: ["waiting"], blocked: [] },
+    next: ["poll again"],
+    citations: [],
+    lookup_hints: ["queue status"],
+  });
+  const options = durableCompactionOptions(runId, store);
+
+  let workingCalls = 0;
+  let summarizerCalls = 0;
+  let firstError;
+  try {
+    await run(defined, "go", options((selected, runContext) => {
+      if (isSummarizerContext(runContext)) {
+        summarizerCalls += 1;
+        return pushMessage(
+          selected,
+          [{ type: "text", text: summary }],
+          "stop",
+          {
+            input: 5_000,
+            output: 500,
+            cacheRead: 0,
+            cacheWrite: 0,
+            reasoning: 0,
+            totalTokens: 1,
+            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+          },
+        );
+      }
+      workingCalls += 1;
+      if (summarizerCalls > 0) {
+        return pushMessage(selected, [{ type: "text", text: "done" }], "stop", usage());
+      }
+      return compactionWorkingTurn(selected, workingCalls);
+    }));
+  } catch (error) {
+    firstError = error;
+  }
+  assert.match(firstError?.message ?? "", /cave_provider_terminal_error/);
+  assert.equal(summarizerCalls, 1);
+  assert.equal(firstError.receipt.calls.length, workingCalls + summarizerCalls);
+
+  const events = await journalLines(dir, runId);
+  const meterCalls = events.filter((event) => event.type === "meter_call");
+  assert.deepEqual(meterCalls.map((event) => event.atCall),
+    Array.from({ length: workingCalls + summarizerCalls }, (_, index) => index + 1));
+  const unavailable = events.find((event) =>
+    event.type === "call_settled" && event.kind === "compaction" &&
+    event.call.usageBasis === "unavailable");
+  assert.notEqual(unavailable, undefined);
+  assert.equal(Number.isFinite(unavailable.settledAmount), true);
+  assert.equal(unavailable.settledAmount > 0, true);
+  assert.equal(events.some((event) => event.type === "run_failed"), true);
+
+  let replayCalls = 0;
+  let replayError;
+  try {
+    await run(defined, "go", options(() => {
+      replayCalls += 1;
+      throw new Error("terminal replay must not call provider");
+    }));
+  } catch (error) {
+    replayError = error;
+  }
+  assert.equal(replayCalls, 0);
+  assert.equal(replayError?.message, firstError.message);
+});
+
+test("a pre-stream compaction rejection is abandoned and completed replay spends nothing", async (t) => {
+  const { dir, store } = await scratchStore();
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const defined = pollingAgent("durable-abandoned-compaction");
+  const runId = "durable-abandoned-compaction";
+  const options = durableCompactionOptions(runId, store);
+  let workingCalls = 0;
+  let summarizerAttempts = 0;
+
+  const first = await run(defined, "go", options((selected, runContext) => {
+    if (isSummarizerContext(runContext)) {
+      summarizerAttempts += 1;
+      throw new Error("summarizer unavailable before stream");
+    }
+    workingCalls += 1;
+    if (summarizerAttempts > 0) {
+      return pushMessage(selected, [{ type: "text", text: "done" }], "stop", usage());
+    }
+    return compactionWorkingTurn(selected, workingCalls);
+  }));
+
+  assert.equal(first.text, "done");
+  assert.equal(summarizerAttempts, 1);
+  assert.equal(first.receipt.calls.length, workingCalls);
+  const events = await journalLines(dir, runId);
+  const meterCalls = events.filter((event) => event.type === "meter_call");
+  assert.deepEqual(meterCalls.map((event) => event.atCall),
+    Array.from({ length: workingCalls + 1 }, (_, index) => index + 1));
+  assert.equal(events.filter((event) =>
+    event.type === "call_started" && event.kind === "compaction").length, 1);
+  assert.equal(events.filter((event) => event.type === "call_abandoned").length, 1);
+  assert.equal(events.filter((event) =>
+    event.type === "call_settled" && event.kind === "compaction").length, 0);
+  assert.equal(events.filter((event) => event.type === "run_completed").length, 1);
+
+  let replayCalls = 0;
+  const replay = await run(defined, "go", options(() => {
+    replayCalls += 1;
+    throw new Error("completed replay must not call provider");
+  }));
+  assert.equal(replayCalls, 0);
+  assert.deepEqual(replay, first);
+});
+
+test("a post-stream compaction failure settles worst case and replays terminal failure", async (t) => {
+  const { dir, store } = await scratchStore();
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const defined = pollingAgent("durable-partial-compaction");
+  const runId = "durable-partial-compaction";
+  const options = durableCompactionOptions(runId, store);
+  let providerInvocations = 0;
+  let workingCalls = 0;
+  let summarizerCalls = 0;
+  let firstError;
+
+  await assert.rejects(
+    run(defined, "go", options((selected, runContext) => {
+      providerInvocations += 1;
+      if (isSummarizerContext(runContext)) {
+        summarizerCalls += 1;
+        const partial = {
+          role: "assistant",
+          content: [],
+          api: selected.api,
+          provider: selected.provider,
+          model: selected.id,
+          usage: usage({ input: 0, output: 0 }),
+          stopReason: "pending",
+          timestamp: Date.now(),
+        };
+        return {
+          async *[Symbol.asyncIterator]() {
+            yield { type: "start", partial };
+            throw new Error("summarizer stream interrupted");
+          },
+          async result() {
+            throw new Error("summarizer terminal unavailable");
+          },
+        };
+      }
+      workingCalls += 1;
+      return compactionWorkingTurn(selected, workingCalls);
+    })),
+    (error) => {
+      firstError = error;
+      return /cave_provider_terminal_error/.test(error.message);
+    },
+  );
+
+  assert.equal(summarizerCalls, 1);
+  assert.equal(firstError.receipt.calls.length, providerInvocations);
+  assert.equal(firstError.receipt.calls.at(-1).usageBasis, "unavailable");
+  assert.equal(firstError.receipt.spent <= firstError.receipt.released, true);
+  const events = await journalLines(dir, runId);
+  const meterCalls = events.filter((event) => event.type === "meter_call");
+  assert.deepEqual(meterCalls.map((event) => event.atCall),
+    Array.from({ length: providerInvocations }, (_, index) => index + 1));
+  const settlement = events.find((event) =>
+    event.type === "call_settled" && event.kind === "compaction" &&
+    event.call.usageBasis === "unavailable");
+  assert.notEqual(settlement, undefined);
+  assert.equal(settlement.settledAmount > 0, true);
+  assert.equal(events.filter((event) => event.type === "call_abandoned").length, 0);
+  assert.equal(events.filter((event) => event.type === "run_failed").length, 1);
+
+  let replayCalls = 0;
+  let replayError;
+  await assert.rejects(
+    run(defined, "go", options(() => {
+      replayCalls += 1;
+      throw new Error("failed replay must not call provider");
+    })),
+    (error) => {
+      replayError = error;
+      return true;
+    },
+  );
+  assert.equal(replayCalls, 0);
+  assert.equal(replayError.message, firstError.message);
+  assert.deepEqual(replayError.receipt, firstError.receipt);
 });
 
 // ---------------------------------------------------------------------------
@@ -419,15 +728,6 @@ test("durable option combinations fail closed before any spend", async () => {
     run(defined, "go", { ...base, durable: { runId: "bad id with spaces" } }),
     /cave_durable_run_id_invalid/,
   );
-  const { createConversation } = await import("../dist/index.js");
-  await assert.rejects(
-    run(defined, "go", {
-      ...base,
-      durable: { runId: "ok-1" },
-      conversation: createConversation(),
-    }),
-    /cave_durable_conversation_unsupported/,
-  );
   await assert.rejects(
     run(defined, "go", { ...base, durable: { runId: "ok-2" }, maxCostUsd: 5 }),
     /cave_durable_max_cost_usd_unsupported/,
@@ -442,6 +742,533 @@ test("two processes cannot drive one durable run", async (t) => {
   await release();
   const again = await store.acquire("ticket-6");
   await again();
+});
+
+test("terminal fsync repairs one public conversation without repeating intent or spend", async (t) => {
+  const { dir, store } = await scratchStore();
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const faulting = failOnceAt(store, "run_completed", "after");
+  const conversation = createConversation();
+  const defined = agent({
+    id: "durable-conversation",
+    instructions: "Answer once.",
+    model: auto(),
+    sandbox: "fixture",
+  });
+  let providerCalls = 0;
+  await assert.rejects(
+    run(defined, "one durable intent", {
+      ensureRuntime: false,
+      conversation,
+      model: fauxModel(),
+      durable: { runId: "conversation-terminal", store: faulting },
+      streamFn: (selected) => {
+        providerCalls++;
+        return pushMessage(selected, [{ type: "text", text: "one answer" }], "stop", usage());
+      },
+    }),
+    /simulated_run_completed_after_failure/,
+  );
+  assert.equal(providerCalls, 1);
+  assert.equal(conversation.snapshot().messages.length, 0);
+
+  let replayProviderCalls = 0;
+  const result = await run(defined, "one durable intent", {
+    ensureRuntime: false,
+    conversation,
+    model: fauxModel(),
+    durable: { runId: "conversation-terminal", store: faulting },
+    streamFn: () => {
+      replayProviderCalls++;
+      throw new Error("completed replay must not call provider");
+    },
+  });
+  assert.equal(result.text, "one answer");
+  assert.equal(replayProviderCalls, 0);
+  assert.equal(
+    (JSON.stringify(conversation.snapshot().messages).match(/one durable intent/g) ?? []).length,
+    1,
+  );
+
+  let mismatchedProviderCalls = 0;
+  await assert.rejects(
+    run(defined, "one durable intent", {
+      ensureRuntime: false,
+      conversation: createConversation(),
+      model: fauxModel(),
+      durable: { runId: "conversation-terminal", store: faulting },
+      streamFn: () => {
+        mismatchedProviderCalls++;
+        throw new Error("must not spend for a mismatched conversation");
+      },
+    }),
+    /cave_durable_(?:session|conversation)_mismatch/,
+  );
+  assert.equal(mismatchedProviderCalls, 0);
+});
+
+test("failed replay refuses a conversation advanced beyond its bound base", async (t) => {
+  const { dir, store } = await scratchStore();
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const conversation = createConversation();
+  const defined = agent({
+    id: "durable-failed-conversation",
+    instructions: "Answer.",
+    model: auto(),
+    sandbox: "fixture",
+  });
+  await assert.rejects(
+    run(defined, "fail once", {
+      ensureRuntime: false,
+      conversation,
+      model: fauxModel(),
+      durable: { runId: "failed-conversation", store },
+      streamFn: () => { throw new Error("provider failed"); },
+    }),
+    /cave_provider_terminal_error/,
+  );
+  await run(defined, "advance", {
+    ensureRuntime: false,
+    conversation,
+    model: fauxModel(),
+    streamFn: (selected) => pushMessage(
+      selected,
+      [{ type: "text", text: "advanced" }],
+      "stop",
+      usage(),
+    ),
+  });
+  let replayProviderCalls = 0;
+  await assert.rejects(
+    run(defined, "fail once", {
+      ensureRuntime: false,
+      conversation,
+      model: fauxModel(),
+      durable: { runId: "failed-conversation", store },
+      streamFn: () => {
+        replayProviderCalls++;
+        throw new Error("must not spend");
+      },
+    }),
+    /cave_durable_conversation_mismatch/,
+  );
+  assert.equal(replayProviderCalls, 0);
+});
+
+test("conversation lock wins before a competing durable journal is created", async (t) => {
+  const { dir, store } = await scratchStore();
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const conversation = createConversation();
+  const defined = agent({
+    id: "durable-conversation-lock",
+    instructions: "Answer.",
+    model: auto(),
+    sandbox: "fixture",
+  });
+  const active = stream(defined, "first", {
+    ensureRuntime: false,
+    conversation,
+    model: fauxModel(),
+    durable: { runId: "conversation-lock-owner", store },
+    streamFn: () => { throw new Error("must not be called"); },
+  });
+  assert.equal((await active.next()).value.type, "run_start");
+  await assert.rejects(
+    run(defined, "second", {
+      ensureRuntime: false,
+      conversation,
+      model: fauxModel(),
+      durable: { runId: "conversation-lock-loser", store },
+      streamFn: () => { throw new Error("must not be called"); },
+    }),
+    /cave_conversation_in_use/,
+  );
+  assert.deepEqual(await store.load("conversation-lock-loser"), []);
+  await active.return();
+});
+
+test("crash after read intent but before I/O safely re-drives exactly once", async (t) => {
+  const { dir, store } = await scratchStore();
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const faulting = failOnceAt(store, "tool_intent", "after");
+  const conversation = createConversation();
+  const invocations = [];
+  const defined = effectAgent("durable-read-redrive", "read", (_input, _signal, context) => {
+    invocations.push(context?.durable);
+    return "read-value";
+  });
+  let firstProviderCalls = 0;
+  await assert.rejects(
+    run(defined, "read", {
+      ensureRuntime: false,
+      conversation,
+      model: fauxModel(),
+      durable: { runId: "read-intent-crash", store: faulting },
+      streamFn: (selected) => {
+        firstProviderCalls++;
+        return pushMessage(
+          selected,
+          [{ type: "toolCall", id: "read-1", name: "act", arguments: {} }],
+          "toolUse",
+          usage(),
+        );
+      },
+    }),
+    /simulated_tool_intent_after_failure/,
+  );
+  assert.equal(firstProviderCalls, 1);
+  assert.equal(invocations.length, 0);
+
+  let resumeProviderCalls = 0;
+  const result = await run(defined, "read", {
+    ensureRuntime: false,
+    model: fauxModel(),
+    durable: { runId: "read-intent-crash", store: faulting },
+    streamFn: (selected) => {
+      resumeProviderCalls++;
+      return resumeProviderCalls === 1
+        ? pushMessage(
+          selected,
+          [{ type: "toolCall", id: "read-1", name: "act", arguments: {} }],
+          "toolUse",
+          usage(),
+        )
+        : pushMessage(selected, [{ type: "text", text: "done" }], "stop", usage());
+    },
+  });
+  assert.equal(result.text, "done");
+  assert.equal(invocations.length, 1);
+  assert.equal(invocations[0].resumed, true);
+  assert.match(invocations[0].idempotencyKey, /^cave-[0-9a-f]{64}$/);
+  const completed = (await journalLines(dir, "read-intent-crash"))
+    .find((event) => event.type === "run_completed");
+  assert.equal(completed.conversation.sessionId, conversation.sessionId);
+  let replayProviderCalls = 0;
+  await run(defined, "read", {
+    ensureRuntime: false,
+    conversation,
+    model: fauxModel(),
+    durable: { runId: "read-intent-crash", store: faulting },
+    streamFn: () => {
+      replayProviderCalls++;
+      throw new Error("completed replay must not spend");
+    },
+  });
+  assert.equal(replayProviderCalls, 0);
+  assert.equal(
+    (JSON.stringify(conversation.snapshot().messages).match(/"text":"read"/g) ?? []).length,
+    1,
+  );
+});
+
+test("crash after a write effect but before settlement fails closed without re-execution", async (t) => {
+  const { dir, store } = await scratchStore();
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const faulting = failOnceAt(store, "tool_settled", "before");
+  let effects = 0;
+  const defined = effectAgent("durable-write-uncertain", "write", () => {
+    effects++;
+    return "written";
+  });
+  await assert.rejects(
+    run(defined, "write", {
+      ensureRuntime: false,
+      model: fauxModel(),
+      durable: { runId: "write-settlement-crash", store: faulting },
+      streamFn: (selected) => pushMessage(
+        selected,
+        [{ type: "toolCall", id: "write-1", name: "act", arguments: {} }],
+        "toolUse",
+        usage(),
+      ),
+    }),
+    /simulated_tool_settled_before_failure/,
+  );
+  assert.equal(effects, 1);
+
+  let resumedProviderCalls = 0;
+  await assert.rejects(
+    run(defined, "write", {
+      ensureRuntime: false,
+      model: fauxModel(),
+      durable: { runId: "write-settlement-crash", store: faulting },
+      streamFn: () => {
+        resumedProviderCalls++;
+        throw new Error("must not call provider for uncertain write");
+      },
+    }),
+    /cave_durable_tool_effect_uncertain:act:write-1/,
+  );
+  assert.equal(resumedProviderCalls, 0);
+  assert.equal(effects, 1);
+});
+
+test("idempotent redrive receives the same key and explicit resume identity", async (t) => {
+  const { dir, store } = await scratchStore();
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const faulting = failOnceAt(store, "tool_settled", "before");
+  const invocations = [];
+  const defined = effectAgent("durable-idempotent-redrive", "idempotent", (_input, _signal, context) => {
+    invocations.push(context?.durable);
+    return "accepted";
+  });
+  await assert.rejects(
+    run(defined, "submit", {
+      ensureRuntime: false,
+      model: fauxModel(),
+      durable: { runId: "idempotent-settlement-crash", store: faulting },
+      streamFn: (selected) => pushMessage(
+        selected,
+        [{ type: "toolCall", id: "submit-1", name: "act", arguments: {} }],
+        "toolUse",
+        usage(),
+      ),
+    }),
+    /simulated_tool_settled_before_failure/,
+  );
+  assert.equal(invocations.length, 1);
+
+  let calls = 0;
+  const result = await run(defined, "submit", {
+    ensureRuntime: false,
+    model: fauxModel(),
+    durable: { runId: "idempotent-settlement-crash", store: faulting },
+    streamFn: (selected) => {
+      calls++;
+      return calls === 1
+        ? pushMessage(
+          selected,
+          [{ type: "toolCall", id: "submit-1", name: "act", arguments: {} }],
+          "toolUse",
+          usage(),
+        )
+        : pushMessage(selected, [{ type: "text", text: "done" }], "stop", usage());
+    },
+  });
+  assert.equal(result.text, "done");
+  assert.equal(invocations.length, 2);
+  assert.equal(invocations[0].resumed, false);
+  assert.equal(invocations[1].resumed, true);
+  assert.equal(invocations[0].idempotencyKey, invocations[1].idempotencyKey);
+});
+
+test("durable settlement replays exactly and argument mismatch stops before another provider call", async (t) => {
+  const { dir, store } = await scratchStore();
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const faulting = failOnceAt(store, "tool_settled", "after");
+  let effects = 0;
+  const defined = effectAgent(
+    "durable-settled-replay",
+    "write",
+    ({ key }) => {
+      effects++;
+      return `value:${key}`;
+    },
+    schema.object({ key: schema.string() }),
+  );
+  await assert.rejects(
+    run(defined, "lookup", {
+      ensureRuntime: false,
+      model: fauxModel(),
+      durable: { runId: "settled-tool-replay", store: faulting },
+      streamFn: (selected) => pushMessage(
+        selected,
+        [{ type: "toolCall", id: "lookup-1", name: "act", arguments: { key: "a" } }],
+        "toolUse",
+        usage(),
+      ),
+    }),
+    /simulated_tool_settled_after_failure/,
+  );
+  assert.equal(effects, 1);
+
+  let calls = 0;
+  let replayContext = "";
+  const result = await run(defined, "lookup", {
+    ensureRuntime: false,
+    model: fauxModel(),
+    durable: { runId: "settled-tool-replay", store: faulting },
+    streamFn: (selected, context) => {
+      calls++;
+      if (calls === 1) {
+        return pushMessage(
+          selected,
+          [{ type: "toolCall", id: "lookup-1", name: "act", arguments: { key: "a" } }],
+          "toolUse",
+          usage(),
+        );
+      }
+      replayContext = JSON.stringify(context.messages);
+      return pushMessage(selected, [{ type: "text", text: "done" }], "stop", usage());
+    },
+  });
+  assert.equal(result.text, "done");
+  assert.match(replayContext, /value:a/);
+  assert.equal(effects, 1);
+
+  const { dir: mismatchDir, store: mismatchBase } = await scratchStore();
+  t.after(() => rm(mismatchDir, { recursive: true, force: true }));
+  const mismatchStore = failOnceAt(mismatchBase, "tool_settled", "after");
+  await assert.rejects(
+    run(defined, "lookup mismatch", {
+      ensureRuntime: false,
+      model: fauxModel(),
+      durable: { runId: "settled-tool-mismatch", store: mismatchStore },
+      streamFn: (selected) => pushMessage(
+        selected,
+        [{ type: "toolCall", id: "lookup-2", name: "act", arguments: { key: "a" } }],
+        "toolUse",
+        usage(),
+      ),
+    }),
+    /simulated_tool_settled_after_failure/,
+  );
+  assert.equal(effects, 2);
+  let mismatchProviderCalls = 0;
+  await assert.rejects(
+    run(defined, "lookup mismatch", {
+      ensureRuntime: false,
+      model: fauxModel(),
+      durable: { runId: "settled-tool-mismatch", store: mismatchStore },
+      streamFn: (selected) => {
+        mismatchProviderCalls++;
+        return pushMessage(
+          selected,
+          [{ type: "toolCall", id: "lookup-2", name: "act", arguments: { key: "b" } }],
+          "toolUse",
+          usage(),
+        );
+      },
+    }),
+    /cave_durable_tool_replay_mismatch:act:lookup-2/,
+  );
+  assert.equal(mismatchProviderCalls, 1);
+  assert.equal(effects, 2);
+});
+
+test("durable replay preserves output-schema failure without re-executing tool", async (t) => {
+  const { dir, store } = await scratchStore();
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const faulting = failOnceAt(store, "tool_settled", "after");
+  let effects = 0;
+  const defined = agent({
+    id: "durable-output-schema",
+    instructions: "Call act, then answer.",
+    model: auto(),
+    sandbox: "fixture",
+    tools: [tool({
+      name: "act",
+      description: "Return malformed output.",
+      input: schema.object({}),
+      output: schema.object({ value: schema.string() }),
+      effect: "read",
+      allowRepeat: true,
+      execute() {
+        effects += 1;
+        return { value: 7, secret: "RAW_DURABLE_VALUE" };
+      },
+    })],
+  });
+  await assert.rejects(
+    run(defined, "validate", {
+      ensureRuntime: false,
+      model: fauxModel(),
+      durable: { runId: "durable-output-schema", store: faulting },
+      streamFn: (selected) => pushMessage(
+        selected,
+        [{ type: "toolCall", id: "output-1", name: "act", arguments: {} }],
+        "toolUse",
+        usage(),
+      ),
+    }),
+    /simulated_tool_settled_after_failure/,
+  );
+  assert.equal(effects, 1);
+  const settlement = (await journalLines(dir, "durable-output-schema"))
+    .find((entry) => entry.type === "tool_settled");
+  assert.equal(settlement.outcome, "threw");
+  assert.match(settlement.error.message, /cave_tool_output_schema_mismatch:act/);
+
+  let providerCalls = 0;
+  let observed = "";
+  const result = await run(defined, "validate", {
+    ensureRuntime: false,
+    model: fauxModel(),
+    durable: { runId: "durable-output-schema", store: faulting },
+    streamFn: (selected, context) => {
+      providerCalls += 1;
+      if (providerCalls === 1) {
+        return pushMessage(
+          selected,
+          [{ type: "toolCall", id: "output-1", name: "act", arguments: {} }],
+          "toolUse",
+          usage(),
+        );
+      }
+      observed = JSON.stringify(context.messages);
+      return pushMessage(selected, [{ type: "text", text: "done" }], "stop", usage());
+    },
+  });
+  assert.equal(result.text, "done");
+  assert.equal(effects, 1);
+  assert.match(observed, /cave_tool_output_schema_mismatch:act/);
+  assert.doesNotMatch(observed, /RAW_DURABLE_VALUE/);
+});
+
+test("sandbox worker receives the same bounded durable identity on safe redrive", async (t) => {
+  const { dir, store } = await scratchStore();
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const faulting = failOnceAt(store, "tool_settled", "before");
+  const runId = "sandbox-durable-redrive";
+  await assert.rejects(
+    run(sandboxAgent, "context", {
+      ensureRuntime: false,
+      entryPath: "tests/fixtures/sandbox-agent.mjs",
+      model: fauxModel(),
+      durable: { runId, store: faulting },
+      streamFn: (selected) => pushMessage(
+        selected,
+        [{ type: "toolCall", id: "sandbox-1", name: "durable_context", arguments: {} }],
+        "toolUse",
+        usage(),
+      ),
+    }),
+    /simulated_tool_settled_before_failure/,
+  );
+  const intent = (await journalLines(dir, runId)).find((event) => event.type === "tool_intent");
+  assert.ok(intent);
+
+  let calls = 0;
+  let resumedMessages;
+  const result = await run(sandboxAgent, "context", {
+    ensureRuntime: false,
+    entryPath: "tests/fixtures/sandbox-agent.mjs",
+    model: fauxModel(),
+    durable: { runId, store: faulting },
+    streamFn: (selected, context) => {
+      calls++;
+      if (calls === 1) {
+        return pushMessage(
+          selected,
+          [{ type: "toolCall", id: "sandbox-1", name: "durable_context", arguments: {} }],
+          "toolUse",
+          usage(),
+        );
+      }
+      resumedMessages = context.messages;
+      return pushMessage(selected, [{ type: "text", text: "done" }], "stop", usage());
+    },
+  });
+  assert.equal(result.text, "done");
+  const toolResult = resumedMessages.find((message) => message.role === "toolResult");
+  const returned = JSON.parse(toolResult.content[0].text);
+  assert.deepEqual(returned, {
+    toolCallId: "sandbox-1",
+    durable: {
+      idempotencyKey: intent.idempotencyKey,
+      resumed: true,
+    },
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -505,7 +1332,11 @@ test("a subagent's settled calls journal through the root and restore on resume"
   const lines = await journalLines(dir, runId);
   const settled = lines.filter((entry) => entry.type === "call_settled");
   assert.equal(settled.length, 2);
-  assert.deepEqual(settled.map((entry) => entry.path).sort(), ["", "delegate"]);
+  assert.equal(settled.some((entry) => entry.path === ""), true);
+  assert.equal(
+    settled.some((entry) => /^delegate:[0-9a-f]{64}$/.test(entry.path)),
+    true,
+  );
 
   const result = await run(parent, "delegate this", {
     ensureRuntime: false,
@@ -529,14 +1360,24 @@ test("a subagent's settled calls journal through the root and restore on resume"
 // 3/11/14 — journaled money is validated, never trusted).
 // ---------------------------------------------------------------------------
 
-const { analyzeJournal, DURABLE_JOURNAL_VERSION } = await import("../dist/durable.js");
+const {
+  analyzeJournal,
+  durableToolArgsSHA256,
+  durableToolIdempotencyKey,
+  DURABLE_JOURNAL_VERSION,
+  validateReplayReceipt,
+} = await import("../dist/durable.js");
+const { BudgetMeter, ReceiptRecorder, normalizeRunBudget } = await import("../dist/budget.js");
+const DEFINITION_SHA256 = "d".repeat(64);
 
 const IDENTITY = {
   runId: "u1",
-  definitionSha256: "d",
+  agentId: "a",
+  definitionSha256: DEFINITION_SHA256,
   input: "i",
   denomination: "none",
   budgetMax: undefined,
+  budgetInitial: undefined,
   budgetSha256: "none",
 };
 
@@ -549,7 +1390,7 @@ function startedLine(overrides = {}) {
     type: "run_started",
     runId: "u1",
     agentId: "a",
-    definitionSha256: "d",
+    definitionSha256: DEFINITION_SHA256,
     input: "i",
     sessionId: "s",
     denomination: "none",
@@ -560,7 +1401,7 @@ function startedLine(overrides = {}) {
   });
 }
 
-function settledLine(overrides = {}) {
+function settledLine(overrides = {}, eventOverrides = {}) {
   return line({
     type: "call_settled",
     path: "",
@@ -578,7 +1419,52 @@ function settledLine(overrides = {}) {
       usageBasis: "provider_reported",
       ...overrides,
     },
+    ...eventOverrides,
   });
+}
+
+function callStartedLine() {
+  return line({
+    type: "call_started",
+    path: "",
+    kind: "model",
+    provider: "anthropic",
+    model: "m",
+  });
+}
+
+function replayReceipt(call, meter) {
+  const recorder = new ReceiptRecorder();
+  if (call !== undefined) recorder.recordCall(call);
+  return recorder.build({
+    runId: "u1",
+    agentId: "a",
+    stopReason: "complete",
+    meter,
+  });
+}
+
+function replayResult(receipt, overrides = {}) {
+  return {
+    runId: "u1",
+    agentId: "a",
+    text: "done",
+    claimBasis: "inferred",
+    usageBasis: "provider_reported",
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    reasoningTokens: 0,
+    costUsd: 0,
+    priceBasis: "public_catalog",
+    stopReason: "complete",
+    capBreached: false,
+    overspent: 0,
+    toolCalls: [],
+    receipt,
+    ...overrides,
+  };
 }
 
 test("analyzeJournal fails closed on malformed journaled money", () => {
@@ -588,6 +1474,13 @@ test("analyzeJournal fails closed on malformed journaled money", () => {
   );
   assert.throws(
     () => analyzeJournal([startedLine(), settledLine({ inputTokens: -5 })], IDENTITY),
+    /cave_durable_journal_corrupt/,
+  );
+  assert.throws(
+    () => analyzeJournal([
+      startedLine(),
+      line({ type: "tranche", amount: 0, reason: "invalid", atCall: 0 }),
+    ], IDENTITY),
     /cave_durable_journal_corrupt/,
   );
   assert.throws(
@@ -603,10 +1496,364 @@ test("analyzeJournal fails closed on malformed journaled money", () => {
   );
 });
 
+test("analyzeJournal reconciles each settled call to its budget denomination", () => {
+  const budgetSha256 = "b".repeat(64);
+  const usdIdentity = {
+    ...IDENTITY,
+    denomination: "usd",
+    budgetMax: 10,
+    budgetSha256,
+  };
+  const usdStart = startedLine({
+    denomination: "usd",
+    budgetMax: 10,
+    budgetSha256,
+  });
+  assert.throws(
+    () => analyzeJournal([
+      usdStart,
+      callStartedLine(),
+      settledLine({ estimatedUsd: 5 }, { settledAmount: 1 }),
+    ], usdIdentity),
+    /cave_durable_journal_corrupt/,
+  );
+  assert.throws(
+    () => analyzeJournal([
+      usdStart,
+      callStartedLine(),
+      settledLine({ estimatedUsd: 5 }),
+    ], usdIdentity),
+    /cave_durable_journal_corrupt/,
+  );
+  const usd = analyzeJournal([
+    usdStart,
+    callStartedLine(),
+    settledLine({ estimatedUsd: 5 }, { settledAmount: 5 }),
+  ], usdIdentity);
+  assert.equal(usd.resume.priorSettled, 5);
+
+  const tokenIdentity = {
+    ...IDENTITY,
+    denomination: "tokens",
+    budgetMax: 20,
+    budgetSha256,
+  };
+  const tokenStart = startedLine({
+    denomination: "tokens",
+    budgetMax: 20,
+    budgetSha256,
+  });
+  assert.throws(
+    () => analyzeJournal([
+      tokenStart,
+      callStartedLine(),
+      settledLine({}, { settledAmount: 1 }),
+    ], tokenIdentity),
+    /cave_durable_journal_corrupt/,
+  );
+  const tokens = analyzeJournal([
+    tokenStart,
+    callStartedLine(),
+    settledLine({}, { settledAmount: 12 }),
+  ], tokenIdentity);
+  assert.equal(tokens.resume.priorSettled, 12);
+
+  assert.throws(
+    () => analyzeJournal([
+      startedLine(),
+      callStartedLine(),
+      settledLine({}, { settledAmount: 12 }),
+    ], IDENTITY),
+    /cave_durable_journal_corrupt/,
+  );
+});
+
+test("analyzeJournal accepts only canonical unavailable and internally consistent usage", () => {
+  const budgetSha256 = "b".repeat(64);
+  const identity = {
+    ...IDENTITY,
+    denomination: "tokens",
+    budgetMax: 20,
+    budgetSha256,
+  };
+  const start = startedLine({
+    denomination: "tokens",
+    budgetMax: 20,
+    budgetSha256,
+  });
+  const unavailable = {
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    reasoningTokens: 0,
+    estimatedUsd: 0,
+    unpriced: true,
+    usageBasis: "unavailable",
+  };
+  const state = analyzeJournal([
+    start,
+    callStartedLine(),
+    settledLine(unavailable, { settledAmount: 20 }),
+  ], identity);
+  assert.equal(state.resume.priorSettled, 20);
+  for (const invalid of [
+    { ...unavailable, inputTokens: 1 },
+    { ...unavailable, unpriced: false },
+    { reasoningTokens: 3, outputTokens: 2 },
+    { unpriced: true, estimatedUsd: 1 },
+  ]) {
+    assert.throws(
+      () => analyzeJournal([
+        start,
+        callStartedLine(),
+        settledLine(invalid, { settledAmount: 20 }),
+      ], identity),
+      /cave_durable_journal_corrupt/,
+    );
+  }
+});
+
+test("durable replay delegates complete receipt validation to the canonical parser", () => {
+  assert.throws(
+    () => validateReplayReceipt({
+      schema: "caveman.agent.run-receipt.v1",
+      runId: "u1",
+      agentId: "a",
+      basis: "estimated_list_price_subtotal",
+      claimBasis: "inferred",
+      totalEstimatedUsd: 0,
+      totalTokens: 0,
+    }, "u1", "a"),
+    /cave_durable_journal_corrupt/,
+  );
+  const child = {
+    schema: "caveman.agent.run-receipt.v1",
+    runId: "duplicate",
+    agentId: "child",
+    basis: "estimated_list_price_subtotal",
+    claimBasis: "inferred",
+    stopReason: "complete",
+    denomination: "none",
+    capBreached: false,
+    overspent: 0,
+    totalEstimatedUsd: 0,
+    totalTokens: 0,
+    unpriced: false,
+    calls: [],
+    tools: [],
+    subagents: [],
+    tranches: [],
+    breakers: [],
+    compactions: [],
+  };
+  assert.throws(
+    () => validateReplayReceipt({
+      ...child,
+      runId: "u1",
+      agentId: "a",
+      subagents: [child, { ...child }],
+    }, "u1", "a"),
+    /cave_durable_journal_corrupt/,
+  );
+});
+
 test("analyzeJournal fails closed on a changed budget contract digest", () => {
   assert.throws(
-    () => analyzeJournal([startedLine({ budgetSha256: "other" })], IDENTITY),
+    () => analyzeJournal([startedLine({ budgetSha256: "e".repeat(64) })], IDENTITY),
     /cave_durable_budget_changed/,
+  );
+});
+
+test("analyzeJournal fails closed on a changed root agent identity", () => {
+  assert.throws(
+    () => analyzeJournal([startedLine({ agentId: "other" })], IDENTITY),
+    /cave_durable_agent_mismatch/,
+  );
+});
+
+test("analyzeJournal exact-validates tool identity and terminal reconciliation", () => {
+  const argsSha256 = durableToolArgsSHA256({});
+  const intent = {
+    type: "tool_intent",
+    path: "",
+    toolCallId: "tool-1",
+    name: "act",
+    effect: "read",
+    argsSha256,
+    idempotencyKey: durableToolIdempotencyKey({
+      runId: "u1",
+      path: "",
+      toolCallId: "tool-1",
+      name: "act",
+      argsSha256,
+    }),
+  };
+  assert.throws(
+    () => analyzeJournal([startedLine(), line({ ...intent, unknown: true })], IDENTITY),
+    /cave_durable_journal_corrupt/,
+  );
+  assert.throws(
+    () => analyzeJournal([
+      startedLine(),
+      line(intent),
+      line({ type: "run_completed", result: {} }),
+    ], IDENTITY),
+    /completed run crosses uncheckpointed tool intent/,
+  );
+  assert.throws(
+    () => analyzeJournal([
+      startedLine(),
+      line({ type: "call_started", path: "", kind: "model", provider: "p", model: "m" }),
+      settledLine({ provider: "other" }),
+    ], IDENTITY),
+    /call settlement identity mismatch/,
+  );
+});
+
+test("a failed terminal cannot hide an unsettled provider intent", () => {
+  const receipt = new ReceiptRecorder().build({
+    runId: "u1",
+    agentId: "a",
+    stopReason: "complete",
+    meter: undefined,
+  });
+  assert.throws(
+    () => analyzeJournal([
+      startedLine(),
+      callStartedLine(),
+      line({
+        type: "run_failed",
+        code: "cave_agent_run_failed",
+        message: "provider failed",
+        receipt,
+      }),
+    ], IDENTITY),
+    /failed run crosses unsettled provider intent/,
+  );
+});
+
+test("terminal replay reconciles result, receipt, and journal economics", () => {
+  const zeroReceipt = replayReceipt();
+  assert.throws(
+    () => analyzeJournal([
+      startedLine(),
+      line({
+        type: "run_completed",
+        result: replayResult(zeroReceipt, { inputTokens: 100, costUsd: 999 }),
+      }),
+    ], IDENTITY),
+    /replayed result usage disagrees with receipt/,
+  );
+  assert.throws(
+    () => analyzeJournal([
+      startedLine(),
+      callStartedLine(),
+      settledLine(),
+      line({ type: "run_completed", result: replayResult(zeroReceipt) }),
+    ], IDENTITY),
+    /terminal receipt disagrees with journaled provider usage/,
+  );
+
+  const call = {
+    provider: "anthropic",
+    model: "m",
+    inputTokens: 10,
+    outputTokens: 2,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    reasoningTokens: 0,
+    estimatedUsd: 0.01,
+    unpriced: false,
+    usageBasis: "provider_reported",
+    clampedOutputTokens: undefined,
+  };
+  const receipt = replayReceipt(call);
+  const forgedCall = { ...call, provider: "openai", model: "forged" };
+  assert.throws(
+    () => analyzeJournal([
+      startedLine(),
+      callStartedLine(),
+      settledLine(),
+      line({
+        type: "run_completed",
+        result: replayResult(replayReceipt(forgedCall), {
+          inputTokens: 10,
+          outputTokens: 2,
+          costUsd: 0.01,
+        }),
+      }),
+    ], IDENTITY),
+    /terminal receipt call evidence disagrees with journal/,
+  );
+  const completed = analyzeJournal([
+    startedLine(),
+    callStartedLine(),
+    settledLine(),
+    line({
+      type: "run_completed",
+      result: replayResult(receipt, { inputTokens: 10, outputTokens: 2, costUsd: 0.01 }),
+    }),
+  ], IDENTITY);
+  assert.equal(completed.status, "completed");
+  assert.equal(Object.isFrozen(completed.result.receipt), true);
+  assert.equal(Object.isFrozen(completed.result.receipt.calls), true);
+  assert.equal(Object.isFrozen(completed.result.receipt.calls[0]), true);
+  assert.throws(() => completed.result.receipt.calls.push(call), TypeError);
+
+  const failed = analyzeJournal([
+    startedLine(),
+    line({
+      type: "run_failed",
+      code: "cave_agent_run_failed",
+      message: "failed",
+      receipt: zeroReceipt,
+    }),
+  ], IDENTITY);
+  assert.equal(failed.status, "failed");
+  assert.equal(Object.isFrozen(failed.receipt), true);
+  assert.equal(Object.isFrozen(failed.receipt.calls), true);
+  assert.throws(() => failed.receipt.calls.push(call), TypeError);
+
+  const budgetSha256 = "b".repeat(64);
+  const originalBudget = {
+    ...IDENTITY,
+    denomination: "tokens",
+    budgetMax: 100,
+    budgetInitial: 100,
+    budgetSha256,
+  };
+  const widened = new BudgetMeter(normalizeRunBudget({ maxTokens: 200 }));
+  const hold = widened.reserve(150, 1);
+  widened.settle(hold, 150);
+  const unavailable = {
+    provider: "anthropic",
+    model: "m",
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    reasoningTokens: 0,
+    estimatedUsd: 0,
+    unpriced: true,
+    usageBasis: "unavailable",
+    clampedOutputTokens: undefined,
+  };
+  const widenedReceipt = replayReceipt(unavailable, widened);
+  assert.throws(
+    () => analyzeJournal([
+      startedLine({ denomination: "tokens", budgetMax: 100, budgetSha256 }),
+      callStartedLine(),
+      settledLine(unavailable, { settledAmount: 150 }),
+      line({
+        type: "run_completed",
+        result: replayResult(widenedReceipt, {
+          usageBasis: "unavailable",
+          priceBasis: "unpriced",
+        }),
+      }),
+    ], originalBudget),
+    /terminal receipt max disagrees with journal contract/,
   );
 });
 
@@ -647,6 +1894,95 @@ test("abandoned intents consume no call ceiling and no double-count", () => {
   ], IDENTITY);
   assert.equal(state.resume.priorRootModelCalls, 0);
   assert.equal(state.resume.possibleDoubleCountCalls, 0);
+
+  const compactionAbandoned = analyzeJournal([
+    startedLine(),
+    callStartedLine(),
+    settledLine(),
+    line({
+      type: "call_started",
+      path: "",
+      kind: "compaction",
+      provider: "anthropic",
+      model: "m",
+    }),
+    line({ type: "call_abandoned", path: "" }),
+  ], IDENTITY);
+  assert.equal(compactionAbandoned.resume.priorRootModelCalls, 1);
+  assert.equal(compactionAbandoned.resume.priorRootCompactions, 1);
+  assert.equal(compactionAbandoned.resume.priorRootMeterCalls, 2);
+});
+
+test("resume restores the exact compaction and retry reservation watermark", () => {
+  const budgetSha256 = "b".repeat(64);
+  const identity = {
+    ...IDENTITY,
+    denomination: "tokens",
+    budgetMax: 100,
+    budgetSha256,
+  };
+  const start = startedLine({
+    denomination: "tokens",
+    budgetMax: 100,
+    budgetSha256,
+  });
+  const state = analyzeJournal([
+    start,
+    line({ type: "meter_call", path: "", atCall: 1 }),
+    line({
+      type: "call_started",
+      path: "",
+      kind: "compaction",
+      provider: "anthropic",
+      model: "m",
+    }),
+    settledLine({}, { kind: "compaction", settledAmount: 12 }),
+    line({ type: "meter_call", path: "", atCall: 2 }),
+    callStartedLine(),
+    // The retry shares the logical call intent but takes a second real meter
+    // reservation, so it advances the explicit watermark independently.
+    line({ type: "meter_call", path: "", atCall: 3 }),
+    settledLine({}, { settledAmount: 12 }),
+  ], identity);
+  assert.equal(state.status, "pending");
+  assert.equal(state.resume.priorRootModelCalls, 1);
+  assert.equal(state.resume.priorRootCompactions, 1);
+  assert.equal(state.resume.priorRootMeterCalls, 3);
+
+  const meter = new BudgetMeter(normalizeRunBudget({ maxTokens: 100, initialTokens: 50 }));
+  meter.restorePrior({
+    settled: state.resume.priorSettled,
+    calls: state.resume.priorRootMeterCalls,
+    tranches: state.resume.priorTranches,
+  });
+  assert.equal(meter.release(10, "resumed checkpoint").atCall, 3);
+
+  assert.throws(
+    () => analyzeJournal([
+      start,
+      line({ type: "meter_call", path: "", atCall: 1 }),
+      line({ type: "meter_call", path: "", atCall: 1 }),
+    ], identity),
+    /cave_durable_journal_corrupt/,
+  );
+
+  // Legacy journals have no explicit reservation events. Their safe fallback
+  // still includes both model and compaction intents rather than model calls
+  // alone, which was the original regression.
+  const legacy = analyzeJournal([
+    start,
+    callStartedLine(),
+    settledLine({}, { settledAmount: 12 }),
+    line({
+      type: "call_started",
+      path: "",
+      kind: "compaction",
+      provider: "anthropic",
+      model: "m",
+    }),
+    settledLine({}, { kind: "compaction", settledAmount: 12 }),
+  ], identity);
+  assert.equal(legacy.resume.priorRootMeterCalls, 2);
 });
 
 // ---------------------------------------------------------------------------

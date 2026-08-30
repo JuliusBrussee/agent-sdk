@@ -1,0 +1,30 @@
+{
+  "name": "@caveman-ai/example-adapter-vercel-ai-sdk",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "cavemanSample": {
+    "workflow": "evidence-only procurement recommendation through exact Vercel AI SDK adapter",
+    "minNodeMajor": 22
+  },
+  "scripts": {
+    "build": "tsc --noEmit",
+    "live": "node --experimental-strip-types src/live.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run build && node --experimental-strip-types --test tests/*.test.ts"
+  },
+  "dependencies": {
+    "@caveman-ai/adapter-kit": "file:../../../packages/adapter-kit",
+    "@caveman-ai/adapter-vercel-ai-sdk": "file:../../../packages/adapters/vercel-ai-sdk",
+    "@caveman-ai/agent": "file:../../../packages/agent",
+    "ai": "7.0.84"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "typescript": "5.9.3",
+    "zod": "4.4.3"
+  }
+}

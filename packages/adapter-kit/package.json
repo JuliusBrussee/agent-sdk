@@ -33,6 +33,7 @@
     "README.md"
   ],
   "scripts": {
+    "bench": "node bench/lifecycle.mjs",
     "test": "node --test tests/*.test.mjs"
   },
   "engines": {

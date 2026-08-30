@@ -302,6 +302,22 @@ test("source graph ignores loader examples inside comments and strings", async (
   assert.deepEqual(manifest.map((item) => item.name), ["src/entry.mjs"]);
 });
 
+test("source graph ignores ordinary runtime URL parsing", async (t) => {
+  const root = await mkdtemp(resolve(tmpdir(), "cave-runtime-url-"));
+  t.after(async () => {
+    const { rm } = await import("node:fs/promises");
+    await rm(root, { recursive: true, force: true });
+  });
+  const entry = resolve(root, "server.mjs");
+  await writeFile(entry, [
+    'const request = { url: "/healthz" };',
+    'export const parsed = new URL(request.url ?? "/", "http://support.local");',
+    'export const external = new URL(request.url, process.env.BASE_URL ?? "https://example.test");',
+  ].join("\n"));
+  const manifest = await sourceGraphManifest(root, [entry]);
+  assert.deepEqual(manifest.map((item) => item.name), ["server.mjs"]);
+});
+
 test("source graph checks computed loaders inside template expressions", async (t) => {
   const root = await mkdtemp(resolve(tmpdir(), "cave-source-template-expression-"));
   t.after(async () => {

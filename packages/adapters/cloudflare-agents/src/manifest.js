@@ -1,0 +1,37 @@
+import { defineAdapterManifest } from "@caveman-ai/adapter-kit";
+
+export const adapterManifest = defineAdapterManifest({
+  schemaVersion: 2,
+  id: "cloudflare-agents",
+  packageName: "@caveman-ai/adapter-cloudflare-agents",
+  adapterVersion: "0.1.0",
+  upstream: { package: "agents", version: "0.22.0" },
+  capabilities: {
+    runLifecycle: "experimental",
+    modelInterception: "unsupported",
+    contextTransformation: "unsupported",
+    toolObservation: "unsupported",
+    usageAccounting: "unsupported",
+    streaming: "unsupported",
+    abort: "unsupported",
+    replayAwareness: "unsupported",
+    durableObservation: "unsupported",
+    tracing: "unsupported",
+    compilation: "unsupported",
+  },
+  lifecycle: {
+    "run.started": "observe",
+    "run.completed": "observe",
+    "run.error": "observe",
+    "model.requested": "unsupported",
+    "model.responded": "unsupported",
+    "model.error": "unsupported",
+    "tool.proposed": "unsupported",
+    "tool.started": "unsupported",
+    "tool.completed": "unsupported",
+    "tool.error": "unsupported",
+    "checkpoint.committed": "unsupported",
+    "session.committed": "unsupported",
+  },
+  certifications: {},
+});

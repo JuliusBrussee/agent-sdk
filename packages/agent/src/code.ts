@@ -31,11 +31,12 @@ import {
   CODING_CACHE_INPUT_TOKEN_HIT_TARGET,
   analyzeProviderCachePerformance,
 } from "./cache-planner/performance.js";
-import { agent, type AgentDefinition } from "./definition.js";
 import {
-  applyAgentEnvironment,
-  type AgentEnvironment,
-} from "./agent-environment.js";
+  agent,
+  applyAgentDefinitionTransforms,
+  type AgentDefinition,
+  type AgentDefinitionTransform,
+} from "./definition.js";
 import {
   memory as defineMemory,
   memoryTTLMilliseconds,
@@ -242,8 +243,8 @@ export interface CodingAgentOptions {
   speculativeToolCalls?: boolean;
   /** Optional bounded disk retention for command output evicted from memory. */
   commandSessionSpill?: CommandSessionSpillOptions;
-  /** Preloaded AGENTS.md, Agent Skills, and Agent Plugins environment. */
-  environment?: AgentEnvironment;
+  /** Trusted product adapters applied before direct/programmatic tool finalization. */
+  definitionTransforms?: readonly AgentDefinitionTransform[];
   /** Provider-visible composite tool name. Product wrappers may brand it; default `caveman_code`. */
   programmaticToolName?: string;
   /** `true` enables durable ambient memory with safe local defaults. */
@@ -389,9 +390,10 @@ export function createCodingAgent(options: CodingAgentOptions = {}): CodingAgent
         }),
     tools: codingTools(workspace, caps, record, toolSet, commandSessions),
   });
-  const directDefinition = options.environment === undefined
-    ? baseDefinition
-    : applyAgentEnvironment(baseDefinition, options.environment);
+  const directDefinition = applyAgentDefinitionTransforms(
+    baseDefinition,
+    options.definitionTransforms ?? [],
+  );
   const programmaticTools = toolMode === "programmatic"
     ? createProgrammaticToolRuntime(directDefinition, {
       speculate: options.speculativeToolCalls ?? true,
@@ -591,10 +593,18 @@ function codingTools(
             ...(signal === undefined ? {} : { signal }),
           });
         } catch (error) {
+          const reason = error instanceof Error ? error.message : String(error);
+          // Only a launch/spawn failure means the shell is unavailable. A
+          // rejected argument or an exhausted session pool must say so, or the
+          // model retries forever against a healthy host.
           throw new Error(
-            `caveman-code: host command shell is not available: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
+            reason.startsWith("command_session_launch_invalid") ||
+              reason.startsWith("command_session_spawn_failed")
+              ? `caveman-code: host command shell is not available: ${reason}`
+              : reason === "command_session_limit_reached"
+                ? `caveman-code: all ${BASH_SESSION_MAX_SESSIONS} command sessions are still live; ` +
+                  "kill one with bash({action:\"kill\",sessionId}) before starting another"
+                : `caveman-code: bash could not start: ${reason}`,
           );
         }
         const waited = await waitForCommandSession(

@@ -16,5 +16,4 @@
     · skip the lock: `npm run dev` and `npm run ticket` work fine
       uncached, and a prefix this small is also cheap to read cold
 
-  This check runs before the eval gate, so it fires even while your
-  evals are unapproved.
+  This check runs before any model-backed eval, so failure spends $0.

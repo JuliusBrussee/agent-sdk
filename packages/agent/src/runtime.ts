@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { randomBytes } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { readFileSync, realpathSync } from "node:fs";
 import {
   copyFile,
   mkdir,
@@ -21,15 +21,18 @@ import {
   type AssistantMessage,
   type CacheRetention,
   type Context,
+  type ImageContent,
   type Model,
   type Models,
   type ProviderHeaders,
+  type TextContent,
   type TSchema,
 } from "@earendil-works/pi-ai";
 import { builtinModels } from "@earendil-works/pi-ai/providers/all";
 import { Value } from "typebox/value";
 import {
   agentDefinitionSHA256,
+  parseAnyCaveBuildLock,
   toolDefinitionSHA256,
   type AnyCaveBuildLock,
   type CavePlan,
@@ -61,19 +64,25 @@ import {
   DURABLE_JOURNAL_VERSION,
   DiskDurableStore,
   DurableJournal,
+  DurableToolCoordinator,
   analyzeJournal,
+  durableConversationCheckpoint,
+  durableConversationMessagesSHA256,
   validateDurableRunId,
+  type DurableConversationCheckpoint,
   type DurableJournalState,
   type DurableResumeState,
   type DurableRunOptions,
   type DurableStore,
+  type DurableToolInvocation,
 } from "./durable.js";
 import {
   BreakerState,
   normalizeRunBreakers,
   type RunBreakers,
 } from "./breakers.js";
-import { catalogSearchCeiling } from "./catalog.js";
+import { CATALOG_SHA256, catalogSearchCeiling } from "./catalog.js";
+import { executeConnectTool } from "./connect.js";
 import { findPackageJSONCompat } from "./node-compat.js";
 import {
   SUMMARY_SCHEMA_VERSION,
@@ -89,7 +98,10 @@ import {
   validateContextSummaryTransition,
   type ContextSummary,
 } from "./compaction.js";
-import { validateAgentGraph } from "./definition-graph.js";
+import {
+  graphHasUnverifiedToolSchemaSemantics,
+  validateAgentGraph,
+} from "./definition-graph.js";
 import { agentDirSkills } from "./dir-loader.js";
 import {
   lowerAgentContext,
@@ -98,7 +110,11 @@ import {
   validateProviderUsage,
   type ValidatedProviderUsage,
 } from "./execution-kernel.js";
-import { PI_ADAPTER_VERSION, PI_UPSTREAM_VERSION } from "./runtime-identity.js";
+import {
+  FRAMEWORK_VERSION,
+  PI_ADAPTER_VERSION,
+  PI_UPSTREAM_VERSION,
+} from "./runtime-identity.js";
 import type { AgentDefinition } from "./index.js";
 import {
   appendRuntimeContextSegment,
@@ -116,6 +132,12 @@ import {
   type ToolExecutionContext,
 } from "./primitives.js";
 import {
+  executeRawTool,
+  settleToolOutput,
+  settledToolOutputFromTransport,
+  type SettledToolOutput,
+} from "./tool-internal.js";
+import {
   ProgrammaticSpeculationScope,
   programmaticToolMetadata,
 } from "./programmatic-tools.js";
@@ -130,6 +152,10 @@ import {
 import { networkIsolatedNode } from "./sandbox-network.js";
 import { killProcessTree, portableInvocation } from "./portable-process.js";
 import { expandSourceGraph } from "./source-graph.js";
+import {
+  normalizeAgentInput,
+  type AgentInput,
+} from "./input.js";
 
 // Compaction needs room for its own same-model call plus useful work after the
 // rewrite. Waiting until the next call no longer fits makes that inequality
@@ -578,14 +604,133 @@ function validateModelRouteDecision(decision: ModelCallRouteDecision): void {
   }
 }
 
-function valueHasImage(value: unknown, seen = new Set<object>(), depth = 0): boolean {
-  if (depth > 12 || value === null || typeof value !== "object") return false;
-  if (seen.has(value)) return false;
-  seen.add(value);
-  if (Array.isArray(value)) return value.some((item) => valueHasImage(item, seen, depth + 1));
-  const record = value as Record<string, unknown>;
-  if (record["type"] === "image" || record["type"] === "image_url") return true;
-  return Object.values(record).some((item) => valueHasImage(item, seen, depth + 1));
+function messageHasImage(value: unknown): boolean {
+  if (!isRecord(value) || !Array.isArray(value.content)) return false;
+  return value.content.some((block) =>
+    isRecord(block) && block.type === "image" &&
+    typeof block.data === "string" && typeof block.mimeType === "string"
+  );
+}
+
+const MULTIMODAL_DURABLE_INPUT_PREFIX = "\u0000cave.multimodal.v1:";
+// Durable turn checkpoints admit 8 MiB of canonical message data. Keep 1 MiB
+// for assistant/tool output so oversized inline media refuses before traffic.
+const DURABLE_MULTIMODAL_PROMPT_MAX_BYTES = 7 * 1024 * 1024;
+
+interface PreparedRuntimeInput {
+  readonly contextInput: unknown;
+  readonly durableInput: string;
+  readonly memoryText: string;
+  readonly promptContent?: readonly (TextContent | ImageContent)[];
+  readonly inputProviderVisibleBytes?: number;
+  readonly inputOpaque?: boolean;
+}
+
+/**
+ * Pi accepts ordered text plus inline base64 images. Every other normalized
+ * part fails before run state, budget reservation, journal writes, or provider
+ * traffic. URL retrieval stays provider/host-owned and is never smuggled into
+ * this adapter.
+ */
+function prepareRuntimeInput(input: AgentInput, durable: boolean): PreparedRuntimeInput {
+  const normalized = normalizeAgentInput(input);
+  if (typeof input === "string") {
+    if (durable && input.startsWith(MULTIMODAL_DURABLE_INPUT_PREFIX)) {
+      throw new Error("cave_durable_input_reserved_prefix");
+    }
+    if (durable) assertDurableProspectiveConversation([], input, undefined);
+    return Object.freeze({
+      contextInput: input,
+      durableInput: input,
+      memoryText: input,
+    });
+  }
+
+  const unsupported: number[] = [];
+  const promptContent: (TextContent | ImageContent)[] = [];
+  const contextParts: unknown[] = [];
+  const memoryText: string[] = [];
+  let providerVisibleBytes = 64;
+  let hasImages = false;
+  for (let index = 0; index < normalized.parts.length; index++) {
+    const part = normalized.parts[index]!;
+    if (part.type === "text") {
+      promptContent.push(Object.freeze({ type: "text", text: part.text }));
+      contextParts.push(Object.freeze({ type: "text", text: part.text }));
+      memoryText.push(part.text);
+      providerVisibleBytes += Buffer.byteLength(part.text, "utf8") + 32;
+      continue;
+    }
+    if (part.type === "image" && part.source.type === "base64") {
+      hasImages = true;
+      const contentSHA256 = sha256(part.source.data);
+      promptContent.push(Object.freeze({
+        type: "image",
+        data: part.source.data,
+        mimeType: part.mimeType,
+      }));
+      contextParts.push(Object.freeze({
+        type: "image",
+        mimeType: part.mimeType,
+        source: Object.freeze({
+          type: "base64-sha256",
+          bytes: Buffer.byteLength(part.source.data, "base64"),
+          sha256: contentSHA256,
+        }),
+      }));
+      memoryText.push(`[image:${part.mimeType}:sha256:${contentSHA256}]`);
+      providerVisibleBytes += Buffer.byteLength(part.source.data, "utf8") +
+        Buffer.byteLength(part.mimeType, "utf8") + 64;
+      continue;
+    }
+    unsupported.push(index);
+  }
+  if (unsupported.length > 0) {
+    throw new Error(`cave_input_unsupported:pi:${unsupported.join(",")}`);
+  }
+  const contextInput = Object.freeze({
+    schemaVersion: 1,
+    parts: Object.freeze(contextParts),
+  });
+  const canonicalContextInput = stableStringify(contextInput);
+  const prepared = Object.freeze({
+    contextInput,
+    durableInput: `${MULTIMODAL_DURABLE_INPUT_PREFIX}${sha256(canonicalContextInput)}`,
+    memoryText: memoryText.join("\n").slice(0, 1_000_000),
+    promptContent: Object.freeze(promptContent),
+    ...(hasImages ? {
+      inputProviderVisibleBytes: Math.max(
+        providerVisibleBytes,
+        Buffer.byteLength(canonicalContextInput, "utf8"),
+      ),
+      inputOpaque: true,
+    } : {}),
+  });
+  if (durable) assertDurableProspectiveConversation([], input, prepared);
+  return prepared;
+}
+
+function assertDurableProspectiveConversation(
+  previous: readonly unknown[],
+  input: AgentInput,
+  prepared: PreparedRuntimeInput | undefined,
+): void {
+  const userMessage = prepared?.promptContent === undefined
+    ? { role: "user", content: input as string, timestamp: Number.MAX_SAFE_INTEGER }
+    : {
+      role: "user",
+      content: [...prepared.promptContent],
+      timestamp: Number.MAX_SAFE_INTEGER,
+    };
+  let serialized: string;
+  try {
+    serialized = JSON.stringify([...previous, userMessage]);
+  } catch {
+    throw new Error("cave_durable_input_bytes_limit");
+  }
+  if (Buffer.byteLength(serialized, "utf8") > DURABLE_MULTIMODAL_PROMPT_MAX_BYTES) {
+    throw new Error("cave_durable_input_bytes_limit");
+  }
 }
 
 export interface RunOptions {
@@ -688,12 +833,12 @@ export interface RunOptions {
   budgetController?: BudgetController;
   /**
    * What happens when the budget binds. `"stop"` is the default:
-   * stop between calls, return partial work plus the receipt. A handler instead
-   * lets the embedding application decide — ask a human, check a policy, top up
-   * a tranche through the budget controller, or stop. It is called between calls with
-   * nothing in flight, and never mid-tool-side-effect.
+   * stop between calls, return partial work plus the receipt. A handler may
+   * release one numeric tranche through the budget controller or stop. It sees
+   * only meter figures, runs between calls with nothing in flight, and never
+   * receives prompt, output, tool, or model content.
    *
-   * Escalating never crosses `max`: a handler that asks for more than the
+   * Continuation never crosses `max`: a handler that asks for more than the
    * contract allows throws at the release, exactly as a checkpoint would.
    */
   onBudgetExhausted?: "stop" | BudgetExhaustionHandler;
@@ -774,9 +919,13 @@ export interface RunOptions {
    * (no `context_ready`).
    * The journal contains message content (a resume needs the conversation),
    * unlike the content-blind receipt — the disk store writes 0o700/0o600.
-   * v1 scope: not combinable with `conversation` or `maxCostUsd` (use
-   * `budget`), root runs only (subagent evidence still journals through the
-   * root), and breaker windows restart on resume.
+   * A supplied `conversation` is bound by exact session and base-message
+   * digest. Completed replay synchronizes it without appending input twice;
+   * concurrent reuse fails before journal mutation. Tool intents fsync before
+   * I/O. Read tools may redrive, idempotent tools receive a stable key, and an
+   * unmatched write/external intent fails closed. Still not combinable with
+   * `maxCostUsd` (use `budget`); durability is a root-run contract and child
+   * evidence shares its journal. Breaker windows restart on resume.
    */
   durable?: DurableRunOptions;
   model?: Model<Api>;
@@ -1117,6 +1266,10 @@ type InternalExecutionContext = {
    * tagged with their agent path; only the root journals turn state.
    */
   readonly journal?: DurableJournal;
+  /** Collision-resistant logical invocation path used only by durable tools. */
+  readonly durablePath?: readonly string[];
+  /** One root-owned coordinator shared by direct, nested, child, and sandbox paths. */
+  readonly durableTools?: DurableToolCoordinator;
 };
 
 type AppliedPlan = {
@@ -1302,7 +1455,7 @@ export function createHarnessToolExecutor(input: {
     throw new Error("cave_claude_subagent_bridge_unavailable");
   }
   const sandboxExecute = input.definition.sandbox === "required"
-    ? (params: unknown, signal?: AbortSignal) => executeSandboxedTool(
+    ? (params: unknown, signal?: AbortSignal, context?: ToolExecutionContext) => executeSandboxedTool(
       input.sandbox.entryPath!,
       input.sandbox.sourceFiles,
       input.sandbox.stagingRoot!,
@@ -1313,12 +1466,15 @@ export function createHarnessToolExecutor(input: {
       input.sandboxProfile,
       input.sandbox.executionContext,
       toolDefinitionSHA256(input.tool),
+      input.tool.output !== undefined,
       signal,
+      context,
     )
     : undefined;
   const executor = toPiTool(
     input.tool,
     sandboxExecute,
+    sandboxExecute === undefined ? undefined : "sandbox",
     new Set<string>(),
     input.engineBin,
     input.providerDefinition,
@@ -1329,7 +1485,7 @@ export function createHarnessToolExecutor(input: {
 
 export async function runAgent(
   definition: AgentDefinition,
-  input: string,
+  input: AgentInput,
   options: RunOptions = {},
 ): Promise<RunResult> {
   rejectInternalRunOptions(options);
@@ -1346,10 +1502,62 @@ export async function runAgent(
   );
 }
 
+/**
+ * Execute one already-compiled Pi Cave Build from an embedded application.
+ *
+ * This is deliberately narrower than the package-internal runner: callers may
+ * provide an immutable lock, never a candidate plan or route decision. Runtime
+ * validates lock bytes, agent definition, exact runtime/adapter/upstream,
+ * catalog, Context IR, selected plan, and (when transforms exist) live Engine
+ * registry before provider traffic. Source/eval freshness remains the build
+ * command's deployment gate; runtime behavior is rebound independently here.
+ */
+export async function runLockedAgent(
+  definition: AgentDefinition,
+  input: AgentInput,
+  buildValue: AnyCaveBuildLock,
+  options: RunOptions = {},
+): Promise<RunResult> {
+  rejectInternalRunOptions(options);
+  if (graphHasUnverifiedToolSchemaSemantics(definition)) {
+    throw new Error("cave_tool_schema_semantics_unverified");
+  }
+  const build = parseAnyCaveBuildLock(buildValue);
+  if (build.harness.id !== "pi") throw new Error("cave_locked_run_harness_unsupported");
+  if (build.runtime.caveman_version !== FRAMEWORK_VERSION) {
+    throw new Error("cave_locked_run_runtime_mismatch");
+  }
+  if (build.catalog_sha256 !== CATALOG_SHA256) {
+    throw new Error("cave_locked_run_catalog_mismatch");
+  }
+  if (build.runtime.external_provenance_sha256 !== "") {
+    throw new Error("cave_locked_run_external_provenance_unsupported");
+  }
+  if (build.agent_definition_sha256 !== agentDefinitionSHA256(definition)) {
+    throw new Error("cave_locked_run_agent_definition_mismatch");
+  }
+  if (build.selected_plan.segment_routes.length > 0) {
+    const registrySHA256 = await engineRegistrySHA256(options.engineBin, options.signal);
+    if (registrySHA256 !== build.runtime.transform_registry_sha256) {
+      throw new Error("cave_locked_run_transform_registry_mismatch");
+    }
+  }
+  const selected = build.selected_plan;
+  const lockedDefinition: AgentDefinition = Object.freeze({
+    ...definition,
+    model: selected.model,
+    reasoning: selected.reasoning === "none" ? "off" : selected.reasoning,
+  });
+  return runAgentInternal(lockedDefinition, input, {
+    ...options,
+    lockedBuild: build,
+  });
+}
+
 /** Package-internal compiler/CLI path. Not exported from package entry point. */
 export async function runAgentInternal(
   definition: AgentDefinition,
-  input: string,
+  input: AgentInput,
   options: InternalRunOptions,
 ): Promise<RunResult> {
   return runAgentWithOptions(
@@ -1369,7 +1577,7 @@ export async function runAgentInternal(
 /** Package-internal streaming compiler/CLI path. Not exported from package entry point. */
 export function streamAgentInternalOptions(
   definition: AgentDefinition,
-  input: string,
+  input: AgentInput,
   options: InternalRunOptions,
 ): AsyncGenerator<CavemanRunEvent> {
   return streamAgentWithOptions(
@@ -1388,7 +1596,7 @@ export function streamAgentInternalOptions(
 
 async function runAgentWithOptions(
   definition: AgentDefinition,
-  input: string,
+  input: AgentInput,
   options: InternalRunOptions,
   executionContext: InternalExecutionContext,
 ): Promise<RunResult> {
@@ -1413,7 +1621,7 @@ async function runAgentWithOptions(
 
 export function streamAgent(
   definition: AgentDefinition,
-  input: string,
+  input: AgentInput,
   options: RunOptions = {},
 ): AsyncGenerator<CavemanRunEvent> {
   rejectInternalRunOptions(options);
@@ -1432,10 +1640,13 @@ export function streamAgent(
 
 function streamAgentWithOptions(
   definition: AgentDefinition,
-  input: string,
+  input: AgentInput,
   options: InternalRunOptions,
   executionContext: InternalExecutionContext,
 ): AsyncGenerator<CavemanRunEvent> {
+  // Snapshot caller input at stream() invocation, before consumer-controlled
+  // delay to first next(). This closes stream-specific mutation/TOCTOU.
+  const preparedInput = prepareRuntimeInput(input, options.durable !== undefined);
   const controller = new AbortController();
   const signal = options.signal === undefined
     ? controller.signal
@@ -1443,6 +1654,7 @@ function streamAgentWithOptions(
   const inner = streamAgentInternal(
     definition,
     input,
+    preparedInput,
     { ...options, signal },
     executionContext,
   );
@@ -1466,7 +1678,8 @@ function streamAgentWithOptions(
 
 async function* streamAgentInternal(
   definition: AgentDefinition,
-  input: string,
+  input: AgentInput,
+  preparedInput: PreparedRuntimeInput,
   options: InternalRunOptions,
   executionContext: InternalExecutionContext,
 ): AsyncGenerator<CavemanRunEvent> {
@@ -1477,7 +1690,11 @@ async function* streamAgentInternal(
     throw new Error("cave_cache_retention_invalid");
   }
   if (options.lockedBuild !== undefined && options.candidatePlan !== undefined) {
-    throw new Error("cave_execution_authorization_ambiguous");
+    throw new Error("cave_execution_mode_ambiguous");
+  }
+  if ((options.lockedBuild !== undefined || options.durable !== undefined) &&
+      graphHasUnverifiedToolSchemaSemantics(definition)) {
+    throw new Error("cave_tool_schema_semantics_unverified");
   }
   // Budget shape is settled before anything else happens: an ambiguous or
   // unbounded budget must fail at run() start, not after the first dollar.
@@ -1521,38 +1738,62 @@ async function* streamAgentInternal(
       buildSha256: options.lockedBuild.build_sha256,
       planSha256: options.lockedBuild.plan_sha256,
     };
+  let preparedLockedContext: LoweredContext | undefined;
+  if (options.lockedBuild !== undefined) {
+    preparedLockedContext = await lowerAgentContext(definition, {
+      ...(options.rootDir === undefined ? {} : { rootDir: options.rootDir }),
+    });
+    prepareLockedHarnessExecution({
+      build: options.lockedBuild,
+      harness: "pi",
+      adapterVersion: PI_ADAPTER_VERSION,
+      upstreamVersion: PI_UPSTREAM_VERSION,
+      agentId: definition.id,
+      contextIR: preparedLockedContext.ir,
+      plan: options.lockedBuild.selected_plan,
+    });
+  }
   // --- Durable execution pre-work (own substrate; issue #218) -------------
   if (options.durable !== undefined) {
     validateDurableRunId(options.durable.runId);
     if (executionContext.depth > 0 || executionContext.journal !== undefined) {
       throw new Error("cave_durable_subagent_unsupported: durability is a root-run contract; subagents journal through the root");
     }
-    if (options.conversation !== undefined) {
-      throw new Error("cave_durable_conversation_unsupported: a durable run owns its conversation state; combining durable with RunOptions.conversation is not yet supported");
-    }
     if (options.maxCostUsd !== undefined) {
       throw new Error("cave_durable_max_cost_usd_unsupported: use RunOptions.budget with durable runs");
     }
-    if (options.lockedBuild !== undefined || options.candidatePlan !== undefined) {
-      throw new Error("cave_durable_locked_build_unsupported");
+    if (options.candidatePlan !== undefined) {
+      throw new Error("cave_durable_candidate_plan_unsupported");
+    }
+    if (options.conversation !== undefined && options.sessionId !== undefined &&
+        options.sessionId !== options.conversation.sessionId) {
+      throw new Error("cave_durable_session_mismatch");
     }
   }
+  let conversation: ConversationTransaction | undefined;
   let journal: DurableJournal | undefined;
+  let durableTools: DurableToolCoordinator | undefined;
   let durableStore: DurableStore | undefined;
   let durableRelease: (() => Promise<void>) | undefined;
   let durableResume: DurableResumeState | undefined;
   let durableReplay: DurableJournalState | undefined;
   let durableSessionId: string | undefined;
+  let durableTerminalPersisted = false;
   const runId = options.durable?.runId ?? crypto.randomUUID();
   if (options.durable !== undefined) {
+    if (options.conversation !== undefined) {
+      // Lock public conversation before journal identity is minted. A losing
+      // concurrent run leaves neither intent nor terminal error behind.
+      conversation = beginConversation(options.conversation);
+    }
     durableStore = options.durable.store ?? new DiskDurableStore(
       resolve(options.rootDir ?? process.cwd(), ".caveman", "runs", "durable"),
     );
-    durableRelease = await durableStore.acquire(runId);
     // Everything between taking the lock and entering the main try must
     // release on failure, or the runId stays locked against this process's
     // own live pid for its lifetime.
     try {
+      durableRelease = await durableStore.acquire(runId);
       // The identity digest covers the FULL normalized budget contract —
       // staged initial, exhaustion mode, output floor, compaction config —
       // not just denomination and max.
@@ -1562,13 +1803,29 @@ async function* streamAgentInternal(
       const budgetSha256 = normalizedRunBudget === undefined
         ? "none"
         : sha256(stableStringify(JSON.parse(JSON.stringify(normalizedRunBudget))));
-      const analyzed = analyzeJournal(await durableStore.load(runId), {
+      const durableDefinitionSHA256 = options.lockedBuild === undefined
+        ? executionContext.rootDefinitionSha256
+        : sha256(stableStringify({
+          definition_sha256: executionContext.rootDefinitionSha256,
+          build_sha256: options.lockedBuild.build_sha256,
+          plan_sha256: options.lockedBuild.plan_sha256,
+        }));
+      const durableLines = await durableStore.load(runId);
+      const analyzed = analyzeJournal(durableLines, {
         runId,
-        definitionSha256: executionContext.rootDefinitionSha256,
-        input,
+        agentId: definition.id,
+        definitionSha256: durableDefinitionSHA256,
+        input: preparedInput.durableInput,
         denomination: budgetMeter?.denomination ?? "none",
         budgetMax: budgetMeter?.max,
+        budgetInitial: budgetMeter?.released,
         budgetSha256,
+        ...(options.sessionId === undefined && conversation === undefined
+          ? {}
+          : { sessionId: conversation?.sessionId ?? options.sessionId }),
+        ...(conversation === undefined
+          ? {}
+          : { conversationSessionId: conversation.sessionId }),
       });
       if (analyzed.status === "completed" || analyzed.status === "failed") {
         // A terminal journal replays without spending: the runId is an
@@ -1579,33 +1836,59 @@ async function* streamAgentInternal(
         durableRelease = undefined;
         durableReplay = analyzed;
       } else {
-        journal = new DurableJournal(durableStore, runId);
+        journal = new DurableJournal(durableStore, runId, durableLines);
         if (analyzed.status === "pending") {
           durableResume = analyzed.resume;
+          if (conversation !== undefined) {
+            const checkpoint = durableResume.conversation;
+            if (checkpoint === undefined || checkpoint.sessionId !== conversation.sessionId ||
+                durableConversationMessagesSHA256(conversation.messages) !==
+                  checkpoint.messagesSha256) {
+              throw new Error("cave_durable_conversation_mismatch");
+            }
+            conversation.messages = structuredClone(durableResume.messages) as AgentMessage[];
+            conversation.fingerprint = undefined;
+            conversation.cachePrefixDigest = undefined;
+            conversation.providerFrozen = undefined;
+            conversation.originalFrozen = undefined;
+          }
           // Prior attempts' settled money is spent money: preload it before
           // anything can reserve, so a resume can never re-spend what the
           // journal already accounts for.
           budgetMeter?.restorePrior({
             settled: durableResume.priorSettled,
-            calls: durableResume.priorRootModelCalls,
+            calls: durableResume.priorRootMeterCalls,
             tranches: durableResume.priorTranches,
           });
         }
         durableSessionId = durableResume?.sessionId ??
-          options.sessionId ?? `${definition.id}-${runId}`;
+          conversation?.sessionId ?? options.sessionId ?? `${definition.id}-${runId}`;
         if (durableResume === undefined) {
+          if (conversation !== undefined) {
+            assertDurableProspectiveConversation(
+              conversation.messages,
+              input,
+              preparedInput,
+            );
+          }
+          const conversationCheckpoint = conversation === undefined
+            ? undefined
+            : durableConversationCheckpoint(conversation.sessionId, conversation.messages);
           journal.emit({
             v: DURABLE_JOURNAL_VERSION,
             at: journal.now(),
             type: "run_started",
             runId,
             agentId: definition.id,
-            definitionSha256: executionContext.rootDefinitionSha256,
-            input,
+            definitionSha256: durableDefinitionSHA256,
+            input: preparedInput.durableInput,
             sessionId: durableSessionId,
             denomination: budgetMeter?.denomination ?? "none",
             budgetMax: budgetMeter?.max,
             budgetSha256,
+            ...(conversationCheckpoint === undefined
+              ? {}
+              : { conversation: conversationCheckpoint }),
             pid: process.pid,
           });
         } else {
@@ -1619,10 +1902,15 @@ async function* streamAgentInternal(
           });
         }
         await journal.flush();
+        durableTools = new DurableToolCoordinator(journal, durableResume?.replayTools);
       }
     } catch (error) {
       await durableRelease?.().catch(() => undefined);
       await durableStore.close(runId).catch(() => undefined);
+      if (conversation !== undefined) {
+        endConversation(conversation);
+        conversation = undefined;
+      }
       throw error;
     }
   }
@@ -1631,7 +1919,8 @@ async function* streamAgentInternal(
   // events tagged with its path so each real provider call settles exactly
   // once in exactly one journal event.
   const activeJournal = journal ?? executionContext.journal;
-  const journalPath = executionContext.agentPath.join("/");
+  const activeDurableTools = durableTools ?? executionContext.durableTools;
+  const journalPath = (executionContext.durablePath ?? executionContext.agentPath).join("/");
   let journaledTranches = durableResume?.priorTranches.length ?? 0;
   const journalNewTranches = (): void => {
     if (journal === undefined || budgetMeter === undefined) return;
@@ -1648,7 +1937,16 @@ async function* streamAgentInternal(
       });
     }
   };
-  let conversation: ConversationTransaction | undefined;
+  const journalMeterCall = (meter: BudgetMeter): void => {
+    if (activeJournal === undefined) return;
+    activeJournal.emit({
+      v: DURABLE_JOURNAL_VERSION,
+      at: activeJournal.now(),
+      type: "meter_call",
+      path: journalPath,
+      atCall: meter.calls,
+    });
+  };
   let activeAbort: (() => void) | undefined;
   let activeExecution: Promise<void> | undefined;
   let sandboxSourceSnapshot: SandboxSourceSnapshot | undefined;
@@ -1710,8 +2008,37 @@ async function* streamAgentInternal(
     yield { type: "run_start", runId, agentId: definition.id };
     if (durableReplay !== undefined) {
       if (durableReplay.status === "completed") {
+        if (conversation !== undefined) {
+          const checkpoint = durableReplay.conversation;
+          const base = durableReplay.baseConversation;
+          if (checkpoint === undefined || base === undefined ||
+              checkpoint.sessionId !== conversation.sessionId) {
+            throw new Error("cave_durable_conversation_mismatch");
+          }
+          const current = durableConversationMessagesSHA256(conversation.messages);
+          if (current === base.messagesSha256) {
+            commitConversation(conversation, {
+              messages: structuredClone(checkpoint.messages) as AgentMessage[],
+              fingerprint: undefined,
+              cachePrefixDigest: undefined,
+              providerFrozen: undefined,
+              originalFrozen: undefined,
+            });
+          } else if (current !== checkpoint.messagesSha256) {
+            throw new Error("cave_durable_conversation_mismatch");
+          }
+        }
+        releaseConversation();
         yield { type: "run_end", runId, result: durableReplay.result as RunResult };
       } else if (durableReplay.status === "failed") {
+        if (conversation !== undefined) {
+          const base = durableReplay.baseConversation;
+          if (base === undefined || base.sessionId !== conversation.sessionId ||
+              durableConversationMessagesSHA256(conversation.messages) !== base.messagesSha256) {
+            throw new Error("cave_durable_conversation_mismatch");
+          }
+        }
+        releaseConversation();
         yield {
           type: "run_error",
           runId,
@@ -1722,11 +2049,13 @@ async function* streamAgentInternal(
       }
       return;
     }
+    activeDurableTools?.assertResumeSafe();
     if (options.budgetController !== undefined && budgetMeter !== undefined) {
       bindBudgetController(options.budgetController, budgetMeter);
       boundController = options.budgetController;
     }
-    if (durableResume !== undefined && durableResume.messages.length > 0) {
+    if (durableResume !== undefined && conversation === undefined &&
+        durableResume.messages.length > 0) {
       // Rebuild the crashed run's conversation to its last completed turn.
       // This is the ordinary multi-turn shape — a committed conversation
       // re-entering a run — with the journal standing in for the process
@@ -1737,7 +2066,7 @@ async function* streamAgentInternal(
       if (restoredState === undefined) throw new Error("cave_conversation_invalid");
       restoredState.messages = structuredClone(durableResume.messages) as AgentMessage[];
       conversation = beginConversation(restored);
-    } else {
+    } else if (conversation === undefined) {
       conversation = options.conversation === undefined
         ? undefined
         : beginConversation(options.conversation);
@@ -1748,30 +2077,26 @@ async function* streamAgentInternal(
         "cave_tool_sandbox_entry_required: sandboxed tools need RunOptions.entryPath; use sandbox fixture only for trusted tests",
       );
     }
-    if (options.lockedBuild !== undefined) {
-      const lockedContext = await lowerAgentContext(definition, {
-        ...(options.rootDir === undefined ? {} : { rootDir: options.rootDir }),
-      });
-      prepareLockedHarnessExecution({
-        build: options.lockedBuild,
-        harness: "pi",
-        adapterVersion: PI_ADAPTER_VERSION,
-        upstreamVersion: PI_UPSTREAM_VERSION,
-        agentId: definition.id,
-        contextIR: lockedContext.ir,
-        plan: options.lockedBuild.selected_plan,
-      });
-    }
     const originalConversationMessages = conversation?.messages.slice() ?? [];
     const initialConversationSegments = conversationTextSegments(originalConversationMessages);
+    const initialConversationMedia = conversationMediaSegments(originalConversationMessages);
     const lowered = await lowerAgentContext(definition, {
       ...(options.rootDir === undefined ? {} : { rootDir: options.rootDir }),
-      runtimeSegments: initialConversationSegments.map((segment) => ({
-        id: segment.id,
-        kind: segment.kind,
-        body: new TextEncoder().encode(segment.text),
-      })),
-      input,
+      runtimeSegments: [
+        ...initialConversationSegments.map((segment) => ({
+          id: segment.id,
+          kind: segment.kind,
+          body: new TextEncoder().encode(segment.text),
+        })),
+        ...initialConversationMedia,
+      ],
+      input: preparedInput.contextInput,
+      ...(preparedInput.inputProviderVisibleBytes === undefined
+        ? {}
+        : { inputProviderVisibleBytes: preparedInput.inputProviderVisibleBytes }),
+      ...(preparedInput.inputOpaque === undefined
+        ? {}
+        : { inputOpaque: preparedInput.inputOpaque }),
     });
     const bill = contextBill(lowered.ir);
     if (efficiencyPlan) enforceSemanticBudgets(
@@ -1846,7 +2171,7 @@ async function* streamAgentInternal(
       options.memory?.engine === memoryEngine;
     const passiveRecall = !ambientMemoryActive
       ? undefined
-      : memoryEngine?.beginTurn({ sessionId, text: input });
+      : memoryEngine?.beginTurn({ sessionId, text: preparedInput.memoryText });
     const invocationTrace = gatewayActive
       ? options.invocationTrace ?? rootInvocationTrace(
         definition.id,
@@ -1957,14 +2282,30 @@ async function* streamAgentInternal(
     // this extended view — same object otherwise, so nothing else changes.
     const executionContextForDescendants: InternalExecutionContext = journal === undefined
       ? executionContext
-      : Object.freeze({ ...executionContext, journal });
+      : Object.freeze({
+        ...executionContext,
+        journal,
+        ...(durableTools === undefined ? {} : { durableTools }),
+        durablePath: executionContext.durablePath ?? Object.freeze([]),
+      });
     const piTools: AgentTool<TSchema>[] = [
       ...definition.tools.map((item) => {
         const providerTool = providerToolDefinition(item, lowered, appliedPlan);
+        const programmaticMetadata = programmaticToolMetadata(item);
+        const connectRuntime = item.runtime?.kind === "caveman-connect"
+          ? item.runtime
+          : undefined;
+        const delegatedExecutionKind = item.runtime?.kind === "subagent"
+          ? "subagent" as const
+          : connectRuntime !== undefined
+          ? "connect" as const
+          : options.entryPath === undefined || definition.sandbox === "host"
+          ? undefined
+          : "sandbox" as const;
         return toPiTool(
           item,
           item.runtime?.kind === "subagent"
-          ? (params, signal) => executeSubagent(
+          ? (params, signal, context) => executeSubagent(
             item,
             params,
             signal,
@@ -1973,12 +2314,15 @@ async function* streamAgentInternal(
             executionContextForDescendants,
             budgetMeter,
             deadlineAt,
+            context?.toolCallId,
           )
+          : connectRuntime !== undefined
+          ? (params, signal) => executeConnectTool(connectRuntime, params, signal)
           // Host mode runs closures in this process by explicit opt-in, so a
           // staged entry path never promotes them into a tool worker.
           : options.entryPath === undefined || definition.sandbox === "host"
           ? undefined
-          : (params, signal) => executeSandboxedTool(
+          : (params, signal, context) => executeSandboxedTool(
             sandboxEntry!,
             sandboxSourceFiles,
             sandboxStagingRoot!,
@@ -1989,8 +2333,11 @@ async function* streamAgentInternal(
             options.sandboxProfile,
             executionContext,
             toolDefinitionSHA256(item),
+            item.output !== undefined,
             signal,
+            context,
           ),
+          delegatedExecutionKind,
           recoveryHandles,
           options.engineBin,
           providerTool,
@@ -2003,15 +2350,39 @@ async function* streamAgentInternal(
               }
               return dispatchNestedTool({ parent: item, ...request });
             },
-          programmaticToolMetadata(item) === undefined
+          item.nestedTools === undefined && programmaticMetadata === undefined
             ? undefined
-            : (toolCallId) => programmaticScopesByToolName.get(item.name)?.finish(toolCallId),
+            : (toolCallId) => {
+              const pending: Promise<unknown>[] = [];
+              const programmatic = programmaticScopesByToolName.get(item.name)?.finish(toolCallId);
+              if (programmatic !== undefined) pending.push(programmatic);
+              const raw = nestedRawSettlementsByParent.get(toolCallId);
+              if (raw !== undefined) pending.push(...raw);
+              return pending.length === 0
+                ? undefined
+                : Promise.allSettled(pending).then(() => undefined);
+            },
+          activeDurableTools,
+          journalPath,
         );
       }),
-      ...(needsRecoveryTool ? [recoveryTool(recoveryHandles, options.engineBin, appliedPlan.trace)] : []),
-      ...(needsToolSearch ? [toolSchemaSearchTool(recoveryHandles, options.engineBin, appliedPlan.trace)] : []),
-      ...(dirSkills === undefined ? [] : [skillLoadTool(dirSkills)]),
-      ...memoryTools,
+      ...(needsRecoveryTool ? [durablePiTool(
+        recoveryTool(recoveryHandles, options.engineBin, appliedPlan.trace),
+        "read", activeDurableTools, journalPath,
+      )] : []),
+      ...(needsToolSearch ? [durablePiTool(
+        toolSchemaSearchTool(recoveryHandles, options.engineBin, appliedPlan.trace),
+        "read", activeDurableTools, journalPath,
+      )] : []),
+      ...(dirSkills === undefined ? [] : [durablePiTool(
+        skillLoadTool(dirSkills), "read", activeDurableTools, journalPath,
+      )]),
+      ...memoryTools.map((tool) => durablePiTool(
+        tool,
+        tool.name === "cave_memory_remember" ? "write" : "read",
+        activeDurableTools,
+        journalPath,
+      )),
     ];
     const originalInstructions = assembleSystemPrompt(definition, lowered);
     const ambiguousCustomAdapter = options.streamFn !== undefined &&
@@ -2186,6 +2557,11 @@ async function* streamAgentInternal(
       effectTail: Promise<void>;
     };
     const nestedSchedulersByParent = new Map<string, NestedScheduler>();
+    // Timed dispatch promises may reject before non-cooperative raw execution
+    // or async output validation settles. Keep those raw settlements separate
+    // so composite finalization can prove quiescence instead of mistaking a
+    // deadline rejection for stopped work.
+    const nestedRawSettlementsByParent = new Map<string, Set<Promise<unknown>>>();
     const scheduleNested = (
       parentToolCallId: string,
       effect: ToolDefinition["effect"],
@@ -2326,26 +2702,66 @@ async function* streamAgentInternal(
         if (dispatchOptions?.signal !== undefined) signals.push(dispatchOptions.signal);
         const combined = AbortSignal.any(signals);
         if (combined.aborted) throw abortSignalError(combined, "cave_nested_tool_aborted");
-        const value = await scheduleNested(parentToolCallId, nested.effect, async () => {
-          if (combined.aborted) throw abortSignalError(combined, "cave_nested_tool_aborted");
-          if (deadlineAt !== undefined && performance.now() >= deadlineAt) {
-            stopReason = "deadline";
-            throw new Error("cave_run_deadline_exceeded");
+        const executeNested = (durable?: DurableToolInvocation) => {
+          const rawSettlement = scheduleNested(
+            parentToolCallId,
+            nested.effect,
+            async () => {
+              if (combined.aborted) {
+                throw abortSignalError(combined, "cave_nested_tool_aborted");
+              }
+              if (deadlineAt !== undefined && performance.now() >= deadlineAt) {
+                stopReason = "deadline";
+                throw new Error("cave_run_deadline_exceeded");
+              }
+              if (budgetMeter?.revoked) throw new Error("cave_budget_revoked");
+              const nestedContext: ToolExecutionContext = Object.freeze({
+                toolCallId: nestedToolCallId,
+                parentToolCallId,
+                ...(durable === undefined ? {} : { durable }),
+                dispatch() {
+                  return Promise.reject(new Error("cave_nested_tool_dispatch_unavailable"));
+                },
+              });
+              const rawValue = nested.runtime?.kind === "subagent"
+                ? executeSubagent(
+                    nested,
+                    args,
+                    combined,
+                    { ...nestedOptions, model },
+                    nestedUsage,
+                    executionContextForDescendants,
+                    budgetMeter,
+                    deadlineAt,
+                    nestedToolCallId,
+                  )
+                : executeRawTool(nested, args, combined, nestedContext);
+              return (await settleToolOutput(nested, await rawValue)).value;
+            },
+          );
+          let rawSettlements = nestedRawSettlementsByParent.get(parentToolCallId);
+          if (rawSettlements === undefined) {
+            rawSettlements = new Set<Promise<unknown>>();
+            nestedRawSettlementsByParent.set(parentToolCallId, rawSettlements);
           }
-          if (budgetMeter?.revoked) throw new Error("cave_budget_revoked");
-          return nested.runtime?.kind === "subagent"
-            ? executeSubagent(
-                nested,
-                args,
-                combined,
-                { ...nestedOptions, model },
-                nestedUsage,
-                executionContextForDescendants,
-                budgetMeter,
-                deadlineAt,
-              )
-            : nested.execute(args, combined);
-        });
+          rawSettlements.add(rawSettlement);
+          void rawSettlement.finally(() => {
+            rawSettlements!.delete(rawSettlement);
+            if (rawSettlements!.size === 0) {
+              nestedRawSettlementsByParent.delete(parentToolCallId);
+            }
+          }).catch(() => undefined);
+          return runWithToolDeadline(() => rawSettlement, nested.timeoutMs);
+        };
+        const value = activeDurableTools === undefined
+          ? await executeNested()
+          : await activeDurableTools.execute({
+            path: journalPath,
+            toolCallId: nestedToolCallId,
+            name: nested.name,
+            effect: nested.effect,
+            args,
+          }, executeNested);
         isError = false;
         eventResult = value;
         if (nested.effect === "write") turnStateChanged = true;
@@ -2367,16 +2783,6 @@ async function* streamAgentInternal(
           result: eventResult,
         });
         wakeQueuedConsumer();
-        if (activeJournal !== undefined) {
-          activeJournal.emit({
-            v: DURABLE_JOURNAL_VERSION,
-            at: activeJournal.now(),
-            type: "tool",
-            name: nested.name,
-            isError,
-          });
-          await activeJournal.flush();
-        }
       }
     };
     const foldNestedOutcomes = (parentToolCallId: string): void => {
@@ -2386,8 +2792,14 @@ async function* streamAgentInternal(
       }
       nestedOutcomesByParent.delete(parentToolCallId);
       nestedSchedulersByParent.delete(parentToolCallId);
+      nestedRawSettlementsByParent.delete(parentToolCallId);
     };
     for (const parent of definition.tools) {
+      // Streaming speculation can execute a nested read before Pi exposes the
+      // parent tool call to its canonical executor. Durable mode keeps one
+      // deterministic parent-intent -> nested-intent order, so those reads
+      // launch through normal dispatch once the parent is active.
+      if (activeDurableTools !== undefined) continue;
       const metadata = programmaticToolMetadata(parent);
       if (metadata?.enabled !== true) continue;
       programmaticScopesByToolName.set(parent.name, new ProgrammaticSpeculationScope(
@@ -2432,6 +2844,14 @@ async function* streamAgentInternal(
         message.usage.input > 0 || message.usage.output > 0 ||
         (message.usage.cacheRead ?? 0) > 0 || (message.usage.cacheWrite ?? 0) > 0
       );
+      // Pi synthesizes a zero-usage error turn when a pre-admission hook
+      // rejects before streamFn/provider I/O. With no pending call there is
+      // nothing to account; recording it would invent an unavailable call.
+      if (pendingCall === undefined && !carriedUsage &&
+          (message.stopReason === "error" || message.stopReason === "aborted")) {
+        finalMessage = message;
+        return;
+      }
       const journalThisSettle = activeJournal !== undefined &&
         !((message.stopReason === "error" || message.stopReason === "aborted") &&
           budgetReservation === undefined && !carriedUsage);
@@ -2591,8 +3011,13 @@ async function* streamAgentInternal(
       context: Parameters<StreamFn>[1],
       streamOptions: Parameters<StreamFn>[2],
     ): Promise<{ selected: Model<Api>; decision?: ModelCallRouteDecision }> => {
-      if (options.modelRouter === undefined) return { selected: current };
-      const hasImages = context.messages.some((message) => valueHasImage(message));
+      const hasImages = context.messages.some((message) => messageHasImage(message));
+      if (options.modelRouter === undefined) {
+        if (hasImages && !current.input.includes("image")) {
+          throw new Error(`cave_model_input_unsupported:${current.provider}/${current.id}:images`);
+        }
+        return { selected: current };
+      }
       const outputTokenCap = Math.min(
         streamOptions?.maxTokens ?? definition.output?.maxTokens ?? Number.MAX_SAFE_INTEGER,
         current.maxTokens,
@@ -2647,6 +3072,10 @@ async function* streamAgentInternal(
       if (options.signal?.aborted) {
         throw options.signal.reason ?? new Error("cave_run_aborted");
       }
+      // A replay identity mismatch is first observable when the model emits
+      // the tool call. Refuse the next provider call immediately instead of
+      // letting Pi treat that mismatch as an ordinary recoverable tool error.
+      activeDurableTools?.assertResumeSafe();
       if (spendFailure) throw spendFailure;
       if (usageFailure) throw usageFailure;
       if (nestedUsage.incomplete) throw new Error("cave_nested_usage_incomplete");
@@ -2674,7 +3103,13 @@ async function* streamAgentInternal(
         refusalPending = true;
         throw new Error("cave_run_stopped");
       }
-      const routed = await resolveModelRoute(activeWorkingModel, "working", context, streamOptions);
+      let routed: Awaited<ReturnType<typeof resolveModelRoute>>;
+      try {
+        routed = await resolveModelRoute(activeWorkingModel, "working", context, streamOptions);
+      } catch (error) {
+        ladderFailure ??= error instanceof Error ? error : new Error(String(error));
+        throw ladderFailure;
+      }
       const selected = routed.selected;
       activeWorkingModel = selected;
       emitModelRoute(routed.decision);
@@ -2712,7 +3147,7 @@ async function* streamAgentInternal(
           if (outcome !== "stop") {
             if (!isRecord(outcome) || typeof outcome.release !== "number" ||
                 typeof outcome.reason !== "string") {
-              throw new Error("cave_budget_escalation_result_invalid");
+              throw new Error("cave_budget_exhaustion_result_invalid");
             }
             budgetMeter.release(outcome.release, outcome.reason);
             decided = plan();
@@ -2909,6 +3344,9 @@ async function* streamAgentInternal(
         // window, and the unmatched intent is what makes resume surface it
         // as a possible double-count instead of forgetting it.
         journalNewTranches();
+        if (decided.reservation !== undefined && budgetMeter !== undefined) {
+          journalMeterCall(budgetMeter);
+        }
         activeJournal.emit({
           v: DURABLE_JOURNAL_VERSION,
           at: activeJournal.now(),
@@ -2927,8 +3365,39 @@ async function* streamAgentInternal(
       // repeats. Receipt events also sum worst-case reserved exposure, so a
       // zero-spend error storm still exhausts its declared allowance. Backoff
       // stays deterministic — a breaker has to be reproducible.
+      const abandonPendingCall = (): void => {
+        const index = pendingCallRecords.indexOf(pendingCall);
+        if (index < 0) return;
+        pendingCallRecords.splice(index, 1);
+        const [legacyReservations] = pendingSpendReservations.splice(index, 1);
+        if (legacyReservations !== undefined) releaseLedgerHolds(legacyReservations);
+        if (activeJournal !== undefined) {
+          // The reservation was cancelled before the provider was reached, so
+          // the journaled intent is closed as unbilled rather than left to
+          // read as a possible double-count on resume.
+          activeJournal.emit({
+            v: DURABLE_JOURNAL_VERSION,
+            at: activeJournal.now(),
+            type: "call_abandoned",
+            path: journalPath,
+          });
+        }
+      };
       if (breakers?.config.retryMaxSpend === undefined || decided.reservation === undefined) {
-        return streamOnce();
+        try {
+          return await streamOnce();
+        } catch (error) {
+          // Rejection before a stream exists is the same proven-unbilled
+          // boundary as an exhausted retry: cancel the hold and close the
+          // durable intent before the terminal failure is recorded.
+          if (pendingCall.reservation !== undefined) {
+            pendingCall.reservationMeter?.cancel(pendingCall.reservation);
+            pendingCall.reservation = undefined;
+            pendingCall.reservationMeter = undefined;
+          }
+          abandonPendingCall();
+          throw error;
+        }
       }
       const retryStopError = (): Error | undefined => {
         if (callSignal?.aborted) {
@@ -2953,29 +3422,15 @@ async function* streamAgentInternal(
         }
         return undefined;
       };
-      const abandonPendingCall = (): void => {
-        const index = pendingCallRecords.indexOf(pendingCall);
-        if (index < 0) return;
-        pendingCallRecords.splice(index, 1);
-        const [legacyReservations] = pendingSpendReservations.splice(index, 1);
-        if (legacyReservations !== undefined) releaseLedgerHolds(legacyReservations);
-        if (activeJournal !== undefined) {
-          // The reservation was cancelled before the provider was reached, so
-          // the journaled intent is closed as unbilled rather than left to
-          // read as a possible double-count on resume.
-          activeJournal.emit({
-            v: DURABLE_JOURNAL_VERSION,
-            at: activeJournal.now(),
-            type: "call_abandoned",
-            path: journalPath,
-          });
-        }
-      };
       return retryModelCall(
         streamOnce,
         breakers,
         pendingCall,
         retryStopError,
+        (meter) => {
+          journalMeterCall(meter);
+          return activeJournal?.flush();
+        },
         abandonPendingCall,
       );
     };
@@ -3071,6 +3526,7 @@ async function* streamAgentInternal(
             emitModelRoute(decision);
             compactionsSpent++;
             if (activeJournal === undefined) return;
+            journalMeterCall(budgetMeter);
             activeJournal.emit({
               v: DURABLE_JOURNAL_VERSION,
               at: activeJournal.now(),
@@ -3085,10 +3541,22 @@ async function* streamAgentInternal(
             // working call's.
             return activeJournal.flush();
           },
+          onAbandoned: () => {
+            if (activeJournal === undefined) return;
+            activeJournal.emit({
+              v: DURABLE_JOURNAL_VERSION,
+              at: activeJournal.now(),
+              type: "call_abandoned",
+              path: journalPath,
+            });
+            // Close the already-flushed intent before the fallback lets the
+            // run continue and possibly complete.
+            return activeJournal.flush();
+          },
           // A compaction is a provider call this run made. Its usage joins the
           // run's own totals so RunResult and the receipt cannot disagree, and
           // so a parent aggregating this child sees the whole cost.
-          accrue: (usage, compactionModel) => {
+          accrue: (usage, compactionModel, settledAmount) => {
             if (usage === undefined) {
               usageFailure ??= new Error("cave_provider_usage_incomplete");
               unpricedCall = true;
@@ -3111,6 +3579,7 @@ async function* streamAgentInternal(
                     unpriced: true,
                     usageBasis: "unavailable",
                   },
+                  ...(budgetMeter === undefined ? {} : { settledAmount }),
                 });
               }
               return;
@@ -3148,13 +3617,7 @@ async function* streamAgentInternal(
                   unpriced: !usage.priced,
                   usageBasis: "provider_reported",
                 },
-                ...(budgetMeter === undefined
-                  ? {}
-                  : {
-                    settledAmount: budgetMeter.denomination === "usd"
-                      ? usage.catalogCostUsd
-                      : usage.totalTokens,
-                  }),
+                ...(budgetMeter === undefined ? {} : { settledAmount }),
               });
             }
           },
@@ -3245,6 +3708,7 @@ async function* streamAgentInternal(
         }
         if (definition.sandbox === "required" &&
             configured.runtime?.kind !== "subagent" &&
+            configured.runtime?.kind !== "caveman-connect" &&
             options.entryPath === undefined) {
           return { block: true, reason: "cave_sandbox_entry_required" };
         }
@@ -3274,6 +3738,13 @@ async function* streamAgentInternal(
             if (speculativeScheduler !== undefined) {
               nestedSchedulersByParent.delete(activation.provisionalParentToolCallId);
               nestedSchedulersByParent.set(toolCall.id, speculativeScheduler);
+            }
+            const speculativeRawSettlements = nestedRawSettlementsByParent.get(
+              activation.provisionalParentToolCallId,
+            );
+            if (speculativeRawSettlements !== undefined) {
+              nestedRawSettlementsByParent.delete(activation.provisionalParentToolCallId);
+              nestedRawSettlementsByParent.set(toolCall.id, speculativeRawSettlements);
             }
           }
         }
@@ -3353,16 +3824,6 @@ async function* streamAgentInternal(
       // after the accounting subscriber so refusalMessage is already set
       // when a synthesized refusal turn arrives here.
       pi.subscribe(async (event) => {
-        if (event.type === "tool_execution_end") {
-          ownJournal.emit({
-            v: DURABLE_JOURNAL_VERSION,
-            at: ownJournal.now(),
-            type: "tool",
-            name: event.toolName,
-            isError: event.isError,
-          });
-          return;
-        }
         if (event.type !== "turn_end") return;
         // The synthesized refusal turn is the runtime declining to spend, not
         // conversation state; committed conversations drop it and so does the
@@ -3407,8 +3868,16 @@ async function* streamAgentInternal(
     // turn boundary (user or tool-result message — analyzeJournal trimmed to
     // one), so `continue()` picks up where the crashed process stopped
     // instead of `prompt()` appending the original input a second time.
-    const resumeContinue = durableResume !== undefined && durableResume.messages.length > 0;
-    const execution = (resumeContinue ? pi.continue() : pi.prompt(input)).catch((error: unknown) => {
+    const resumeContinue = durableResume?.hasCompletedTurn === true;
+    const execution = (resumeContinue
+      ? pi.continue()
+      : preparedInput.promptContent === undefined
+        ? pi.prompt(input as string)
+        : pi.prompt({
+          role: "user" as const,
+          content: [...preparedInput.promptContent],
+          timestamp: Date.now(),
+        })).catch((error: unknown) => {
       terminal = true;
       wake?.();
       wake = undefined;
@@ -3428,6 +3897,7 @@ async function* streamAgentInternal(
     }
     await execution;
     await closeProgrammaticSpeculation();
+    activeDurableTools?.assertReconciled();
     if (efficiencyPlan && reasoningUsageUnavailable) {
       throw new Error("cave_reasoning_usage_unavailable");
     }
@@ -3564,12 +4034,14 @@ async function* streamAgentInternal(
     if (efficiencyPlan) {
       enforceSemanticBudgets(result.contextBill, result.outputTokens, efficiencyPlan);
     }
+    let conversationCommit: Parameters<typeof commitConversation>[1] | undefined;
+    let completedConversation: DurableConversationCheckpoint | undefined;
     if (conversation) {
       const produced = pi.state.messages.slice(initialProviderMessages.length);
       // The refusal turn is the runtime declining to spend, not something the
       // model said. Resuming this conversation must not replay it.
       if (refusalMessage !== undefined && produced.at(-1) === refusalMessage) produced.pop();
-      commitConversation(conversation, {
+      conversationCommit = {
         messages: [
           ...originalConversationMessages,
           ...produced,
@@ -3578,29 +4050,54 @@ async function* streamAgentInternal(
         providerFrozen,
         originalFrozen,
         fingerprint: conversationFingerprint,
-      });
+      };
+      const durableConversationSession = options.conversation?.sessionId ??
+        durableResume?.conversation?.sessionId;
+      if (durableConversationSession !== undefined) {
+        completedConversation = durableConversationCheckpoint(
+          durableConversationSession,
+          conversationCommit.messages,
+        );
+      }
+    } else if (durableResume?.conversation !== undefined) {
+      // A real process restart may resume a run without reconstructing the
+      // caller's ephemeral Conversation object. The journal still owns the
+      // exact logical session and must carry its final transcript so a later
+      // attached Conversation can synchronize from base to terminal state.
+      // Same rule as the branch above: the synthesized refusal turn is the
+      // runtime declining to spend, so it must not enter the checkpoint a
+      // later attached Conversation synchronizes from.
+      const produced = [...pi.state.messages];
+      if (refusalMessage !== undefined && produced.at(-1) === refusalMessage) produced.pop();
+      completedConversation = durableConversationCheckpoint(
+        durableResume.conversation.sessionId,
+        produced,
+      );
     }
     if (journal !== undefined) {
       // The outcome is durable BEFORE the caller sees it (DBOS ordering):
       // once run_end is yielded, re-invoking this runId must replay this
       // exact result instead of spending again. If the outcome CANNOT be
-      // journaled (serialization, disk), the run stays pending rather than
-      // being converted into a terminal failure — the caller still gets the
-      // result it paid for, and a later resume re-drives instead of losing
-      // it. Swallowing here is deliberate: a journaling problem must not
-      // fail a successful run.
-      try {
-        journalNewTranches();
-        journal.emit({
-          v: DURABLE_JOURNAL_VERSION,
-          at: journal.now(),
-          type: "run_completed",
-          result,
-        });
-        await journal.flush();
-      } catch {
-        // Pending journal; resume handles it honestly.
-      }
+      // journaled (serialization, disk), the logical run stays pending and
+      // this attempt fails;
+      // exposing success before durable truth would permit duplicate effects.
+      journalNewTranches();
+      journal.emit({
+        v: DURABLE_JOURNAL_VERSION,
+        at: journal.now(),
+        type: "run_completed",
+        result,
+        ...(completedConversation === undefined
+          ? {}
+          : { conversation: completedConversation }),
+      });
+      await journal.flush();
+      durableTerminalPersisted = true;
+    }
+    if (conversation !== undefined && conversationCommit !== undefined) {
+      // External state moves only after terminal fsync. Crash between these
+      // operations is repaired by terminal replay's checkpoint sync.
+      commitConversation(conversation, conversationCommit);
     }
     releaseConversation();
     await releaseRunResources();
@@ -3652,17 +4149,32 @@ async function* streamAgentInternal(
         ...(failureResume === undefined ? {} : { resume: failureResume }),
       });
     } catch {
-      partialReceipt = receipt.build({
-        runId,
-        agentId: definition.id,
-        stopReason: stopReason ?? "complete",
-        meter: undefined,
-        // Prior-attempt spend survives the fallback: dropping it here would
-        // shrink a money figure for a non-money reason.
-        ...(failureResume === undefined ? {} : { resume: failureResume }),
-      });
+      // Dropping the meter makes this receipt denomination-less, so every
+      // money-bearing companion the validator ties to a denomination has to go
+      // with it: a journaled `priorSettled`, and any subagent/compaction the
+      // recorder still holds. Otherwise this "defensive" rebuild throws for
+      // exactly the runs it exists to protect and masks the real error.
+      const denominationless = failureResume === undefined
+        ? undefined
+        : { ...failureResume, priorSettled: undefined };
+      try {
+        partialReceipt = receipt.build({
+          runId,
+          agentId: definition.id,
+          stopReason: stopReason ?? "complete",
+          meter: undefined,
+          ...(denominationless === undefined ? {} : { resume: denominationless }),
+        });
+      } catch {
+        partialReceipt = new ReceiptRecorder().build({
+          runId,
+          agentId: definition.id,
+          stopReason: stopReason ?? "complete",
+          meter: undefined,
+        });
+      }
     }
-    if (journal !== undefined && options.signal?.aborted !== true) {
+    if (journal !== undefined && !durableTerminalPersisted && options.signal?.aborted !== true) {
       // A thrown run is TERMINAL for its runId (DBOS: an errored workflow is
       // not silently re-run) — re-invoking replays this same error. The one
       // exception is an abort: a caller cancelling a run is the deliberate
@@ -3674,7 +4186,7 @@ async function* streamAgentInternal(
           at: journal.now(),
           type: "run_failed",
           code: errorCode(error),
-          message: error instanceof Error ? error.message : String(error),
+          message: boundedDurableMessage(error),
           receipt: partialReceipt,
         });
         await journal.flush();
@@ -3864,6 +4376,55 @@ function conversationTextSegments(
         messageIndex,
         contentIndex,
         text: content.text,
+      });
+    }
+  }
+  return segments;
+}
+
+/** Content-blind accounting projection for prior provider-visible images. */
+function conversationMediaSegments(
+  messages: readonly AgentMessage[],
+  currentPromptIndex = -1,
+) {
+  const segments: Array<{
+    id: string;
+    kind: "history" | "tool_result";
+    body: Uint8Array;
+    providerVisibleBytes: number;
+    opaque: true;
+  }> = [];
+  for (let messageIndex = 0; messageIndex < messages.length; messageIndex++) {
+    if (messageIndex === currentPromptIndex) continue;
+    const message = messages[messageIndex];
+    if (!isRecord(message) ||
+        !["user", "assistant", "toolResult"].includes(String(message.role)) ||
+        !Array.isArray(message.content)) {
+      continue;
+    }
+    const kind = message.role === "toolResult" ? "tool_result" : "history";
+    for (const content of message.content) {
+      if (!isRecord(content) || content.type !== "image" ||
+          typeof content.data !== "string" || typeof content.mimeType !== "string") {
+        continue;
+      }
+      const metadata = stableStringify({
+        type: "image",
+        mimeType: content.mimeType,
+        bytes: Buffer.byteLength(content.data, "base64"),
+        sha256: sha256(content.data),
+      });
+      const body = new TextEncoder().encode(metadata);
+      segments.push({
+        id: runtimeSegmentId(kind, metadata),
+        kind,
+        body,
+        providerVisibleBytes: Math.max(
+          body.byteLength,
+          Buffer.byteLength(content.data, "utf8") +
+            Buffer.byteLength(content.mimeType, "utf8") + 64,
+        ),
+        opaque: true,
       });
     }
   }
@@ -4257,6 +4818,24 @@ async function engineCompress(
     ...(tokensBefore === undefined ? {} : { tokensBefore }),
     ...(tokensAfter === undefined ? {} : { tokensAfter }),
   };
+}
+
+async function engineRegistrySHA256(
+  engineBin: string | undefined,
+  signal?: AbortSignal,
+): Promise<string> {
+  let parsed: unknown;
+  try {
+    const result = await runEngine(engineBin, ["registry"], undefined, signal);
+    parsed = JSON.parse(new TextDecoder().decode(result.stdout));
+  } catch (error) {
+    throw new Error("cave_locked_run_transform_registry_unavailable", { cause: error });
+  }
+  const digest = isRecord(parsed) ? parsed.registry_sha256 : undefined;
+  if (typeof digest !== "string" || !/^[0-9a-f]{64}$/.test(digest)) {
+    throw new Error("cave_locked_run_transform_registry_invalid");
+  }
+  return digest;
 }
 
 function engineContentType(transformID: string): string {
@@ -5386,22 +5965,44 @@ function mergeHeaders(first: ProviderHeaders | undefined, second: ProviderHeader
 }
 
 /**
- * Bound an in-process tool closure at `timeoutMs`. JavaScript
- * cannot preempt a running closure, so a tool that ignores its abort signal
- * keeps executing in the background; this only stops the RUN from waiting on it,
- * rejecting with cave_tool_timeout so a stuck host/fixture tool cannot hang a
- * run forever.
+ * Bound one complete raw+validation operation to one monotonic deadline.
+ * Work begins in a microtask after timer installation, so synchronous execute
+ * or validator work is inside the measured interval. Event-loop blocking can
+ * delay timer delivery; elapsed-time post-check prevents that block from being
+ * accepted as a successful in-budget result.
+ *
+ * JavaScript cannot preempt a closure that ignores its signal. This bounds
+ * caller wait; composite/subagent paths separately track raw settlement.
  */
-function raceToolTimeout<T>(work: Promise<T>, timeoutMs: number): Promise<T> {
+function runWithToolDeadline<T>(
+  start: () => T | Promise<T>,
+  timeoutMs: number,
+): Promise<T> {
+  const deadlineAt = performance.now() + timeoutMs;
   let timer: NodeJS.Timeout | undefined;
   const timeout = new Promise<never>((_resolve, reject) => {
     // NOT unref'd: this timer must keep the loop alive to fire, otherwise a
     // hung closure would leave the run's promise pending forever.
     timer = setTimeout(() => reject(new Error("cave_tool_timeout")), timeoutMs);
   });
+  const work = Promise.resolve().then(start).then((value) => {
+    if (performance.now() >= deadlineAt) throw new Error("cave_tool_timeout");
+    return value;
+  });
   return Promise.race([work, timeout]).finally(() => {
     if (timer !== undefined) clearTimeout(timer);
   });
+}
+
+function isSettledToolOutput(value: unknown): value is SettledToolOutput {
+  if (!isRecord(value)) return false;
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  const text = descriptors.text;
+  const bytes = descriptors.bytes;
+  const output = descriptors.value;
+  return text !== undefined && "value" in text && typeof text.value === "string" &&
+    bytes !== undefined && "value" in bytes && bytes.value instanceof Uint8Array &&
+    output !== undefined && "value" in output;
 }
 
 async function boundedSettlement(
@@ -5426,9 +6027,35 @@ function abortSignalError(signal: AbortSignal, fallback: string): Error {
   return signal.reason instanceof Error ? signal.reason : new Error(fallback);
 }
 
+function durablePiTool(
+  source: AgentTool<TSchema>,
+  effect: ToolDefinition["effect"],
+  durableTools: DurableToolCoordinator | undefined,
+  path: string,
+): AgentTool<TSchema> {
+  if (durableTools === undefined) return source;
+  return {
+    ...source,
+    async execute(toolCallId, params, signal) {
+      return durableTools.execute({
+        path,
+        toolCallId,
+        name: source.name,
+        effect,
+        args: params,
+      }, () => Promise.resolve(source.execute(toolCallId, params, signal)));
+    },
+  };
+}
+
 function toPiTool(
   definition: ToolDefinition,
-  sandboxExecute?: (params: unknown, signal?: AbortSignal) => Promise<unknown>,
+  delegatedExecute?: (
+    params: unknown,
+    signal?: AbortSignal,
+    context?: ToolExecutionContext,
+  ) => Promise<unknown>,
+  delegatedExecutionKind?: "sandbox" | "connect" | "subagent",
   recoveryHandles?: Set<string>,
   engineBin?: string,
   providerDefinition?: { description: string; input: TSchema },
@@ -5441,6 +6068,8 @@ function toPiTool(
     parentSignal: AbortSignal;
   }) => Promise<unknown>,
   nestedFinalize?: (parentToolCallId: string) => Promise<void> | undefined,
+  durableTools?: DurableToolCoordinator,
+  durablePath = "",
 ): AgentTool<TSchema> {
   return {
     name: definition.name,
@@ -5449,6 +6078,9 @@ function toPiTool(
     parameters: providerDefinition?.input ?? definition.input,
     executionMode: definition.effect === "read" ? "parallel" : "sequential",
     async execute(toolCallId, params, signal) {
+      const executeOne = async (
+        durable?: DurableToolInvocation,
+      ): Promise<Awaited<ReturnType<AgentTool<TSchema>["execute"]>>> => {
       const timeout = AbortSignal.timeout(definition.timeoutMs);
       const combined = signal ? AbortSignal.any([signal, timeout]) : timeout;
       // Direct in-process closures are bounded by the outer race. Composite
@@ -5456,14 +6088,18 @@ function toPiTool(
       // cannot mutate after settlement, while a non-cooperative nested closure
       // honestly remains unquiesced instead of reporting false completion.
       const nestedInvocations: Promise<unknown>[] = [];
+      let directEffectSettlement: Promise<unknown> | undefined;
       let acceptingNestedCalls = true;
-      const context: ToolExecutionContext | undefined = definition.nestedTools === undefined
-        ? undefined
-        : Object.freeze({
+      const context: ToolExecutionContext = Object.freeze({
+          toolCallId,
+          ...(durable === undefined ? {} : { durable }),
           parentToolCallId: toolCallId,
           dispatch(name: string, args: unknown, options?: NestedToolDispatchOptions) {
             let pending: Promise<unknown>;
             try {
+              if (definition.nestedTools === undefined) {
+                throw new Error("cave_nested_tool_dispatch_unavailable");
+              }
               if (!acceptingNestedCalls) {
                 throw new Error("cave_nested_tool_parent_inactive");
               }
@@ -5485,21 +6121,65 @@ function toPiTool(
             return pending;
           },
         });
-      let value: unknown;
+      let settledOutput: Awaited<ReturnType<typeof settleToolOutput>> | undefined;
       let executionError: unknown;
       let executionFailed = false;
       try {
-        value = sandboxExecute
-          ? await sandboxExecute(params, combined)
-          : await raceToolTimeout(
-            Promise.resolve(definition.execute(params, combined, context)),
+        if (delegatedExecute === undefined) {
+          const rawExecution = Promise.resolve().then(
+            () => executeRawTool(definition, params, combined, context),
+          );
+          if (definition.effect !== "read") directEffectSettlement = rawExecution;
+          settledOutput = await runWithToolDeadline(async () => {
+            const rawValue = await rawExecution;
+            return settleToolOutput(definition, rawValue);
+          }, definition.timeoutMs);
+        } else if (delegatedExecutionKind === "sandbox") {
+          // Worker settles Standard Schema against raw runtime values before
+          // JSON transport and owns process-tree timeout/close. Parent receives
+          // a validated immutable settlement, never invokes schema twice.
+          const startedAt = performance.now();
+          const delegated = await delegatedExecute(params, combined, context);
+          if (performance.now() - startedAt >= definition.timeoutMs) {
+            throw new Error("cave_tool_timeout");
+          }
+          if (!isSettledToolOutput(delegated)) {
+            throw new Error("cave_sandbox_invalid_output");
+          }
+          settledOutput = delegated;
+        } else if (delegatedExecutionKind === "subagent") {
+          // Child run may ignore abort. Dispatch still observes its deadline;
+          // raw child settlement remains tracked below so parent cannot report
+          // clean completion while child accounting/effects remain live.
+          const childSettlement = Promise.resolve().then(async () => {
+            const rawValue = await delegatedExecute(params, combined, context);
+            return settleToolOutput(definition, rawValue);
+          });
+          nestedInvocations.push(childSettlement);
+          void childSettlement.catch(() => undefined);
+          settledOutput = await runWithToolDeadline(
+            () => childSettlement,
             definition.timeoutMs,
           );
+        } else {
+          // Connect owns subprocess termination; deadline still spans both its
+          // execution and potentially async Standard output settlement.
+          settledOutput = await runWithToolDeadline(async () => {
+            const rawValue = await delegatedExecute(params, combined, context);
+            return settleToolOutput(definition, rawValue);
+          }, definition.timeoutMs);
+        }
       } catch (error) {
         executionFailed = true;
         executionError = error;
       }
       acceptingNestedCalls = false;
+      // Host closures cannot be preempted. Never terminally settle an admitted
+      // effect while its raw execute body can still mutate external state.
+      if (directEffectSettlement !== undefined) {
+        const quiesced = await boundedSettlement([directEffectSettlement], 1_000);
+        if (!quiesced) throw new Error("cave_tool_effect_unquiesced");
+      }
       // A composite cannot settle while nested mutations remain in flight.
       // Program-owned error handling decides whether a nested rejection is
       // recovered; kernel still waits for every admitted call to quiesce.
@@ -5513,8 +6193,9 @@ function toPiTool(
         if (!quiesced) throw new Error("cave_program_nested_calls_unquiesced");
       }
       if (executionFailed) throw executionError;
-      const text = typeof value === "string" ? value : JSON.stringify(value);
-      const raw = new TextEncoder().encode(text ?? "null");
+      if (settledOutput === undefined) throw new Error("cave_tool_result_missing");
+      const text = settledOutput.text;
+      const raw = settledOutput.bytes;
       const maxInlineBytes = definition.artifact === undefined
         ? 32_768
         : definition.artifact.maxInlineTokens * 4;
@@ -5568,6 +6249,22 @@ function toPiTool(
           recoveryVerified: true,
         },
       };
+      };
+      const result = durableTools === undefined
+        ? executeOne()
+        : durableTools.execute({
+          path: durablePath,
+          toolCallId,
+          name: definition.name,
+          effect: definition.effect,
+          args: params,
+        }, executeOne);
+      const settled = await result;
+      if (isRecord(settled) && isRecord(settled.details) &&
+          typeof settled.details.recoveryHandle === "string") {
+        recoveryHandles?.add(settled.details.recoveryHandle);
+      }
+      return settled;
     },
   };
 }
@@ -5607,6 +6304,7 @@ async function executeSubagent(
   executionContext: InternalExecutionContext,
   parentMeter: BudgetMeter | undefined,
   parentDeadlineAt: number | undefined,
+  parentToolCallId?: string,
 ): Promise<unknown> {
   const runtime = toolDefinition.runtime;
   if (runtime?.kind !== "subagent") throw new Error("cave_subagent_runtime_missing");
@@ -5677,6 +6375,7 @@ async function executeSubagent(
       childMeter: carve?.child,
       parentDeadlineAt,
       invocationTrace,
+      parentToolCallId,
     });
   } finally {
     releaseAdmission?.();
@@ -5687,7 +6386,7 @@ async function executeSubagent(
 
 async function runSubagent(input: {
   toolDefinition: ToolDefinition;
-  runtime: NonNullable<ToolDefinition["runtime"]>;
+  runtime: SubagentRuntimeDefinition;
   task: string;
   signal: AbortSignal | undefined;
   parentOptions: InternalRunOptions;
@@ -5697,6 +6396,7 @@ async function runSubagent(input: {
   childMeter: BudgetMeter | undefined;
   parentDeadlineAt: number | undefined;
   invocationTrace: InvocationTrace | undefined;
+  parentToolCallId: string | undefined;
 }): Promise<unknown> {
   const {
     toolDefinition,
@@ -5776,6 +6476,15 @@ async function runSubagent(input: {
     ...executionContext.agentPath,
     toolDefinition.name,
   ]);
+  if (executionContext.durableTools !== undefined && input.parentToolCallId === undefined) {
+    throw new Error("cave_durable_tool_call_id_missing");
+  }
+  const durablePath = Object.freeze([
+    ...(executionContext.durablePath ?? []),
+    `${toolDefinition.name}:${input.parentToolCallId === undefined
+      ? "volatile"
+      : sha256(input.parentToolCallId)}`,
+  ]);
   const childExecutionContext: InternalExecutionContext = Object.freeze({
     rootDefinitionSha256: executionContext.rootDefinitionSha256,
     agentPath: subagentPath,
@@ -5789,6 +6498,9 @@ async function runSubagent(input: {
     ...(input.childMeter === undefined ? {} : { budgetMeter: input.childMeter }),
     ...(input.parentDeadlineAt === undefined ? {} : { deadlineAt: input.parentDeadlineAt }),
     ...(executionContext.journal === undefined ? {} : { journal: executionContext.journal }),
+    ...(executionContext.durableTools === undefined
+      ? {}
+      : { durableTools: executionContext.durableTools, durablePath }),
   });
   const childSignal = signal === undefined
     ? _parentSignal
@@ -5814,6 +6526,10 @@ async function runSubagent(input: {
     usage.incomplete = true;
     throw error;
   }
+  // A completed child is paid evidence even when its terminal usage is
+  // unavailable. Retain its receipt before rejecting incomplete propagation;
+  // otherwise the parent settles the carve but loses the child subtree.
+  usage.receipts.push(child.receipt);
   if (child.usageBasis !== "provider_reported" || !completeUsage(child)) {
     usage.incomplete = true;
     throw new Error("cave_nested_usage_incomplete");
@@ -5824,7 +6540,6 @@ async function runSubagent(input: {
   usage.cacheWriteTokens += child.cacheWriteTokens;
   usage.reasoningTokens += child.reasoningTokens;
   usage.costUsd += child.costUsd;
-  usage.receipts.push(child.receipt);
   if (child.mode === "observe-only") usage.observeOnly = true;
   if (child.priceBasis !== "public_catalog") usage.unpriced = true;
   if (child.inputTokens > runtime.maxContextTokens) {
@@ -5942,13 +6657,19 @@ async function compactContext(input: {
     selected: Model<Api>,
     decision: ModelCallRouteDecision | undefined,
   ) => void | Promise<void>;
+  /** Closes a durable intent when stream acquisition proves no call began. */
+  onAbandoned: () => void | Promise<void>;
   /**
    * Accrues the summarizer's provider usage into the run's own totals. A
    * compaction is a provider call the run made; it belongs in `RunResult`'s
    * usage and cost exactly like a working call, or the run under-reports
    * itself and every parent aggregating it inherits the gap.
    */
-  accrue: (usage: ValidatedProviderUsage | undefined, selected: Model<Api>) => void;
+  accrue: (
+    usage: ValidatedProviderUsage | undefined,
+    selected: Model<Api>,
+    settledAmount: number,
+  ) => void;
   /**
    * Whether the provider's own usage reported a warm prefix on the last call.
    * `unknown` models cold — under-claim, never blend.
@@ -6101,9 +6822,9 @@ async function compactContext(input: {
   // Awaited: a durable run fsyncs the summarizer's intent here, giving the
   // compaction call the same crash-window barrier as a working call.
   await input.onReserved(summarizerModel, routedSummarizer.decision);
-  let assistant: AssistantMessage;
+  let stream: Awaited<ReturnType<StreamFn>>;
   try {
-    const stream = await input.baseStream(
+    stream = await input.baseStream(
       summarizerModel,
       {
         systemPrompt: input.systemPrompt,
@@ -6129,12 +6850,40 @@ async function compactContext(input: {
         }),
       },
     );
+  } catch {
+    // The provider never returned a stream, so this attempt is proven
+    // unbilled. Cancel both holds and close the durable intent as abandoned.
+    input.meter.cancel(reservation);
+    releaseLedgerHolds(ledgerReservations);
+    await input.onAbandoned();
+    return evictionHelped ? finishEviction() : undefined;
+  }
+  let assistant: AssistantMessage;
+  try {
     for await (const _event of stream) { /* drain to terminal */ }
     assistant = await stream.result();
   } catch {
-    input.meter.cancel(reservation);
-    releaseLedgerHolds(ledgerReservations);
-    return evictionHelped ? finishEviction() : undefined;
+    // A returned stream is provider-visible. If it then fails, billing is
+    // uncertain: settle the full reservation, retain an unavailable call in
+    // the receipt/journal, and make the run stop on incomplete usage evidence.
+    const metered = reservation.amount;
+    markSpendIncomplete(ledgerReservations.map((item) => item.ledger));
+    input.accrue(undefined, summarizerModel, metered);
+    input.receipt.recordCompactionCall({
+      provider: summarizerModel.provider,
+      model: summarizerModel.id,
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      reasoningTokens: 0,
+      estimatedUsd: 0,
+      unpriced: true,
+      usageBasis: "unavailable",
+      clampedOutputTokens: undefined,
+    });
+    input.meter.settle(reservation, metered);
+    return evictionHelped ? finishEviction(metered) : undefined;
   }
   let metered = reservation.amount;
   let unpriced = true;
@@ -6155,8 +6904,8 @@ async function compactContext(input: {
     // Settle any legacy outer maxCostUsd ledgers. A carved child's own
     // compaction is settled by its BudgetMeter reservation above.
     ledgerFailure = settleProviderSpend(ledgerReservations, usage);
-    input.accrue(usage, summarizerModel);
-    input.receipt.recordCall({
+    input.accrue(usage, summarizerModel, metered);
+    input.receipt.recordCompactionCall({
       provider: usage.provider,
       model: usage.model,
       inputTokens: usage.inputTokens,
@@ -6174,8 +6923,8 @@ async function compactContext(input: {
     // worst case rather than letting an unmeasurable call read as free, and
     // tell the run and any legacy outer ledgers the evidence is incomplete.
     markSpendIncomplete(ledgerReservations.map((item) => item.ledger));
-    input.accrue(undefined, summarizerModel);
-    input.receipt.recordCall({
+    input.accrue(undefined, summarizerModel, metered);
+    input.receipt.recordCompactionCall({
       provider: summarizerModel.provider,
       model: summarizerModel.id,
       inputTokens: 0,
@@ -6281,6 +7030,7 @@ async function retryModelCall(
   breakers: BreakerState,
   pending: PendingCallRecord,
   stopError: () => Error | undefined,
+  onMeterReserved: (meter: BudgetMeter) => void | Promise<void>,
   abandon: () => void,
 ): Promise<Awaited<ReturnType<StreamFn>>> {
   const meter = pending.reservationMeter;
@@ -6322,6 +7072,7 @@ async function retryModelCall(
       pending.reservationMeter = meter;
       pending.retryAttempt = attempt;
       breakers.recordRetryAttempt(worstCaseSpend, attempt);
+      await onMeterReserved(meter);
       const wait = breakers.backoffMs(attempt);
       if (wait > 0) await new Promise((settle) => setTimeout(settle, wait));
       const expired = stopError();
@@ -6566,8 +7317,10 @@ async function executeSandboxedTool(
   profile: RunOptions["sandboxProfile"],
   executionContext: InternalExecutionContext,
   toolDefinitionSha256: string,
+  declaredOutput: boolean,
   signal?: AbortSignal,
-): Promise<unknown> {
+  context?: ToolExecutionContext,
+): Promise<SettledToolOutput> {
   if (profile?.childProcess === true) {
     throw new Error("cave_sandbox_child_process_containment_unavailable");
   }
@@ -6605,9 +7358,13 @@ async function executeSandboxedTool(
   // Always under the OS boundary: `network: true` was refused above, so there is
   // no un-isolated spawn path left.
   const isolated = networkIsolatedNode(args);
+  // Tool code inherits fd 3 and can write arbitrary bytes to it. Authenticate
+  // worker frames with a per-call secret that never enters tool context, argv,
+  // or environment so forged early frames can only cause a closed failure.
+  const resultAuthenticationKey = randomBytes(32).toString("hex");
   installSandboxReaping();
   try {
-    const result = await new Promise<{ ok: boolean; value?: unknown; code?: string }>((accept, reject) => {
+    const result = await new Promise<SandboxResultFrame>((accept, reject) => {
       // fd 3 carries the length-prefixed result; the tool's own stdout/stderr
       // are separate channels with their own byte budgets so a chatty dep can
       // neither corrupt the result nor SIGKILL a successful tool.
@@ -6674,7 +7431,10 @@ async function executeSandboxedTool(
           reject(terminalError);
           return;
         }
-        const parsed = decodeResultFrame(Buffer.concat(resultChunks));
+        const parsed = decodeResultFrame(
+          Buffer.concat(resultChunks),
+          resultAuthenticationKey,
+        );
         if (parsed !== undefined) {
           accept(parsed);
           return;
@@ -6695,12 +7455,25 @@ async function executeSandboxedTool(
         toolDefinitionSha256,
         tool: toolName,
         params,
+        invocation: context === undefined
+          ? undefined
+          : {
+            toolCallId: context.toolCallId,
+            ...(context.durable === undefined ? {} : { durable: context.durable }),
+          },
         allowSideEffects,
         allowNetwork: profile?.network === true,
+        resultAuthenticationKey,
       }));
     });
     if (!result.ok) throw new Error(result.code ?? "cave_sandbox_tool_failed");
-    return result.value;
+    if (result.settled !== true) throw new Error("cave_sandbox_invalid_output");
+    return settledToolOutputFromTransport(
+      result.value,
+      result.text,
+      toolName,
+      declaredOutput,
+    );
   } finally {
     await rm(workspace, { recursive: true, force: true });
   }
@@ -6758,14 +7531,37 @@ export function sandboxSourceReadFlags(
 }
 
 /** Decode the length-prefixed result frame delivered on the worker's fd 3. */
+type SandboxResultFrame =
+  | { ok: true; settled: true; value?: unknown; text: string }
+  | { ok: false; code?: string };
+
 function decodeResultFrame(
   buffer: Buffer,
-): { ok: boolean; value?: unknown; code?: string } | undefined {
-  if (buffer.byteLength < 4) return undefined;
+  authenticationKey: string,
+): SandboxResultFrame | undefined {
+  if (buffer.byteLength < 36) return undefined;
   const length = buffer.readUInt32BE(0);
-  if (buffer.byteLength < 4 + length) return undefined;
+  if (buffer.byteLength !== 36 + length) return undefined;
+  const tag = buffer.subarray(4, 36);
+  const body = buffer.subarray(36);
+  const expected = createHmac("sha256", authenticationKey).update(body).digest();
+  if (!timingSafeEqual(tag, expected)) return undefined;
   try {
-    return JSON.parse(buffer.subarray(4, 4 + length).toString("utf8"));
+    const parsed = JSON.parse(body.toString("utf8")) as unknown;
+    if (!isRecord(parsed) || typeof parsed.ok !== "boolean") return undefined;
+    const keys = Object.keys(parsed).sort();
+    if (parsed.ok) {
+      if (keys.some((key) => !["ok", "settled", "text", "value"].includes(key)) ||
+          parsed.settled !== true || typeof parsed.text !== "string") {
+        return undefined;
+      }
+      return parsed as unknown as SandboxResultFrame;
+    }
+    if (keys.some((key) => key !== "ok" && key !== "code") ||
+        (parsed.code !== undefined && typeof parsed.code !== "string")) {
+      return undefined;
+    }
+    return parsed as unknown as SandboxResultFrame;
   } catch {
     return undefined;
   }
@@ -6811,6 +7607,7 @@ function requiresSandboxEntry(
   for (const declared of definition.tools) {
     const candidates = [declared, ...(declared.nestedTools ?? [])];
     for (const candidate of candidates) {
+      if (candidate.runtime?.kind === "caveman-connect") continue;
       if (candidate.runtime?.kind !== "subagent") {
         if (candidate === declared && sandboxRequired) return true;
         continue;
@@ -6885,11 +7682,17 @@ export function sandboxDependencyReadRoots(): readonly string[] {
         }
         continue;
       }
-      const packageRoot = dirname(childManifest);
-      const pnpm = packageRoot.indexOf("/node_modules/.pnpm/");
-      roots.add(pnpm >= 0
-        ? packageRoot.slice(0, pnpm + "/node_modules/.pnpm".length)
-        : packageRoot);
+      // Node's resolver reads the lexical package.json and then loads through
+      // the resolved target. Workspace links therefore need both narrow roots;
+      // granting either side alone fails under Node's permission model.
+      const lexicalPackageRoot = dirname(childManifest);
+      const resolvedPackageRoot = realpathSync(lexicalPackageRoot);
+      for (const packageRoot of new Set([lexicalPackageRoot, resolvedPackageRoot])) {
+        const pnpm = packageRoot.indexOf("/node_modules/.pnpm/");
+        roots.add(pnpm >= 0
+          ? packageRoot.slice(0, pnpm + "/node_modules/.pnpm".length)
+          : packageRoot);
+      }
       queue.push(childManifest);
     }
   }
@@ -7271,4 +8074,16 @@ function errorCode(error: unknown): string {
   if (message.startsWith("cave_cache_prefix_drift")) return "cave_cache_prefix_drift";
   if (message.includes("credential")) return "cave_provider_credentials";
   return "cave_agent_run_failed";
+}
+
+function boundedDurableMessage(error: unknown): string {
+  const firstLine = (error instanceof Error ? error.message : String(error)).split("\n", 1)[0] ?? "";
+  const encoder = new TextEncoder();
+  if (encoder.encode(firstLine).byteLength <= 4_096) return firstLine;
+  let output = "";
+  for (const point of firstLine) {
+    if (encoder.encode(output + point).byteLength > 4_096) break;
+    output += point;
+  }
+  return output;
 }

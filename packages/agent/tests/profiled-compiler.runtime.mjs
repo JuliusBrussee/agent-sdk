@@ -112,7 +112,6 @@ function fixture(id) {
     id,
     lineageId: `lineage-${id}`,
     split: id.startsWith("development-") ? "development" : "holdout",
-    approved: true,
     input: id,
     quality: [{ type: "exact_match", expected: "ok" }],
   });
@@ -543,7 +542,6 @@ test("development and holdout reject duplicate fixture inputs even under differe
     id: "holdout-different-id",
     lineageId: "lineage-holdout-a",
     split: "holdout",
-    approved: true,
     input: "development-a",
     quality: [{ type: "exact_match", expected: "ok" }],
   });
@@ -625,7 +623,6 @@ test("development and holdout reject shared task lineage with different inputs",
     id: "development-family-a",
     lineageId: "shared-eval-family",
     split: "development",
-    approved: true,
     input: "variant a",
     quality: [{ type: "exact_match", expected: "ok" }],
   });
@@ -633,7 +630,6 @@ test("development and holdout reject shared task lineage with different inputs",
     id: "holdout-family-a",
     lineageId: "shared-eval-family",
     split: "holdout",
-    approved: true,
     input: "variant b",
     quality: [{ type: "exact_match", expected: "ok" }],
   });
@@ -746,16 +742,39 @@ test("generic targets execute only the baseline from caller-supplied candidates"
     adapterContractSHA256: hex("4"),
   };
   const baseline = plan("baseline");
+  const optimized = {
+    ...plan("optimized"),
+    model: "openai/gpt-5.4-mini",
+    reasoning: "minimal",
+    segment_routes: [{
+      segment_kind: "history",
+      transform_id: "caveman.engine.text.v1",
+      fallback: "original",
+    }],
+    budgets: { ...baseline.budgets, output: 250 },
+    recovery: { ...baseline.recovery, tools: ["cave_retrieve"] },
+  };
+  const observed = [];
   const result = await compileProfiled(profiledInput(target, {
+    profile: createCompilerWorkloadProfile([
+      trajectory("profile", "generic-history", { contextBill: { history: 500 } }),
+    ]),
     candidates: [
       { plan: baseline, estimated_cost_usd_per_run: 0.02 },
-      { plan: plan("optimized"), estimated_cost_usd_per_run: 0.01 },
+      { plan: optimized, estimated_cost_usd_per_run: 0.01 },
     ],
-    developmentRunner: async () => { runs++; return evidence(); },
+    developmentRunner: async ({ plan: candidate }) => {
+      runs++;
+      observed.push(candidate);
+      return evidence();
+    },
   }));
   assert.equal(result.status, "locked");
   assert.equal(result.lock.selected_plan_id, "baseline");
   assert.equal(result.lock.selected_plan.budgets.output, baseline.budgets.output);
+  assert.ok(observed.every((candidate) => stableStringify(candidate) === stableStringify(baseline)));
+  assert.deepEqual(result.lock.capability_manifest.supported_semantics, []);
+  assert.deepEqual(result.lock.capability_manifest.required_semantics, []);
   assert.equal(runs, 10);
 });
 

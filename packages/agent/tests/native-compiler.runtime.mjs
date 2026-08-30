@@ -211,7 +211,6 @@ process.stdout.write(JSON.stringify({
       id: `${split}-${suffix}`,
       lineageId: `${split}-family-${suffix}`,
       split,
-      approved: true,
       input: `${split} input ${suffix}`,
       quality: [{ type: "exact_match", expected: "ok" }],
     }));

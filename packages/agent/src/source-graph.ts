@@ -475,7 +475,7 @@ function legacySourceSpecifiers(source: string, path: string, code: Uint8Array):
       if (required !== undefined) specifiers.push(required.specifier);
       continue;
     }
-    const asset = parseImportMetaURL(source, start, path);
+    const asset = parseImportMetaURL(source, start, path, code);
     if (asset !== undefined) specifiers.push(asset.specifier);
   }
   return specifiers;
@@ -652,6 +652,7 @@ function parseImportMetaURL(
   source: string,
   start: number,
   path: string,
+  code: Uint8Array,
 ): { specifier: string; end: number } | undefined {
   let cursor = skipSourceTrivia(source, start + "new".length);
   const urlEnd = consumeIdentifierToken(source, cursor, "URL");
@@ -660,10 +661,23 @@ function parseImportMetaURL(
   if (source[cursor] !== "(") return undefined;
   cursor = skipSourceTrivia(source, cursor + 1);
   const literal = readQuotedSpecifier(source, cursor, path);
-  if (literal === undefined) throw computedSourceError(path);
+  if (literal === undefined) {
+    const comma = topLevelArgumentComma(source, cursor, code);
+    if (comma === undefined) return undefined;
+    if (importMetaURLCallEnd(source, comma + 1) !== undefined) {
+      throw computedSourceError(path);
+    }
+    return undefined;
+  }
   cursor = skipSourceTrivia(source, literal.end);
   if (source[cursor] !== ",") return undefined;
-  cursor = skipSourceTrivia(source, cursor + 1);
+  const end = importMetaURLCallEnd(source, cursor + 1);
+  if (end === undefined) return undefined;
+  return { specifier: literal.specifier, end };
+}
+
+function importMetaURLCallEnd(source: string, start: number): number | undefined {
+  let cursor = skipSourceTrivia(source, start);
   const importEnd = consumeIdentifierToken(source, cursor, "import");
   if (importEnd === undefined) return undefined;
   cursor = skipSourceTrivia(source, importEnd);
@@ -677,8 +691,31 @@ function parseImportMetaURL(
   const urlPropertyEnd = consumeIdentifierToken(source, cursor, "url");
   if (urlPropertyEnd === undefined) return undefined;
   cursor = skipSourceTrivia(source, urlPropertyEnd);
-  if (source[cursor] !== ")") throw computedSourceError(path);
-  return { specifier: literal.specifier, end: cursor + 1 };
+  if (source[cursor] !== ")") return undefined;
+  return cursor + 1;
+}
+
+function topLevelArgumentComma(
+  source: string,
+  start: number,
+  code: Uint8Array,
+): number | undefined {
+  const closes: string[] = [];
+  for (let cursor = start; cursor < source.length; cursor += 1) {
+    if (!code[cursor]) continue;
+    const char = source[cursor]!;
+    if (char === "(" || char === "[" || char === "{") {
+      closes.push(char === "(" ? ")" : char === "[" ? "]" : "}");
+      continue;
+    }
+    if (char === ")" || char === "]" || char === "}") {
+      if (closes.length === 0) return undefined;
+      if (closes.pop() !== char) return undefined;
+      continue;
+    }
+    if (char === "," && closes.length === 0) return cursor;
+  }
+  return undefined;
 }
 
 function readQuotedSpecifier(

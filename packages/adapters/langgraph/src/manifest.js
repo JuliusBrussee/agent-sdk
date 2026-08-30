@@ -1,0 +1,40 @@
+import { defineAdapterManifest } from "@caveman-ai/adapter-kit";
+
+export const adapterManifest = defineAdapterManifest({
+  schemaVersion: 2,
+  id: "langgraph",
+  packageName: "@caveman-ai/adapter-langgraph",
+  adapterVersion: "0.1.0",
+  upstream: {
+    package: "@langchain/langgraph",
+    version: "1.4.13",
+  },
+  capabilities: {
+    runLifecycle: "experimental",
+    modelInterception: "unsupported",
+    contextTransformation: "unsupported",
+    toolObservation: "experimental",
+    usageAccounting: "experimental",
+    streaming: "experimental",
+    abort: "unsupported",
+    replayAwareness: "unsupported",
+    durableObservation: "unsupported",
+    tracing: "unsupported",
+    compilation: "unsupported",
+  },
+  lifecycle: {
+    "run.started": "observe",
+    "run.completed": "observe",
+    "run.error": "observe",
+    "model.requested": "observe",
+    "model.responded": "observe",
+    "model.error": "observe",
+    "tool.proposed": "unsupported",
+    "tool.started": "observe",
+    "tool.completed": "observe",
+    "tool.error": "observe",
+    "checkpoint.committed": "unsupported",
+    "session.committed": "unsupported",
+  },
+  certifications: {},
+});

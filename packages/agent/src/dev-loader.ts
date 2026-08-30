@@ -6,7 +6,9 @@ import {
   realpath,
   rm,
   symlink,
+  writeFile,
 } from "node:fs/promises";
+import { stripTypeScriptTypes } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -44,7 +46,7 @@ export async function loadDevModule(root: string, entryPath: string): Promise<Lo
     for (const source of sourceFiles) {
       await copyProjectFile(canonicalRoot, staging, source, "source graph");
     }
-    const nodeModules = await realpath(resolve(canonicalRoot, "node_modules"));
+    const nodeModules = await nearestNodeModules(canonicalRoot);
     await symlink(
       nodeModules,
       resolve(staging, "node_modules"),
@@ -105,6 +107,22 @@ export async function loadDevModule(root: string, entryPath: string): Promise<Lo
   }
 }
 
+async function nearestNodeModules(start: string): Promise<string> {
+  let current = start;
+  for (;;) {
+    try {
+      return await realpath(resolve(current, "node_modules"));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    const parent = dirname(current);
+    if (parent === current) {
+      throw new Error(`caveman agent: node_modules not found from ${start}`);
+    }
+    current = parent;
+  }
+}
+
 export function agentFileSourcePaths(definition: AgentDefinition): string[] {
   const paths = new Set<string>();
   const visited = new WeakSet<object>();
@@ -154,6 +172,56 @@ async function copyProjectFile(
   const destination = resolve(staging, name);
   await mkdir(dirname(destination), { recursive: true });
   await copyFile(canonicalSource, destination);
+  await writeTypeScriptRuntimeAlias(root, source, destination);
+}
+
+/**
+ * NodeNext TypeScript correctly authors `import "./helper.js"` while source is
+ * `helper.ts`. Source graph already resolves that identity, but Node's native
+ * type stripper does not remap extension. Stage a transpiled runtime alias so
+ * dev/build/check execute same graph TypeScript described without mutating
+ * project or silently importing stale dist output.
+ */
+async function writeTypeScriptRuntimeAlias(
+  root: string,
+  source: string,
+  destination: string,
+): Promise<void> {
+  const suffix = source.endsWith(".mts")
+    ? [".mts", ".mjs"] as const
+    : source.endsWith(".cts")
+      ? [".cts", ".cjs"] as const
+      : source.endsWith(".ts")
+        ? [".ts", ".js"] as const
+        : undefined;
+  if (suffix === undefined) return;
+  const runtimeSource = source.slice(0, -suffix[0].length) + suffix[1];
+  try {
+    await realpath(runtimeSource);
+    return;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+  if (escapesRoot(relative(root, runtimeSource))) {
+    throw new Error("caveman agent: dev TypeScript runtime alias escapes project root");
+  }
+  const runtimeDestination = destination.slice(0, -suffix[0].length) + suffix[1];
+  const sourceText = await readFile(source, "utf8");
+  let executable: string;
+  try {
+    executable = stripTypeScriptTypes(sourceText, {
+      mode: "transform",
+      sourceMap: false,
+      sourceUrl: source,
+    });
+  } catch (error) {
+    throw new Error(
+      `caveman agent: dev TypeScript transform failed for ${relative(root, source)}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+  await writeFile(runtimeDestination, executable, { mode: 0o600 });
 }
 
 function remapDevError(error: unknown, staging: string, root: string): unknown {

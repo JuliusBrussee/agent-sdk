@@ -1,7 +1,7 @@
 import { constants } from "node:fs";
 import { open, realpath } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
-import { Value } from "typebox/value";
+import { grade as canonicalGrade } from "@caveman-ai/evals";
 import { sha256, stableStringify, type ContextIR } from "./context-ir.js";
 import type { AgentDefinition } from "./index.js";
 import type { CavePlan, CompileInput, RunEvidence } from "./build.js";
@@ -84,10 +84,10 @@ export async function runNativePiFixture(input: {
     const successfulToolCalls = result.receipt.tools
       .filter((tool) => tool.calls > tool.errors)
       .map((tool) => tool.name);
-    const graders = input.fixture.quality.map((grader) => ({
+    const graders = await Promise.all(input.fixture.quality.map(async (grader) => ({
       type: grader.type,
-      passed: grade(grader, result.text, successfulToolCalls),
-    }));
+      passed: await gradeQuality(grader, result.text, successfulToolCalls),
+    })));
     return {
       terminal: true,
       provider: result.provider,
@@ -242,20 +242,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-export function grade(grader: QualityGrader, text: string, toolCalls: string[]): boolean {
-  if (grader.type === "contains") return grader.fragments.every((fragment) => text.includes(fragment));
-  // Grades the negative: fails when any listed fragment IS present.
-  if (grader.type === "not_contains") return grader.fragments.every((fragment) => !text.includes(fragment));
-  if (grader.type === "tool_called") return grader.tools.every((tool) => toolCalls.includes(tool));
-  if (grader.type === "exact_match") return text === grader.expected;
-  if (grader.type === "json_schema") {
-    try {
-      return Value.Check(grader.schema, JSON.parse(text));
-    } catch {
-      return false;
-    }
-  }
-  return false;
+async function gradeQuality(
+  grader: QualityGrader,
+  text: string,
+  toolCalls: string[],
+): Promise<boolean> {
+  const candidate = grader.type === "tool_called" ? toolCalls : text;
+  return (await canonicalGrade(grader, candidate)).passed;
 }
 
 function runtimeReasoning(value: CavePlan["reasoning"]): AgentDefinition["reasoning"] {

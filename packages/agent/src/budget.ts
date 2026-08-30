@@ -1,9 +1,12 @@
 import type { BreakerEvent } from "./breakers.js";
 import { catalogSearchCeiling } from "./catalog.js";
 import { normalizeCompaction, type CompactionOptions, type NormalizedCompaction } from "./compaction.js";
+import {
+  AGENT_RUN_RECEIPT_SCHEMA,
+  validateRunReceipt,
+} from "./run-receipt.js";
 
-/** Versioned cross-package wire identity for an SDK economic receipt. */
-export const AGENT_RUN_RECEIPT_SCHEMA = "caveman.agent.run-receipt.v1" as const;
+export { AGENT_RUN_RECEIPT_SCHEMA } from "./run-receipt.js";
 
 /**
  * The economic runtime's meter.
@@ -334,7 +337,7 @@ export class BudgetMeter {
     }
     if (this.revokedFlag) throw new Error("cave_budget_revoked");
     // A breached ledger is dead. Releasing into it would record a tranche and
-    // raise an escalation for money that can never be spent, and would read on
+    // record a continuation for money that can never be spent, and would read on
     // the receipt as a run that was still being funded after it went past cap.
     if (this.breachedFlag) throw new Error("cave_budget_cap_breached");
     if (amount > this.releasable()) throw new Error("cave_budget_release_exceeds_max");
@@ -462,10 +465,18 @@ export class BudgetMeter {
         this.callIndex !== 0 || this.trancheLog.length > 0) {
       throw new Error("cave_durable_meter_not_fresh");
     }
+    if (!Number.isSafeInteger(prior.calls) || prior.calls < 0) {
+      throw new Error("cave_durable_journal_corrupt: invalid journaled call count");
+    }
+    let priorAtCall = 0;
     for (const tranche of prior.tranches) {
-      if (!Number.isFinite(tranche.amount) || tranche.amount <= 0) {
+      if (!Number.isFinite(tranche.amount) || tranche.amount <= 0 ||
+          (this.denomination === "tokens" && !Number.isSafeInteger(tranche.amount)) ||
+          typeof tranche.reason !== "string" || tranche.reason.trim() === "" ||
+          !Number.isSafeInteger(tranche.atCall) || tranche.atCall < priorAtCall) {
         throw new Error("cave_durable_journal_corrupt: invalid journaled tranche");
       }
+      priorAtCall = tranche.atCall;
       this.releasedAmount += tranche.amount;
       // `release()` refuses to fund past `max`; a journal that claims more
       // was released than the contract allows is corrupt, not a bigger
@@ -473,13 +484,18 @@ export class BudgetMeter {
       if (this.releasedAmount > this.max) {
         throw new Error("cave_durable_journal_corrupt: journaled tranches exceed the budget max");
       }
-      this.trancheLog.push(Object.freeze({ ...tranche }));
+      this.trancheLog.push(Object.freeze({
+        amount: tranche.amount,
+        reason: tranche.reason,
+        atCall: tranche.atCall,
+      }));
     }
-    if (!Number.isFinite(prior.settled) || prior.settled < 0) {
+    if (!Number.isFinite(prior.settled) || prior.settled < 0 ||
+        (this.denomination === "tokens" && !Number.isSafeInteger(prior.settled))) {
       throw new Error("cave_durable_journal_corrupt: invalid journaled settled amount");
     }
     this.settledAmount += prior.settled;
-    if (Number.isSafeInteger(prior.calls) && prior.calls > 0) this.callIndex = prior.calls;
+    this.callIndex = Math.max(prior.calls, priorAtCall);
     if (this.settledAmount > this.max) this.breachedFlag = true;
   }
 }
@@ -651,27 +667,57 @@ export interface PendingCompaction {
 
 export class ReceiptRecorder {
   private readonly callLog: ReceiptCall[] = [];
+  private workingCallCount = 0;
   private readonly toolLog = new Map<string, { calls: number; errors: number }>();
   private readonly subagentLog: RunReceipt[] = [];
-  private readonly compactionLog: Array<PendingCompaction & { callsBefore: number }> = [];
+  private readonly compactionLog: Array<PendingCompaction & { workingCallsBefore: number }> = [];
 
   recordCall(call: ReceiptCall): void {
-    this.callLog.push(Object.freeze({ ...call }));
+    this.recordCallEntry(call);
+    this.workingCallCount++;
+  }
+
+  /** Record a summarizer provider call without counting it as post-compaction work. */
+  recordCompactionCall(call: ReceiptCall): void {
+    this.recordCallEntry(call);
+  }
+
+  private recordCallEntry(call: ReceiptCall): void {
+    this.callLog.push(Object.freeze({
+      provider: call.provider,
+      model: call.model,
+      inputTokens: call.inputTokens,
+      outputTokens: call.outputTokens,
+      cacheReadTokens: call.cacheReadTokens,
+      cacheWriteTokens: call.cacheWriteTokens,
+      reasoningTokens: call.reasoningTokens,
+      estimatedUsd: call.estimatedUsd,
+      unpriced: call.unpriced,
+      usageBasis: call.usageBasis,
+      ...(call.clampedOutputTokens === undefined
+        ? {}
+        : { clampedOutputTokens: call.clampedOutputTokens }),
+    }) as ReceiptCall);
   }
 
   /**
    * The call watermark is taken here, not passed in.
    *
-   * A compaction is recorded after its own summarizer call has already been
-   * logged, so anything the caller counted beforehand is one too low and every
-   * compaction would claim a working call it never bought. Reading the log's
-   * own length at record time makes "calls after this rewrite" mean exactly
-   * that.
+   * A compaction is recorded after its own summarizer call. The separate
+   * working-call watermark excludes both that call and every later summarizer
+   * from the modeled benefit.
    */
   recordCompaction(compaction: PendingCompaction): void {
     this.compactionLog.push(Object.freeze({
-      ...compaction,
-      callsBefore: this.callLog.length,
+      tier: compaction.tier,
+      preTokens: compaction.preTokens,
+      postTokens: compaction.postTokens,
+      pinnedSegmentIds: Object.freeze([...compaction.pinnedSegmentIds]),
+      elidedSegmentDigests: Object.freeze([...compaction.elidedSegmentDigests]),
+      summarySchemaVersion: compaction.summarySchemaVersion,
+      cacheState: compaction.cacheState,
+      meteredCost: compaction.meteredCost,
+      workingCallsBefore: this.workingCallCount,
     }));
   }
 
@@ -689,7 +735,7 @@ export class ReceiptRecorder {
   }
 
   recordSubagent(receipt: RunReceipt): void {
-    this.subagentLog.push(receipt);
+    this.subagentLog.push(validateRunReceipt(receipt));
   }
 
   build(input: {
@@ -715,7 +761,28 @@ export class ReceiptRecorder {
       0,
     );
     const denomination = input.meter?.denomination ?? "none";
-    return Object.freeze({
+    const breakers = Object.freeze((input.breakers ?? []).map((event) => Object.freeze({
+      kind: event.kind,
+      ...(event.tool === undefined ? {} : { tool: event.tool }),
+      count: event.count,
+      ...(event.signature === undefined ? {} : { signature: event.signature }),
+      ...(event.reservedSpend === undefined ? {} : { reservedSpend: event.reservedSpend }),
+      ...(event.measuredSpend === undefined ? {} : { measuredSpend: event.measuredSpend }),
+      ...(event.spendBasis === undefined ? {} : { spendBasis: event.spendBasis }),
+    }) as BreakerEvent));
+    const resume = input.resume === undefined ? undefined : Object.freeze({
+      attempts: input.resume.attempts,
+      priorCalls: input.resume.priorCalls,
+      priorEstimatedUsd: input.resume.priorEstimatedUsd,
+      priorTokens: input.resume.priorTokens,
+      priorUnpriced: input.resume.priorUnpriced,
+      ...(input.resume.priorSettled === undefined
+        ? {}
+        : { priorSettled: input.resume.priorSettled }),
+      possibleDoubleCountCalls: input.resume.possibleDoubleCountCalls,
+      discardedPartialTurn: input.resume.discardedPartialTurn,
+    }) as ReceiptResume;
+    const candidate = Object.freeze({
       schema: AGENT_RUN_RECEIPT_SCHEMA,
       runId: input.runId,
       agentId: input.agentId,
@@ -723,9 +790,11 @@ export class ReceiptRecorder {
       claimBasis: "inferred",
       stopReason: input.stopReason,
       denomination,
-      max: input.meter?.max,
-      released: input.meter?.released,
-      spent: input.meter?.settled,
+      ...(input.meter === undefined ? {} : {
+        max: input.meter.max,
+        released: input.meter.released,
+        spent: input.meter.settled,
+      }),
       // A breach anywhere under this run is a breach of this run. Wallets are
       // small carves off a larger parent, so a child outspending its wallet is
       // the ordinary shape of a breach — reading only the local meter would
@@ -755,30 +824,39 @@ export class ReceiptRecorder {
       }))),
       subagents: Object.freeze([...this.subagentLog]),
       tranches: input.meter?.tranches ?? Object.freeze([]),
-      breakers: input.breakers ?? Object.freeze([]),
+      breakers,
       // The modeled effect of a compaction depends on how many working calls
       // actually followed it, which is knowable only now, at run end. Nothing
       // modeled is emitted before the run settles.
-      compactions: Object.freeze(this.compactionLog.map((entry, index) => Object.freeze({
-        index,
-        tier: entry.tier,
-        preTokens: entry.preTokens,
-        postTokens: entry.postTokens,
-        pinnedSegmentIds: Object.freeze([...entry.pinnedSegmentIds]),
-        elidedSegmentDigests: Object.freeze([...entry.elidedSegmentDigests]),
-        summarySchemaVersion: entry.summarySchemaVersion,
-        cacheState: entry.cacheState,
-        meteredCost: entry.meteredCost,
-        meteredBasis: "measured" as const,
-        modeledNetTokens: modeledNetTokens(
-          entry,
-          Math.max(0, this.callLog.length - entry.callsBefore),
-        ),
-        modeledBasis: "modeled" as const,
-        workingCallsAfter: Math.max(0, this.callLog.length - entry.callsBefore),
-      }))),
-      ...(input.resume === undefined ? {} : { resume: Object.freeze({ ...input.resume }) }),
-    });
+      compactions: Object.freeze(this.compactionLog.map((entry, index) => {
+        // A later summarizer is evidence/cost, not a working request that
+        // benefited from this rewrite. Only true working calls advance this
+        // watermark, including when a later summary is rejected.
+        const workingCallsAfter = Math.max(
+          0,
+          this.workingCallCount - entry.workingCallsBefore,
+        );
+        return Object.freeze({
+          index,
+          tier: entry.tier,
+          preTokens: entry.preTokens,
+          postTokens: entry.postTokens,
+          pinnedSegmentIds: Object.freeze([...entry.pinnedSegmentIds]),
+          elidedSegmentDigests: Object.freeze([...entry.elidedSegmentDigests]),
+          ...(entry.summarySchemaVersion === undefined
+            ? {}
+            : { summarySchemaVersion: entry.summarySchemaVersion }),
+          cacheState: entry.cacheState,
+          meteredCost: entry.meteredCost,
+          meteredBasis: "measured" as const,
+          modeledNetTokens: modeledNetTokens(entry, workingCallsAfter),
+          modeledBasis: "modeled" as const,
+          workingCallsAfter,
+        }) as ReceiptCompaction;
+      })),
+      ...(resume === undefined ? {} : { resume }),
+    }) as RunReceipt;
+    return validateRunReceipt(candidate);
   }
 }
 
@@ -808,9 +886,8 @@ function modeledNetTokens(entry: PendingCompaction, workingCallsAfter: number): 
 }
 
 /**
- * What the escalation hook is told when a budget binds. Read-only:
- * the handler decides, the runtime applies. Every figure is in the run's own
- * denomination.
+ * What the numeric continuation hook receives when a budget binds. Read-only;
+ * every figure is in the run's own denomination.
  */
 export interface BudgetExhaustionContext {
   readonly denomination: BudgetDenomination;
@@ -825,15 +902,16 @@ export interface BudgetExhaustionContext {
 }
 
 /**
- * Caller-side escalation for budget exhaustion.
+ * Caller-side numeric tranche allocator for budget exhaustion.
  *
  * Called **between** calls, never mid-tool, and never with anything in flight.
  * Return `"stop"` to take the default outcome — partial work plus receipt — or
  * `{ release, reason }` to top up a tranche through the budget controller and carry
  * on. A release past `max` throws, because `max` is the contract.
  *
- * The embedding application owns this decision: ask a human, check a policy,
- * consult a quota. Nothing the model produces reaches it.
+ * This is not an action gate, permission system, or approval workflow. It sees
+ * only bounded meter figures; prompt, output, tool, and model content never
+ * reaches it.
  *
  * Out of scope for v1: pausing a run and resuming it later from a serializable
  * handle. The hook is synchronous with the run it belongs to.

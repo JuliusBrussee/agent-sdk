@@ -31,7 +31,7 @@ spend. Generic/custom Pi and Vercel/Eve/Mastra selected plans equal baseline,
 capability arrays are empty, and only `profile_guided_selection` is present.
 Every error aborts.
 
-Existing `build` CLI selects v3 when approved evals declare split roles: strict
+Existing `build` CLI selects v3 when evals declare split roles: strict
 content-blind traces under `.caveman/traces/` supply optional profile evidence;
 otherwise profile evals bootstrap it. Generic OpenTelemetry/OpenInference spans
 always stay unpriced. It writes profile/report before atomic lock commit.
@@ -260,24 +260,17 @@ Public entry points:
   thinking capability is resolved before spend, and provider output usage is a
   hard terminal ceiling. SDK aggregate output stays provider-reported, while its
   unavailable authoritative thinking split is explicitly marked unavailable;
-- `src/adapters.ts` — compatibility implementation behind independent
-  `@caveman-ai/adapter-*` packages, with explicit bundle/
-  dependency manifest digests and executable exact-pinned Vercel AI SDK 7.0.43,
-  Eve 0.29.2, and Mastra 1.55.0 bridges. Every call checks matching harness lock,
+- `src/adapters.ts` — generic locked-build harness plus tiny Pi/Claude and
+  legacy Eve compatibility bindings. Vercel and Mastra host integration lives
+  only in `packages/adapters/*`; never recreate it here. Generic harness checks matching harness lock,
   unchanged baseline plan, Context IR identity, upstream identity, response
   model, complete usage, caller-supplied transform/recovery evidence, and catalog
   cost. These are identity/result checks; no generic v3 adapter constructs or
   binds changed model, reasoning, context, transform, recovery, retry, or
   output-budget behavior from compiler output. Eve supports reasoning-off locks
-  because its durable event contract omits reasoning usage. Pre-execution limit
-  support is deliberately framework-specific: Mastra alone accepts the adapter's
-  opt-in `maxSteps`, passed
-  unchanged to `Agent.generate` and recorded in the adapter contract. Omitting it
-  preserves the existing call shape. Vercel's `stopWhen` belongs to construction of
-  the already-built `ToolLoopAgent`, not its generic `generate` call; Eve's client
-  `send` API exposes no server execution limit. Those integrations therefore require
-  an agent-construction/server-definition boundary before Caveman can enforce a
-  native limit. The Claude facade already forwards operator-supplied `maxTurns` and
+  because its durable event contract omits reasoning usage. Eve's client `send`
+  API exposes no server execution limit. Claude facade already forwards
+  operator-supplied `maxTurns` and
   `maxBudgetUsd`; its task-budget field does not qualify because upstream documents
   task budgets as advisory and unsupported on Claude Code/Cowork, while its
   provider-output check is post-execution. Neither is described as an adapter hard

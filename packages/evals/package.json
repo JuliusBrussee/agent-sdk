@@ -1,0 +1,54 @@
+{
+  "name": "@caveman-ai/evals",
+  "version": "0.1.0",
+  "description": "Fail-closed deterministic and model-assisted graders for production agent evaluations.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JuliusBrussee/agent-sdk.git",
+    "directory": "packages/evals"
+  },
+  "homepage": "https://caveman.so/products/caveman-agent",
+  "bugs": {
+    "url": "https://github.com/JuliusBrussee/agent-sdk/issues"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "keywords": [
+    "agents",
+    "ai",
+    "evals",
+    "graders",
+    "testing"
+  ],
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "lint": "tsc --noEmit && tsc --project tsconfig.test.json",
+    "prepack": "npm run build",
+    "test": "npm run build && npm run test:types && node --test tests/*.runtime.mjs",
+    "test:types": "tsc --project tsconfig.test.json"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "typescript": "5.9.3"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

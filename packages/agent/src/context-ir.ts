@@ -135,6 +135,10 @@ export interface RuntimeContextSegment {
   id: string;
   kind: "history" | "tool_result";
   body: Uint8Array;
+  /** Provider-visible bytes when body is a bounded content-blind projection. */
+  providerVisibleBytes?: number;
+  /** Prevent transforms when body represents opaque provider-visible media. */
+  opaque?: boolean;
 }
 
 export async function lowerContext(options: {
@@ -146,6 +150,10 @@ export async function lowerContext(options: {
   output?: { maxTokens: number; schema?: TSchema };
   runtimeSegments?: readonly RuntimeContextSegment[];
   input?: unknown;
+  /** Provider-visible bytes when input is represented by bounded metadata. */
+  inputProviderVisibleBytes?: number;
+  /** Marks projected input as non-transformable opaque content. */
+  inputOpaque?: boolean;
 }): Promise<LoweredContext> {
   const rootDir = resolve(options.rootDir ?? process.cwd());
   const segments: ContextSegment[] = [];
@@ -154,7 +162,13 @@ export async function lowerContext(options: {
   const add = (
     spec: Omit<ContextSegment, "provenanceDigest" | "tokenCount" | "bodyHandle" | "opaque"> & { opaque?: boolean },
     body: Uint8Array,
+    providerVisibleBytes?: number,
   ) => {
+    if (providerVisibleBytes !== undefined &&
+        (!Number.isSafeInteger(providerVisibleBytes) ||
+          providerVisibleBytes < body.byteLength)) {
+      throw new Error("cave_context_provider_visible_bytes_invalid");
+    }
     const digest = sha256(body);
     const handle = `cave_local_sha256:${digest}`;
     bodies.set(handle, body.slice());
@@ -162,7 +176,7 @@ export async function lowerContext(options: {
       ...spec,
       opaque: spec.opaque === true || opaquePayload(body),
       provenanceDigest: digest,
-      tokenCount: estimateTokens(body),
+      tokenCount: estimateTokensFromBytes(providerVisibleBytes ?? body.byteLength),
       bodyHandle: handle,
     });
   };
@@ -249,7 +263,8 @@ export async function lowerContext(options: {
       recovery: "exact_ccr",
       cacheRegion: "live_zone",
       privacy: "local_sensitive",
-    }, segment.body);
+      ...(segment.opaque === undefined ? {} : { opaque: segment.opaque }),
+    }, segment.body, segment.providerVisibleBytes);
   }
 
   if (options.input !== undefined) {
@@ -262,9 +277,10 @@ export async function lowerContext(options: {
       recovery: "none",
       cacheRegion: "live_zone",
       privacy: "local_sensitive",
+      ...(options.inputOpaque === undefined ? {} : { opaque: options.inputOpaque }),
     }, typeof options.input === "string"
       ? new TextEncoder().encode(options.input)
-      : encodeCanonical(options.input));
+      : encodeCanonical(options.input), options.inputProviderVisibleBytes);
   }
 
   return { ir: { schemaVersion: 1, segments }, bodies };
@@ -274,6 +290,11 @@ export function appendRuntimeContextSegment(
   lowered: LoweredContext,
   segment: RuntimeContextSegment,
 ): ContextSegment {
+  if (segment.providerVisibleBytes !== undefined &&
+      (!Number.isSafeInteger(segment.providerVisibleBytes) ||
+        segment.providerVisibleBytes < segment.body.byteLength)) {
+    throw new Error("cave_context_provider_visible_bytes_invalid");
+  }
   const digest = sha256(segment.body);
   const existing = lowered.ir.segments.find((item) => item.id === segment.id);
   if (existing) {
@@ -299,9 +320,11 @@ export function appendRuntimeContextSegment(
     recovery: "exact_ccr",
     cacheRegion: "live_zone",
     privacy: "local_sensitive",
-    opaque: opaquePayload(segment.body),
+    opaque: segment.opaque === true || opaquePayload(segment.body),
     provenanceDigest: digest,
-    tokenCount: estimateTokens(segment.body),
+    tokenCount: estimateTokensFromBytes(
+      segment.providerVisibleBytes ?? segment.body.byteLength,
+    ),
     bodyHandle,
   };
   lowered.ir.segments.push(appended);
@@ -369,7 +392,11 @@ function signedJSONValue(value: unknown): boolean {
 }
 
 function estimateTokens(body: Uint8Array): number {
-  return Math.ceil(body.byteLength / 4);
+  return estimateTokensFromBytes(body.byteLength);
+}
+
+function estimateTokensFromBytes(bytes: number): number {
+  return Math.ceil(bytes / 4);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

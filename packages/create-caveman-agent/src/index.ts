@@ -74,7 +74,7 @@ async function main(): Promise<void> {
     `cd ${targetArg}`,
     ...(parsed.install ? [] : ["npm install"]),
     "npm run ticket -- tickets/refund-request.md",
-    "build evals start unapproved; inspect evals/support.eval.ts, set APPROVED = true, then npm run build",
+    "review evals/support.eval.ts, then npm run build (all declared evals run within budget)",
     "",
   ].join("\n"));
 }

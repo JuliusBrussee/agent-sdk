@@ -22,6 +22,8 @@ export function lowerAgentContext(
     rootDir?: string;
     runtimeSegments?: readonly RuntimeContextSegment[];
     input?: unknown;
+    inputProviderVisibleBytes?: number;
+    inputOpaque?: boolean;
   } = {},
 ): Promise<LoweredContext> {
   return lowerContext({
@@ -38,6 +40,10 @@ export function lowerAgentContext(
     }),
     ...(options.runtimeSegments === undefined ? {} : { runtimeSegments: options.runtimeSegments }),
     ...(options.input === undefined ? {} : { input: options.input }),
+    ...(options.inputProviderVisibleBytes === undefined
+      ? {}
+      : { inputProviderVisibleBytes: options.inputProviderVisibleBytes }),
+    ...(options.inputOpaque === undefined ? {} : { inputOpaque: options.inputOpaque }),
   });
 }
 

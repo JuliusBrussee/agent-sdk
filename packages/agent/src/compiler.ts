@@ -107,7 +107,7 @@ export interface NativePiCandidatePlanningInput {
   readonly observedDynamicKinds: ReadonlySet<ContextKind>;
   readonly transformCapabilities?: readonly TransformCapability[];
   readonly preferredTransforms?: ReadonlyMap<string, string>;
-  /** One admission instant for the entire static reservation frontier. */
+  /** One accounting instant for the entire static reservation frontier. */
   readonly accountingAt?: Date;
 }
 
@@ -290,10 +290,10 @@ async function compileProfiledCore(
   const developmentSeeds = normalizeSeeds(input.developmentSeeds);
   const holdoutSeeds = normalizeSeeds(input.holdoutSeeds);
   const candidates = resolveProfiledCandidates(input, profile, lane);
-  const approvedDevelopment = approved(input.developmentEvals);
-  const approvedHoldout = approved(input.holdoutEvals);
-  if (approvedDevelopment.length === 0 || approvedHoldout.length === 0) {
-    return emptyProfiled("needs_eval", "development and holdout each require an approved required eval");
+  const developmentEvals = [...input.developmentEvals];
+  const holdoutEvals = [...input.holdoutEvals];
+  if (developmentEvals.length === 0 || holdoutEvals.length === 0) {
+    return emptyProfiled("needs_eval", "development and holdout each require an eval");
   }
   const runnable = candidates.filter((candidate) => candidate.static_rejection === undefined);
   const preHoldoutRequirements = lane === "native_pi"
@@ -305,7 +305,7 @@ async function compileProfiledCore(
   } catch (error) {
     return emptyProfiled("capability_refused", safeError(error));
   }
-  const developmentCeiling = ceiling(runnable, approvedDevelopment.length, developmentSeeds.length);
+  const developmentCeiling = ceiling(runnable, developmentEvals.length, developmentSeeds.length);
   const baselineEstimate = runnable.find((candidate) =>
     candidate.plan.plan_id === input.baselinePlan.plan_id)?.estimated_cost_usd_per_run ?? 0;
   const maxSelectedEstimate = Math.max(0, ...runnable.map((candidate) => candidate.estimated_cost_usd_per_run));
@@ -313,7 +313,7 @@ async function compileProfiledCore(
     candidate.plan.plan_id !== input.baselinePlan.plan_id);
   const reservedHoldoutCeiling = roundUsd((hasBehavioralCandidate
     ? baselineEstimate + maxSelectedEstimate
-    : baselineEstimate) * approvedHoldout.length * holdoutSeeds.length);
+    : baselineEstimate) * holdoutEvals.length * holdoutSeeds.length);
   const totalCeiling = roundUsd(developmentCeiling + reservedHoldoutCeiling);
   if (totalCeiling > input.config.maxSearchCostUsd) {
     return {
@@ -379,7 +379,7 @@ async function compileProfiledCore(
   const holdoutCandidates = selectedCandidate.plan.plan_id === baselineCandidate.plan.plan_id
     ? [selectedCandidate]
     : [baselineCandidate, selectedCandidate];
-  const holdoutCeiling = ceiling(holdoutCandidates, approvedHoldout.length, holdoutSeeds.length);
+  const holdoutCeiling = ceiling(holdoutCandidates, holdoutEvals.length, holdoutSeeds.length);
   const remaining = roundUsd(input.config.maxSearchCostUsd - development.actual_cost_usd);
   if (!(remaining > 0) || holdoutCeiling > remaining) {
     return {
@@ -1003,10 +1003,6 @@ function normalizeSeeds(value: readonly number[] | undefined): number[] {
   if (seeds.length === 0 || new Set(seeds).size !== seeds.length ||
       seeds.some((seed) => !Number.isSafeInteger(seed))) throw new Error("cave_compiler_seeds_invalid");
   return seeds;
-}
-
-function approved(evals: readonly EvalDefinition[]): EvalDefinition[] {
-  return evals.filter((fixture) => fixture.approved && fixture.required);
 }
 
 function ceiling(candidates: readonly CandidatePlan[], fixtureCount: number, seedCount: number): number {

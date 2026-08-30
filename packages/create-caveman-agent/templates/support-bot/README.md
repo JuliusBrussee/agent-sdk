@@ -46,12 +46,10 @@ not a measurement.
 - `skills/` — refund + shipping playbooks. One-line descriptions live
   in the prefix; bodies load only when a ticket needs them.
 - `tools/lookup_order.ts` — read-effect only. The bot looks up and
-  recommends; refunds are drafts a human approves. That is the correct
-  architecture, not a limitation.
+  recommends; it has no write path, action-request channel, or approval layer.
 - `tickets/` — three sample tickets to run.
-- `evals/support.eval.ts` — the build gate. Flip `APPROVED` to `true`
-  after reading the fixtures, then `npm run build` locks the cheapest
-  plan that passes all of them.
+- `evals/support.eval.ts` — the build gate. Read the fixtures, then invoke
+  `npm run build`; every declared fixture runs within configured search budget.
 
 ## Try breaking it
 
@@ -63,12 +61,11 @@ context: {
 },
 ```
 
-and run `npm run build`. The build fails and explains why: a
+and run `npm run build`. Static validation fails before provider spend and
+explains why: a
 build-stable segment whose bytes change between runs silently destroys
-provider-cache economics, so here it is a build failure instead. (This
-check is static and runs before the eval gate, so it fires even while
-your evals are unapproved.) Serve the date from a tool instead and the
-build passes again.
+provider-cache economics, so here it is a build failure instead. Serve the
+date from a tool and build can proceed to eval execution.
 
 ## For your coding agent
 

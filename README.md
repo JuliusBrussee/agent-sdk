@@ -6,7 +6,7 @@
 
 <p align="center">
   A TypeScript runtime and profile-guided compiler for tool-using agents.<br>
-  One SDK for programmatic tools, skills and plugins, durable memory, typed compaction,<br>
+  One SDK for programmatic tools, durable memory, typed compaction,<br>
   budgets, receipts, crash recovery, eval-gated builds, and framework adapters.
 </p>
 
@@ -19,7 +19,6 @@
 <p align="center">
   <a href="#quick-start">Quick start</a> ·
   <a href="#one-tool-instead-of-a-wall-of-tools">Programmatic tools</a> ·
-  <a href="#agentsmd-skills-and-plugins">Skills & plugins</a> ·
   <a href="#memory-that-does-not-block-the-current-turn">Memory</a> ·
   <a href="#compaction-that-preserves-commitments">Compaction</a> ·
   <a href="#compile-against-evals-not-vibes">Compiler</a> ·
@@ -34,12 +33,12 @@ lifecycle and runtime evidence:
 - **Programmatic tools** collapse a large JSON tool surface into one bounded
   `caveman_code` cell while every nested call still passes through canonical
   validation, budgets, breakers, timeouts, aborts, and receipts.
-- **Agent environments** load hierarchical `AGENTS.md`, standard Agent Skills,
-  Agent Plugins v1, and Vercel OpenPlugin packages. Metadata stays cacheable;
-  full skill and command bodies load only when invoked.
 - **Durable memory** provides async next-turn recall, session search, explicit
   remember/search tools, optional embeddings and graph traversal, reversible
   consolidation, TTL, and tenant/agent/namespace isolation.
+- **Caveman Connect** exposes allowed provider data through one stable tool;
+  OAuth and credentials remain in `cave-connectd`, while exact paginated reads
+  fail closed instead of silently omitting context.
 - **Typed compaction** preserves current intent, exact critical commitments,
   recent self-contained tool turns, and exact-recovery references under a
   declared token or USD budget.
@@ -67,6 +66,7 @@ Requires Node.js 22.19+ and one supported provider credential.
 ```bash
 git clone https://github.com/JuliusBrussee/agent-sdk.git
 cd agent-sdk
+npm run repository:setup
 npm ci --prefix packages/pebble-protocol
 npm ci --prefix packages/agent
 npm ci --prefix packages/create-caveman-agent
@@ -161,49 +161,6 @@ agents when containment matters.
 Generic embedders can use `createProgrammaticToolRuntime` from
 `@caveman-ai/agent/programmatic-tools` without adopting coding-agent helpers.
 
-## AGENTS.md, Skills, and Plugins
-
-One loader owns instruction precedence, discovery, parsing, containment, and
-invocation across products:
-
-```ts
-import { agent } from "@caveman-ai/agent";
-import {
-  applyAgentEnvironment,
-  expandAgentEnvironmentSlashCommand,
-  loadAgentEnvironment,
-} from "@caveman-ai/agent/plugins";
-
-const environment = await loadAgentEnvironment({ cwd: process.cwd() });
-
-const reviewer = applyAgentEnvironment(agent({
-  id: "reviewer",
-  instructions: "Review requested changes.",
-  model: "openai/gpt-5.4",
-  sandbox: "host",
-}), environment);
-
-const prompt = expandAgentEnvironmentSlashCommand(
-  "/release-plugin:deploy preview",
-  environment,
-);
-```
-
-Supported discovery surfaces:
-
-- hierarchical repository `AGENTS.md` files;
-- project and user `.agents/skills/<name>/SKILL.md` Agent Skills;
-- Agent Plugins v1 root `plugin.json`;
-- Vercel OpenPlugin `.plugin/plugin.json`;
-- compatible Claude and Cursor declarative manifests;
-- qualified plugin skills and commands such as `release-plugin:deploy`.
-
-Only declarative skills and markdown slash commands execute today. MCP
-configuration, hooks, and custom-agent presence is recognized and reported,
-but never launched without permission, explicit environment allowlists, and
-lifecycle contracts. SDK launches no plugin subprocesses and inherits no
-ambient secrets for them.
-
 ## Memory that does not block current turn
 
 ```ts
@@ -293,7 +250,7 @@ Full contract: [context compaction](./packages/agent/docs/compaction.md).
 npm run build
 ```
 
-Approved profile evals characterize workload. Candidate plans search on
+Checked-in profile evals characterize workload. Candidate plans search on
 development cases. Selected plan freezes before untouched holdouts open. No
 candidate gets a lock unless declared quality gates pass.
 
@@ -360,16 +317,44 @@ npm install @caveman-ai/agent @caveman-ai/adapter-eve eve@0.29.2
 ```
 
 Repository includes lanes for Pi, Claude Agent SDK, Vercel AI SDK, Eve, and
-Mastra. Shared manifest and registry contract rejects missing, drifted, or
-uncertified capabilities before model execution. Adapter presence never implies
-behavioral compiler support or live provider certification.
+Mastra. Shared manifest validates exact capability and lifecycle metadata;
+registry performs discovery only. Candidate conformance never grants execution
+or mints release certification. Adapter presence never implies behavioral
+compiler support or live provider certification.
+
+## Optional workspace compatibility
+
+Core runtime accepts explicit instructions, contexts, tools, and definition
+transforms. It never searches for repository files. Products that need coding-
+agent interoperability can opt into `@caveman-ai/agent/plugins`:
+
+```ts
+import { agent } from "@caveman-ai/agent";
+import {
+  applyAgentEnvironment,
+  loadAgentEnvironment,
+} from "@caveman-ai/agent/plugins";
+
+const environment = await loadAgentEnvironment({ cwd: process.cwd() });
+const reviewer = applyAgentEnvironment(agent({
+  id: "reviewer",
+  instructions: "Review requested changes.",
+  model: "openai/gpt-5.4",
+  sandbox: "host",
+}), environment);
+```
+
+Optional adapter supports hierarchical `AGENTS.md`, Agent Skills, declarative
+Agent Plugins v1, Vercel OpenPlugin, and compatible Claude/Cursor manifests.
+MCP, hooks, custom agents, plugin subprocesses, and ambient-secret inheritance
+remain disabled.
 
 ## Packages
 
 - `packages/agent` — `@caveman-ai/agent` runtime, compiler, memory,
-  compaction, environment loader, and programmatic-tool kernel.
+  compaction, programmatic-tool kernel, and optional workspace adapters.
 - `packages/adapter-kit` — framework-neutral capability manifests, registry,
-  and conformance authorization.
+  lifecycle validation, and reproducible conformance metadata.
 - `packages/adapters/*` — exact-pinned framework integrations.
 - `packages/coding-agent` — `@caveman-ai/coding-agent` and `caveman-code` CLI.
 - `packages/create-caveman-agent` — zero-runtime-dependency initializer.
@@ -386,6 +371,7 @@ Monorepo boundaries: [docs/MONOREPO.md](./docs/MONOREPO.md).
 ## Develop
 
 ```bash
+npm run repository:setup               # once per clone; installs pre-push guard
 npm ci --prefix packages/agent
 npm ci --prefix packages/pebble-protocol
 npm ci --prefix packages/create-caveman-agent

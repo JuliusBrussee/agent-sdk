@@ -1,0 +1,278 @@
+{
+  "schema": "caveman.adapter-conformance.report.v4",
+  "suite": "@caveman-ai/adapter-conformance/candidate/v4",
+  "adapter": {
+    "id": "langgraph",
+    "packageName": "@caveman-ai/adapter-langgraph",
+    "version": "0.1.0"
+  },
+  "upstream": {
+    "packageName": "@langchain/langgraph",
+    "version": "1.4.13"
+  },
+  "environment": {
+    "runtime": {
+      "name": "node",
+      "version": "22.22.2"
+    },
+    "platform": {
+      "name": "darwin",
+      "architecture": "arm64"
+    },
+    "execution": "uncontained-host"
+  },
+  "packages": [
+    {
+      "role": "adapter",
+      "name": "@caveman-ai/adapter-langgraph",
+      "version": "0.1.0",
+      "sha256": "b1dfd6de954399f678f0f5cf341f851e581d385adac15b78e34b88bb8d0c8ed5"
+    },
+    {
+      "role": "upstream",
+      "name": "@langchain/langgraph",
+      "version": "1.4.13",
+      "sha256": "03cbeb0c585ebf497f04791eecd897798e8284b6e7662d124d6736d45d54acd0"
+    }
+  ],
+  "testVector": {
+    "id": "adapter-capabilities-v4",
+    "version": "4.0.0",
+    "sha256": "8dec2730881a52e2f924f0b5368eda07eb0d39da4188e8fc3ea4935b18fc23f9",
+    "executedSetSHA256": "45c1c4776a24f13c8d916feb1ecf26a4b4e5600a0309378d6f00edd8eb219eb9"
+  },
+  "capabilities": [
+    {
+      "name": "runLifecycle",
+      "cases": [
+        {
+          "id": "run-lifecycle.success",
+          "status": "passed",
+          "code": null,
+          "evidenceSHA256": "dca3baa5fc76d64718d801c41ab9d570835c68f2b893e634dd978a2c7d58bddf"
+        },
+        {
+          "id": "run-lifecycle.failure",
+          "status": "passed",
+          "code": null,
+          "evidenceSHA256": "1ff411d7a06a7dcce776af30704f9a554e419422722c0354a715f4a7317e6798"
+        }
+      ],
+      "caseCounts": {
+        "passed": 2,
+        "failed": 0,
+        "skipped": 0,
+        "total": 2
+      },
+      "performanceCounts": {
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0,
+        "total": 1
+      },
+      "qualification": {
+        "status": "passed",
+        "blockers": []
+      }
+    },
+    {
+      "name": "toolObservation",
+      "cases": [
+        {
+          "id": "tool-observation.success",
+          "status": "passed",
+          "code": null,
+          "evidenceSHA256": "069308014b06a3661a102ae7c3e45f239ef9365b7bb34d387786688a0e146a4a"
+        },
+        {
+          "id": "tool-observation.failure",
+          "status": "passed",
+          "code": null,
+          "evidenceSHA256": "da283c3ec92a76dac4620c0904c94d5d10b09702c42e57d3034c7b7eeab9ba99"
+        }
+      ],
+      "caseCounts": {
+        "passed": 2,
+        "failed": 0,
+        "skipped": 0,
+        "total": 2
+      },
+      "performanceCounts": {
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0,
+        "total": 1
+      },
+      "qualification": {
+        "status": "passed",
+        "blockers": []
+      }
+    },
+    {
+      "name": "usageAccounting",
+      "cases": [
+        {
+          "id": "usage-accounting.known",
+          "status": "passed",
+          "code": null,
+          "evidenceSHA256": "95b4c26e2c2087b7035fa75f10c2c8976138a64986440efe6993c4e748d4a7cf"
+        },
+        {
+          "id": "usage-accounting.unknown-fails-closed",
+          "status": "passed",
+          "code": null,
+          "evidenceSHA256": "c770b2cd1742da8e2834545d4ef6d18b6ff874cf01d07de98e107d20da73d689"
+        }
+      ],
+      "caseCounts": {
+        "passed": 2,
+        "failed": 0,
+        "skipped": 0,
+        "total": 2
+      },
+      "performanceCounts": {
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0,
+        "total": 1
+      },
+      "qualification": {
+        "status": "passed",
+        "blockers": []
+      }
+    },
+    {
+      "name": "streaming",
+      "cases": [
+        {
+          "id": "streaming.ordered-chunks",
+          "status": "passed",
+          "code": null,
+          "evidenceSHA256": "243951ac5ce546f7675b5516a2091aa9c615a74aa3233e943a919c56d61273ff"
+        },
+        {
+          "id": "streaming.terminal",
+          "status": "passed",
+          "code": null,
+          "evidenceSHA256": "afc1dafadd1e0542ec6f11283a9d225b8e2a4db28691b4a3c70d11fad4101de2"
+        },
+        {
+          "id": "streaming.error",
+          "status": "passed",
+          "code": null,
+          "evidenceSHA256": "a84929496ebb2d2265558b0135bbe9ea47766faa9106319581df834c095067f9"
+        }
+      ],
+      "caseCounts": {
+        "passed": 3,
+        "failed": 0,
+        "skipped": 0,
+        "total": 3
+      },
+      "performanceCounts": {
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0,
+        "total": 1
+      },
+      "qualification": {
+        "status": "passed",
+        "blockers": []
+      }
+    }
+  ],
+  "performance": [
+    {
+      "id": "run-lifecycle.hook-overhead-p99",
+      "capability": "runLifecycle",
+      "metric": "hook-overhead-p99",
+      "unit": "microseconds",
+      "clock": "node:process.hrtime.bigint:captured",
+      "percentile": 99,
+      "warmupCount": 250,
+      "requiredSampleCount": 2000,
+      "threshold": {
+        "operator": "lte",
+        "value": 100
+      },
+      "sampleCount": 2000,
+      "observed": 9.416,
+      "status": "passed",
+      "code": null
+    },
+    {
+      "id": "tool-observation.hook-overhead-p99",
+      "capability": "toolObservation",
+      "metric": "hook-overhead-p99",
+      "unit": "microseconds",
+      "clock": "node:process.hrtime.bigint:captured",
+      "percentile": 99,
+      "warmupCount": 250,
+      "requiredSampleCount": 2000,
+      "threshold": {
+        "operator": "lte",
+        "value": 100
+      },
+      "sampleCount": 2000,
+      "observed": 22.583,
+      "status": "passed",
+      "code": null
+    },
+    {
+      "id": "usage-accounting.hook-overhead-p99",
+      "capability": "usageAccounting",
+      "metric": "hook-overhead-p99",
+      "unit": "microseconds",
+      "clock": "node:process.hrtime.bigint:captured",
+      "percentile": 99,
+      "warmupCount": 250,
+      "requiredSampleCount": 2000,
+      "threshold": {
+        "operator": "lte",
+        "value": 100
+      },
+      "sampleCount": 2000,
+      "observed": 25.083,
+      "status": "passed",
+      "code": null
+    },
+    {
+      "id": "streaming.chunk-overhead-p99",
+      "capability": "streaming",
+      "metric": "hook-overhead-p99",
+      "unit": "microseconds",
+      "clock": "node:process.hrtime.bigint:captured",
+      "percentile": 99,
+      "warmupCount": 1000,
+      "requiredSampleCount": 10000,
+      "threshold": {
+        "operator": "lte",
+        "value": 50
+      },
+      "sampleCount": 10000,
+      "observed": 2.959,
+      "status": "passed",
+      "code": null
+    }
+  ],
+  "totals": {
+    "capabilities": {
+      "passed": 4,
+      "blocked": 0,
+      "total": 4
+    },
+    "cases": {
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0,
+      "total": 9
+    },
+    "performance": {
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "total": 4
+    }
+  },
+  "reportDigest": "sha256:41984a422be83557727fd4432fc97c539609ba3806b616931e709d75b06771d9"
+}

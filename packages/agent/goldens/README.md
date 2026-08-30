@@ -56,7 +56,7 @@ holdout opens after freeze.
 Ordering contract: **static plan checks (volatile prefix, prefix shrink,
 prefix below minimum, unpriced model, host-mode lock) run BEFORE the eval
 gate.** They are free
-and deterministic; a build with unapproved evals still fails fast on a
+and deterministic; a build without evals still fails fast on a
 static violation instead of printing `needs_eval`. Phase 2 implements this
 order; the scaffold's "try breaking it" walkthrough depends on it.
 

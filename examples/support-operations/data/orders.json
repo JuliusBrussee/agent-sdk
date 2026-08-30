@@ -1,0 +1,29 @@
+[
+  {
+    "tenantId": "northwind",
+    "id": "NW-1042",
+    "customerId": "cus-nw-7",
+    "region": "EU",
+    "status": "delivered",
+    "totalUsd": 89,
+    "deliveredOn": "2026-08-18"
+  },
+  {
+    "tenantId": "northwind",
+    "id": "NW-2048",
+    "customerId": "cus-nw-9",
+    "region": "US",
+    "status": "in_transit",
+    "totalUsd": 240,
+    "deliveredOn": null
+  },
+  {
+    "tenantId": "contoso",
+    "id": "CT-9001",
+    "customerId": "cus-ct-2",
+    "region": "US",
+    "status": "delivered",
+    "totalUsd": 129,
+    "deliveredOn": "2026-08-11"
+  }
+]

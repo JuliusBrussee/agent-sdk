@@ -39,6 +39,12 @@ export interface AgentDefinition {
   readonly sandbox: "required" | "fixture" | "host";
 }
 
+/** Trusted, explicit definition transform applied by an embedding product. */
+export interface AgentDefinitionTransform {
+  readonly id: string;
+  readonly apply: (definition: AgentDefinition) => AgentDefinition;
+}
+
 const SANDBOX_MODES: readonly AgentDefinition["sandbox"][] = [
   "required",
   "fixture",
@@ -85,4 +91,27 @@ export function agent(options: {
     ...(options.memory === undefined ? {} : { memory: options.memory }),
     ...(options.output === undefined ? {} : { output: options.output }),
   });
+}
+
+export function applyAgentDefinitionTransforms(
+  definition: AgentDefinition,
+  transforms: readonly AgentDefinitionTransform[],
+): AgentDefinition {
+  const ids = new Set<string>();
+  let current = definition;
+  for (const transform of transforms) {
+    if (!/^[a-z0-9][a-z0-9._-]{0,95}$/.test(transform.id)) {
+      throw new Error(`caveman agent: invalid definition transform id ${JSON.stringify(transform.id)}`);
+    }
+    if (ids.has(transform.id)) {
+      throw new Error(`caveman agent: duplicate definition transform ${JSON.stringify(transform.id)}`);
+    }
+    ids.add(transform.id);
+    const next = transform.apply(current);
+    if (next === null || typeof next !== "object" || next.kind !== "agent") {
+      throw new Error(`caveman agent: definition transform ${JSON.stringify(transform.id)} returned invalid definition`);
+    }
+    current = next;
+  }
+  return current;
 }

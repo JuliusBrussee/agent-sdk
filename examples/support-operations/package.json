@@ -1,0 +1,31 @@
+{
+  "name": "@caveman-ai/example-support-operations",
+  "version": "1.0.0",
+  "private": true,
+  "cavemanSample": {
+    "workflow": "tenant-scoped support proposal handoff with no action execution",
+    "minNodeMajor": 22
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "scripts": {
+    "build": "tsc",
+    "check:optimization": "caveman-agent check caveman.config.ts",
+    "compare": "npm run build && node dist/src/compare.js",
+    "dev": "node --experimental-strip-types src/main.ts",
+    "optimize": "npm run build && caveman-agent build caveman.config.ts",
+    "start": "node dist/src/main.js",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run build && node --test dist/tests/*.test.js"
+  },
+  "dependencies": {
+    "@caveman-ai/agent": "file:../../packages/agent"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-ai": "0.83.0",
+    "@types/node": "24.10.1",
+    "typescript": "5.9.3"
+  }
+}

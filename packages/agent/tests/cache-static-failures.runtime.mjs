@@ -213,7 +213,7 @@ test("perturbed-clock second pass catches toDateString, the documented sabotage"
   await writeFile(join(dir, "skills", "refunds.md"), [
     "---",
     "name: refunds",
-    "description: Refund windows and approval rules.",
+    "description: Refund windows and eligibility rules.",
     "---",
     "",
     "Body loaded on demand.",

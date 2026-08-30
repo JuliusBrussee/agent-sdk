@@ -3,11 +3,11 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import { createSocket } from "node:dgram";
-import { writeFileSync } from "node:fs";
+import { realpathSync, writeFileSync } from "node:fs";
 import { chmod, mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { findPackageJSON } from "node:module";
-import { dirname, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   agent,
@@ -21,6 +21,7 @@ import {
   memory,
   output,
   run,
+  runLocked,
   schema,
   sha256,
   stableStringify,
@@ -43,7 +44,7 @@ import {
   agentFileSourcePaths,
   loadDevModule,
 } from "../dist/dev-loader.js";
-import { catalogSearchCeiling } from "../dist/catalog.js";
+import { CATALOG_SHA256, catalogSearchCeiling } from "../dist/catalog.js";
 import {
   createHarnessToolExecutor,
   prepareHarnessToolSandbox,
@@ -257,12 +258,16 @@ test("package lifecycle builds executable framework CLI before packing", async (
     types: "./dist/adapters.d.ts",
     import: "./dist/adapters.js",
   });
+  assert.deepEqual(pkg.exports["./connect"], {
+    types: "./dist/connect.d.ts",
+    import: "./dist/connect.js",
+  });
   assert.equal(pkg.peerDependencies, undefined);
   assert.equal(pkg.peerDependenciesMeta, undefined);
   for (const [directory, upstream, version] of [
-    ["vercel-ai-sdk", "ai", "7.0.43"],
+    ["vercel-ai-sdk", "ai", "7.0.84"],
     ["eve", "eve", "0.29.2"],
-    ["mastra", "@mastra/core", "1.55.0"],
+    ["mastra", "@mastra/core", "1.63.2"],
   ]) {
     const adapter = JSON.parse(await readFile(
       resolve(packageRoot, "../adapters", directory, "package.json"),
@@ -282,6 +287,7 @@ test("framework CLI exposes help/version and rejects typo commands", async () =>
   assert.equal(help.code, 0);
   assert.match(help.stdout, /Usage:/);
   assert.match(help.stdout, /caveman-agent dev/);
+  assert.match(help.stdout, /caveman-agent connect/);
   const version = await invokeAgentCLI(["--version"]);
   assert.equal(version.code, 0);
   assert.equal(version.stdout, "0.2.0\n");
@@ -506,6 +512,39 @@ test("dev loader reloads transitive project source graph", async () => {
   } finally {
     await rm(root, { recursive: true, force: true });
     await rm(external, { recursive: true, force: true });
+  }
+});
+
+test("dev loader executes NodeNext .js imports backed by TypeScript source", async () => {
+  const workspace = await mkdtemp(resolve(tmpdir(), "caveman-dev-loader-ts-"));
+  const root = resolve(workspace, "examples", "sample");
+  const packageRoot = resolve(import.meta.dirname, "..");
+  try {
+    await mkdir(resolve(root, "src"), { recursive: true });
+    await writeFile(resolve(root, "package.json"), '{"type":"module"}\n');
+    await symlink(
+      resolve(packageRoot, "node_modules"),
+      resolve(workspace, "node_modules"),
+      process.platform === "win32" ? "junction" : "dir",
+    );
+    await writeFile(resolve(root, "src/helper.ts"), [
+      "export interface Policy { id: string }",
+      'export const policy: Policy = { id: "refund-v3" };',
+    ].join("\n"));
+    await writeFile(resolve(root, "src/agent.ts"), [
+      'import { policy } from "./helper.js";',
+      "export default { kind: \"agent\", instructions: policy.id };",
+    ].join("\n"));
+
+    const loaded = await loadDevModule(root, resolve(root, "src/agent.ts"));
+    assert.equal(loaded.imported.default.instructions, "refund-v3");
+    assert.deepEqual(
+      loaded.sourceFiles.map((path) => relative(loaded.rootDir, path)),
+      ["src/agent.ts", "src/helper.ts"],
+    );
+    await loaded.dispose();
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
   }
 });
 
@@ -1185,7 +1224,6 @@ test("locked Pi runtime binds static Context IR and installed adapter identity",
     contextIR: staticContext.ir,
     evals: ["a", "b"].map((suffix) => defineEval({
       id: `locked-runtime-${suffix}`,
-      approved: true,
       input: `fixture ${suffix} differs from production turn`,
       quality: [{ type: "exact_match", expected: "ok" }],
     })),
@@ -1194,7 +1232,7 @@ test("locked Pi runtime binds static Context IR and installed adapter identity",
     seeds: [1, 2, 3, 4, 5],
     config: defineBuild({ entry: "src/agent.ts", evals: "evals/*.ts" }),
     sourceSha256: "1".repeat(64),
-    catalogSha256: "2".repeat(64),
+    catalogSha256: CATALOG_SHA256,
     transformRegistrySha256: "3".repeat(64),
     runtimeVersion: "0.2.0",
     adapterVersion: "0.2.0",
@@ -1233,14 +1271,41 @@ test("locked Pi runtime binds static Context IR and installed adapter identity",
     models: [{ id: "claude-haiku-4-5" }],
   });
   faux.setResponses([fauxAssistantMessage("ok")]);
-  const result = await runAgentInternal(defined, "production turn is arbitrary", {
-    ensureRuntime: false,
-    lockedBuild: compiled.lock,
-    model: faux.getModel(),
-    streamFn: faux.provider.streamSimple.bind(faux.provider),
-  });
-  assert.equal(result.text, "ok");
-  assert.equal(result.unlocked, false);
+  const store = await mkdtemp(join(tmpdir(), "cave-public-locked-"));
+  try {
+    let providerCalls = 0;
+    const options = {
+      ensureRuntime: false,
+      rootDir: store,
+      durable: { runId: "locked-runtime-proof" },
+      model: faux.getModel(),
+      streamFn: (selected, context, streamOptions) => {
+        providerCalls++;
+        return faux.provider.streamSimple(selected, context, streamOptions);
+      },
+    };
+    const result = await runLocked(
+      defined,
+      "production turn is arbitrary",
+      compiled.lock,
+      options,
+    );
+    assert.equal(result.text, "ok");
+    assert.equal(result.unlocked, false);
+    assert.equal(result.mode, "optimized");
+
+    const replay = await runLocked(
+      defined,
+      "production turn is arbitrary",
+      compiled.lock,
+      options,
+    );
+    assert.equal(replay.text, "ok");
+    assert.equal(replay.unlocked, false);
+    assert.equal(providerCalls, 1);
+  } finally {
+    await rm(store, { recursive: true, force: true });
+  }
 
   const stale = structuredClone(compiled.lock);
   stale.harness.upstream_version = "0.84.0";
@@ -1248,9 +1313,8 @@ test("locked Pi runtime binds static Context IR and installed adapter identity",
   stale.build_sha256 = sha256(stableStringify(withoutBuild));
   let staleCalls = 0;
   await assert.rejects(
-    runAgentInternal(defined, "must not spend", {
+    runLocked(defined, "must not spend", stale, {
       ensureRuntime: false,
-      lockedBuild: stale,
       model: faux.getModel(),
       streamFn: (selected) => {
         staleCalls++;
@@ -3774,13 +3838,14 @@ test("locked history and tool-result winners transform real Pi transcript bytes"
   }
 });
 
-test("generated eval defaults unapproved and unknown graders fail closed", () => {
+test("generated eval contains no admission gate and unknown graders fail closed", () => {
   const fixture = defineEval({
     id: "refund",
     input: "refund",
     quality: [{ type: "contains", fragments: ["refund"] }],
   });
-  assert.equal(fixture.approved, false);
+  assert.equal(Object.hasOwn(fixture, "approved"), false);
+  assert.equal(Object.hasOwn(fixture, "required"), false);
   assert.throws(
     () => defineEval({
       id: "unknown",
@@ -3799,6 +3864,37 @@ test("generated eval defaults unapproved and unknown graders fail closed", () =>
     input: "x",
     quality: [{ type: "tool_called", tools: [" "] }],
   }), /tool_called grader needs non-empty tool names/);
+});
+
+test("durable run refuses opaque schema semantics before provider I/O", async () => {
+  const defined = agent({
+    id: "durable-mutable-schema",
+    instructions: "Use tool.",
+    model: auto(),
+    tools: [tool({
+      name: "mutable_output",
+      description: "Mutable Standard validator.",
+      input: schema.object({}),
+      output: {
+        "~standard": {
+          version: 1,
+          vendor: "fixture",
+          validate: (value) => ({ value }),
+        },
+      },
+      outputJSONSchema: schema.string(),
+      effect: "read",
+      execute: () => "ok",
+    })],
+    sandbox: "fixture",
+  });
+  await assert.rejects(
+    run(defined, "go", {
+      ensureRuntime: false,
+      durable: { runId: `schema-semantics-${Date.now()}` },
+    }),
+    /cave_tool_schema_semantics_unverified/,
+  );
 });
 
 test("artifact policy and subagent lower to ordinary isolated tool contracts", () => {
@@ -4167,6 +4263,59 @@ test("framework-owned subagent runs outside tool jail and aggregates nested usag
   assert.equal(result.inputTokens > nestedInput, true);
   assert.equal(result.costUsd >= nestedCost, true);
   assert.equal(selectedModels[1], "anthropic/claude-haiku-4-5");
+});
+
+test("subagent runtime result crosses declared output boundary before model context", async () => {
+  const child = agent({
+    id: "runtime-output-child",
+    instructions: "Answer delegated task only.",
+    model: "anthropic/claude-haiku-4-5",
+    sandbox: "fixture",
+  });
+  const unconstrained = subagent({
+      name: "delegate_output_contract",
+      description: "Delegate with intentionally incompatible output contract.",
+      agent: child,
+      maxCalls: 1,
+      maxCostUsd: 10,
+      maxContextTokens: 10_000,
+    });
+  const delegated = Object.freeze(Object.create(
+    Object.getPrototypeOf(unconstrained),
+    {
+      ...Object.getOwnPropertyDescriptors(unconstrained),
+      output: { value: schema.string(), enumerable: true },
+    },
+  ));
+  const parent = agent({
+    id: "runtime-output-parent",
+    instructions: "Delegate once, then finish.",
+    model: auto(),
+    tools: [delegated],
+    sandbox: "required",
+  });
+  const faux = fauxAnthropic();
+  let parentContext = "";
+  faux.setResponses([
+    fauxAssistantMessage(fauxToolCall(
+      "delegate_output_contract",
+      { task: "child task" },
+      { id: "delegate-output-1" },
+    )),
+    fauxAssistantMessage("RAW_CHILD_ANSWER"),
+    (context) => {
+      parentContext = JSON.stringify(context.messages);
+      return fauxAssistantMessage("parent recovered");
+    },
+  ]);
+  const result = await run(parent, "parent task", {
+    ensureRuntime: false,
+    model: faux.getModel(),
+    streamFn: faux.provider.streamSimple,
+  });
+  assert.equal(result.text, "parent recovered");
+  assert.match(parentContext, /cave_tool_output_schema_mismatch:delegate_output_contract/);
+  assert.doesNotMatch(parentContext, /agent_id|RAW_CHILD_ANSWER/);
 });
 
 test("parallel duplicate delegation reserves maxCalls before either child awaits", async () => {
@@ -5767,6 +5916,14 @@ test("sandbox dependency grants cover hoisted packages without granting root nod
   assert.equal(roots.includes(expected), true);
   const packageRoot = fileURLToPath(new URL("..", import.meta.url));
   assert.equal(roots.includes(resolve(packageRoot, "../../node_modules")), false);
+  assert.equal(
+    roots.includes(realpathSync(resolve(packageRoot, "../adapter-kit"))),
+    true,
+  );
+  assert.equal(
+    roots.includes(resolve(packageRoot, "../../node_modules/@caveman-ai/adapter-kit")),
+    true,
+  );
 });
 
 test("a refused collapsed fs-read grant allocates no tool workspace", async () => {
@@ -5835,6 +5992,163 @@ test("an in-process tool that ignores its abort signal fails at timeoutMs with c
   assert.match(observed, /cave_tool_timeout/);
 });
 
+test("timed-out direct effects quiesce before tool settlement", async () => {
+  let mutated = false;
+  const defined = agent({
+    id: "late-direct-effect",
+    instructions: "Call delayed_write.",
+    model: auto(),
+    tools: [tool({
+      name: "delayed_write",
+      description: "Mutate after deadline.",
+      input: schema.object({}),
+      effect: "write",
+      result: "inline",
+      timeoutMs: 20,
+      async execute() {
+        await new Promise((resolve) => setTimeout(resolve, 80));
+        mutated = true;
+        return "late";
+      },
+    })],
+    sandbox: "host",
+  });
+  const faux = fauxProvider();
+  let observed = "";
+  let settlementSawMutation = false;
+  faux.setResponses([
+    fauxAssistantMessage(fauxToolCall("delayed_write", {}, { id: "late-write-1" })),
+    (context) => {
+      settlementSawMutation = mutated;
+      observed = JSON.stringify(context.messages);
+      return fauxAssistantMessage("after");
+    },
+  ]);
+  const started = performance.now();
+  await run(defined, "go", {
+    ensureRuntime: false,
+    model: faux.getModel(),
+    streamFn: faux.provider.streamSimple.bind(faux.provider),
+  });
+  assert.equal(settlementSawMutation, true);
+  assert.ok(performance.now() - started >= 70);
+  assert.match(observed, /cave_tool_timeout/);
+  assert.doesNotMatch(observed, /"text":"late"/);
+});
+
+test("an async output validator shares the tool execution timeout", async () => {
+  const defined = agent({
+    id: "hang-output-validator",
+    instructions: "Call hang_validation.",
+    model: auto(),
+    tools: [tool({
+      name: "hang_validation",
+      description: "Return quickly, then hang in output validation.",
+      input: schema.object({}),
+      output: {
+        "~standard": {
+          version: 1,
+          vendor: "fixture",
+          validate: () => new Promise(() => {}),
+        },
+      },
+      outputJSONSchema: schema.string(),
+      effect: "read",
+      result: "inline",
+      timeoutMs: 25,
+      execute: () => "done",
+    })],
+    sandbox: "fixture",
+  });
+  const faux = fauxProvider();
+  let observed = "";
+  faux.setResponses([
+    fauxAssistantMessage(fauxToolCall("hang_validation", {}, { id: "hang-validation-1" })),
+    (context) => {
+      observed = JSON.stringify(context.messages);
+      return fauxAssistantMessage("after");
+    },
+  ]);
+  const started = performance.now();
+  const result = await run(defined, "go", {
+    ensureRuntime: false,
+    model: faux.getModel(),
+    streamFn: faux.provider.streamSimple.bind(faux.provider),
+  });
+  assert.equal(result.text, "after");
+  assert.ok(performance.now() - started < 500);
+  assert.match(observed, /cave_tool_timeout/);
+});
+
+test("synchronous execute and Standard validation cannot block past tool deadline as success", async () => {
+  const cases = [
+    {
+      id: "sync-execute-deadline",
+      name: "spin_execute",
+      output: schema.string(),
+      execute() {
+        const until = performance.now() + 80;
+        while (performance.now() < until) {}
+        return "late-success";
+      },
+    },
+    {
+      id: "sync-validator-deadline",
+      name: "spin_validator",
+      output: {
+        "~standard": {
+          version: 1,
+          vendor: "fixture-sync-spin",
+          validate(value) {
+            const until = performance.now() + 80;
+            while (performance.now() < until) {}
+            return { value };
+          },
+        },
+      },
+      outputJSONSchema: schema.string(),
+      execute: () => "late-success",
+    },
+  ];
+  for (const fixture of cases) {
+    const defined = agent({
+      id: fixture.id,
+      instructions: `Call ${fixture.name}.`,
+      model: auto(),
+      tools: [tool({
+        name: fixture.name,
+        description: "Block synchronously beyond deadline.",
+        input: schema.object({}),
+        output: fixture.output,
+        ...(fixture.outputJSONSchema === undefined
+          ? {}
+          : { outputJSONSchema: fixture.outputJSONSchema }),
+        effect: "read",
+        result: "inline",
+        timeoutMs: 10,
+        execute: fixture.execute,
+      })],
+      sandbox: "fixture",
+    });
+    const faux = fauxProvider();
+    let observed = "";
+    faux.setResponses([
+      fauxAssistantMessage(fauxToolCall(fixture.name, {}, { id: `${fixture.name}-1` })),
+      (context) => {
+        observed = JSON.stringify(context.messages);
+        return fauxAssistantMessage("after");
+      },
+    ]);
+    await run(defined, "go", {
+      ensureRuntime: false,
+      model: faux.getModel(),
+      streamFn: faux.provider.streamSimple.bind(faux.provider),
+    });
+    assert.match(observed, /cave_tool_timeout/);
+    assert.doesNotMatch(observed, /late-success/);
+  }
+});
+
 test("a sandboxed tool that writes to stdout still returns its fd-3 result", async () => {
   const faux = fauxProvider();
   let observed = "";
@@ -5876,6 +6190,81 @@ test("a sandboxed non-JSON tool result returns a stable failure frame", async ()
   assert.equal(result.text, "done");
   assert.match(observed, /cave_sandbox_result_not_serializable/);
   assert.doesNotMatch(observed, /cave_sandbox_invalid_output/);
+});
+
+test("sandbox validates declared tool output before returning it to model context", async () => {
+  const faux = fauxProvider();
+  let observed = "";
+  faux.setResponses([
+    fauxAssistantMessage(fauxToolCall(
+      "output_schema_mismatch",
+      {},
+      { id: "output-mismatch-1" },
+    )),
+    (context) => {
+      observed = JSON.stringify(context.messages);
+      return fauxAssistantMessage("done");
+    },
+  ]);
+  const result = await run(sandboxAgent, "invalid output", {
+    ensureRuntime: false,
+    entryPath: "tests/fixtures/sandbox-agent.mjs",
+    model: faux.getModel(),
+    streamFn: faux.provider.streamSimple.bind(faux.provider),
+  });
+  assert.equal(result.text, "done");
+  assert.match(observed, /cave_tool_output_schema_mismatch:output_schema_mismatch/);
+  assert.doesNotMatch(observed, /\"value\":7/);
+});
+
+test("sandbox Standard output transform receives raw runtime value exactly once", async () => {
+  const faux = fauxProvider();
+  let observed = "";
+  faux.setResponses([
+    fauxAssistantMessage(fauxToolCall(
+      "standard_date_output",
+      {},
+      { id: "standard-date-1" },
+    )),
+    (context) => {
+      observed = JSON.stringify(context.messages);
+      return fauxAssistantMessage("done");
+    },
+  ]);
+  const result = await run(sandboxAgent, "date", {
+    ensureRuntime: false,
+    entryPath: "tests/fixtures/sandbox-agent.mjs",
+    model: faux.getModel(),
+    streamFn: faux.provider.streamSimple.bind(faux.provider),
+  });
+  assert.equal(result.text, "done");
+  assert.match(observed, /2026-08-30T00:00:00\.000Z/);
+  assert.doesNotMatch(observed, /cave_tool_output_schema_mismatch/);
+});
+
+test("sandbox rejects forged fd-3 result frames", async () => {
+  const faux = fauxProvider();
+  let observed = "";
+  faux.setResponses([
+    fauxAssistantMessage(fauxToolCall(
+      "forge_output_frame",
+      {},
+      { id: "forged-frame-1" },
+    )),
+    (context) => {
+      observed = JSON.stringify(context.messages);
+      return fauxAssistantMessage("done");
+    },
+  ]);
+  const result = await run(sandboxAgent, "forge", {
+    ensureRuntime: false,
+    entryPath: "tests/fixtures/sandbox-agent.mjs",
+    model: faux.getModel(),
+    streamFn: faux.provider.streamSimple.bind(faux.provider),
+  });
+  assert.equal(result.text, "done");
+  assert.match(observed, /cave_sandbox_invalid_output/);
+  assert.doesNotMatch(observed, /\"value\":7/);
 });
 
 test("a late floating rejection does not fail a sandboxed tool that already succeeded", async () => {

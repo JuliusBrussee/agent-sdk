@@ -21,10 +21,14 @@ packages/
 ## Ownership
 
 `agent` owns framework-neutral execution, tools, budgets, breakers, receipts,
-durability, Context IR, profile/eval/compiler, and fail-closed accounting.
+durability, Context IR, profile/eval/compiler, fail-closed accounting, and
+optional Caveman Connect protocol client/policy. External `cave-connectd` owns
+OAuth, credentials, encrypted storage, sync execution, and provider transport;
+its proprietary implementation is not copied or bundled here.
 
-`adapter-kit` owns adapter manifest schema, capability states, registry, and
-conformance authorization. It imports no framework and no Caveman runtime.
+`adapter-kit` owns adapter manifest schema, capability states, registry,
+lifecycle validation, and reproducible conformance metadata. It imports no
+framework and no Caveman runtime.
 
 Each `adapters/*` package owns one upstream pin, binding entrypoint, capability
 manifest, framework-specific documentation, and eventually its conformance
@@ -68,10 +72,9 @@ Every adapter declares all capabilities: `run`, `stream`, `tools`, `usage`,
 - `experimental`: code path exists, but package conformance has not certified it.
 - `certified`: matching conformance suite report digest exists in manifest.
 
-Registry lookup can inspect experimental packages. Registry authorization via
-`require(id, capability)` accepts only `certified`; unknown and experimental
-states fail closed. No manifest state changes savings basis: local results stay
-`inferred`, and `verifiedSavingsUsd` remains zero.
+Registry lookup returns metadata only. It never decides whether an adapter may
+run. No manifest state changes savings basis: local results stay `inferred`,
+and `verifiedSavingsUsd` remains zero.
 
 ## Adding an adapter
 

@@ -10,16 +10,20 @@
     ],
     "paths": {
       "@caveman-ai/adapter-kit": ["packages/adapter-kit/src/index.d.ts"],
+      "@caveman-ai/adapter-conformance": ["packages/adapter-conformance/src/index.d.ts"],
       "@caveman-ai/agent": ["packages/agent/src/index.ts"],
       "@caveman-ai/agent/adapters": ["packages/agent/src/adapters.ts"],
       "@caveman-ai/agent/claude": ["packages/agent/src/claude.ts"],
       "@caveman-ai/agent/code": ["packages/agent/src/code.ts"],
-      "@caveman-ai/agent/compiler": ["packages/agent/src/compiler.ts"]
+      "@caveman-ai/agent/compiler": ["packages/agent/src/compiler.ts"],
+      "@caveman-ai/evals": ["packages/evals/src/index.ts"]
     }
   },
   "include": [
     "packages/adapter-kit/src/**/*.d.ts",
+    "packages/adapter-conformance/src/**/*.d.ts",
     "packages/adapters/*/src/**/*.d.ts",
-    "packages/coding-agent/src/**/*.d.ts"
+    "packages/coding-agent/src/**/*.d.ts",
+    "packages/evals/src/**/*.ts"
   ]
 }

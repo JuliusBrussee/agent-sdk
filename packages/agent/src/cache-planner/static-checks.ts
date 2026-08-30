@@ -1,8 +1,8 @@
 // Static plan checks + their failure voice (Agent SDK v2 phase 2, F2).
 //
 // Ordering contract (goldens/README.md): these run in `caveman-agent build`
-// BEFORE the eval gate — they are free and deterministic, so a build with
-// unapproved evals still fails fast on a static violation instead of printing
+// BEFORE model-backed evals — they are free and deterministic, so a build
+// without evals still fails fast on a static violation instead of printing
 // `needs_eval`. Renderers are pure functions over structured diagnostics; the
 // goldens under goldens/failures/ pin their exact bytes (fixture-pinned fields
 // the live pipeline cannot know, like an agent.ts line number, are filled by
@@ -246,8 +246,7 @@ function renderPrefixBelowMinimum(failure: PrefixBelowMinimumDiagnostic): string
     "    · skip the lock: `npm run dev` and `npm run ticket` work fine",
     "      uncached, and a prefix this small is also cheap to read cold",
     "",
-    "  This check runs before the eval gate, so it fires even while your",
-    "  evals are unapproved.",
+    "  This check runs before any model-backed eval, so failure spends $0.",
     "",
   ].join("\n");
 }

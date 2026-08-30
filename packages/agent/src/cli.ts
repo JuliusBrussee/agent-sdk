@@ -2,11 +2,12 @@
 import { execFile, spawn } from "node:child_process";
 import { constants, readFileSync, watch } from "node:fs";
 import { glob, mkdir, open, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
-import { isAbsolute, relative, resolve } from "node:path";
+import { extname, isAbsolute, relative, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { catalogSearchCeiling, CATALOG_SHA256 } from "./catalog.js";
+import { ConnectRuntime } from "./connect.js";
 import {
   agentDefinitionSHA256,
   buildPolicySHA256,
@@ -123,6 +124,10 @@ async function main(): Promise<void> {
     await register(args);
     return;
   }
+  if (command === "connect") {
+    process.exitCode = await new ConnectRuntime().delegate(args);
+    return;
+  }
   throw new Error(`unknown command ${JSON.stringify(command)}; run caveman-agent --help`);
 }
 
@@ -139,6 +144,7 @@ function printHelp(): void {
     "caveman-agent check [config]",
     "caveman-agent doctor [--json]",
     "caveman-agent register",
+    "caveman-agent connect [provider|providers|connections|status|doctor|...]",
     "caveman-agent --version",
     "",
   ].join("\n"));
@@ -389,7 +395,7 @@ async function doctor(args: string[]): Promise<void> {
           id: "lock",
           status: "warn",
           detail: "no Cave Build lock; dev runs unlocked",
-          fix: "approve required evals, then run caveman-agent build",
+          fix: "add eval fixtures, then run caveman-agent build",
         });
       } else {
         checks.push({
@@ -536,7 +542,7 @@ async function doctor(args: string[]): Promise<void> {
       {
         id: "vercel-ai-sdk",
         locked_execution: false,
-        detail: "adapter 7.0.43 registration/evidence envelope exists; CLI behavioral execution bridge is not shipped",
+        detail: "native adapter package targets ai 7.0.84; CLI behavioral execution bridge is not shipped",
       },
       {
         id: "eve",
@@ -546,7 +552,7 @@ async function doctor(args: string[]): Promise<void> {
       {
         id: "mastra",
         locked_execution: false,
-        detail: "adapter 1.55.0 registration/evidence envelope exists; CLI behavioral execution bridge is not shipped",
+        detail: "native adapter package targets @mastra/core 1.63.2; CLI behavioral execution bridge is not shipped",
       },
     ],
     next_action: firstFailure?.fix ?? firstWarning?.fix ?? "run caveman-agent dev",
@@ -845,7 +851,7 @@ async function runDevTurn(
       "",
       `context bill: ${formatBill(result.contextBill)}`,
       `active safe transforms: ${result.transformIDs.length > 0 ? result.transformIDs.join(",") : "pass-through"} + stable-prefix guard`,
-      `next action: ${identity ? "run caveman-agent check before deployment" : "approve eval fixture, then npm run build"}`,
+      `next action: ${identity ? "run caveman-agent check before deployment" : "review eval fixtures, then npm run build"}`,
       "local evidence: estimate only",
       "provider savings: not claimed",
       "",
@@ -905,8 +911,8 @@ async function build(args: string[]): Promise<void> {
   const loaded = await loadBuildInputs(root, configPath);
   const lowered = await lowerBuildContext(root, loaded.agent);
   // Static plan checks run BEFORE the eval gate (goldens/README.md ordering
-  // contract): they are free and deterministic, so a build with unapproved
-  // evals still fails fast on a static violation instead of printing
+  // contract): they are free and deterministic, so a build without evals
+  // still fails fast on a static violation instead of printing
   // needs_eval. Wire codes are demoted to --verbose.
   const checks = await runStaticPlanChecks(root, loaded, lowered.ir, { acceptPrefixShrink });
   for (const advisory of checks.advisories) process.stdout.write(advisory);
@@ -915,8 +921,8 @@ async function build(args: string[]): Promise<void> {
     process.exitCode = 1;
     return;
   }
-  const approved = loaded.evals.filter((item) => item.approved && item.required);
-  if (approved.length === 0) {
+  const evals = loaded.evals;
+  if (evals.length === 0) {
     printBuildResult({
       status: "needs_eval",
       estimated_ceiling_usd: 0,
@@ -924,20 +930,20 @@ async function build(args: string[]): Promise<void> {
       completed_runs: 0,
       static_rejections: 0,
       actual_cost_usd: null,
-      reason: "no approved required eval fixture",
+      reason: "no eval fixture",
     });
     return;
   }
 
   // Explicit split metadata opts into profile-guided v3. Compiler never
   // guesses which examples are holdout evidence.
-  if (approved.some((fixture) => fixture.split !== undefined)) {
-    await buildProfiled(root, loaded, approved);
+  if (evals.some((fixture) => fixture.split !== undefined)) {
+    await buildProfiled(root, loaded, evals);
     await recordFrozenPrefix(root, lowered.ir);
     return;
   }
 
-  const buildContexts = await Promise.all(approved.map((fixture) =>
+  const buildContexts = await Promise.all(evals.map((fixture) =>
     lowerBuildContext(root, loaded.agent, fixtureInput(fixture.input))));
   const baseline = baselinePlan(loaded.agent, root, buildContexts.map((item) => item.ir));
   const transformRegistry = await loadTransformRegistry();
@@ -953,7 +959,7 @@ async function build(args: string[]): Promise<void> {
     true,
     preferredTransforms,
     transformRegistry.capabilities,
-    evalDynamicKinds(approved),
+    evalDynamicKinds(evals),
     {
       ...(loaded.config.allowedModels === undefined ? {} : { allowedModels: loaded.config.allowedModels }),
       ...(loaded.config.deniedModels === undefined ? {} : { deniedModels: loaded.config.deniedModels }),
@@ -962,10 +968,10 @@ async function build(args: string[]): Promise<void> {
         : { forbiddenSafetyClasses: loaded.config.forbiddenSafetyClasses }),
     },
   );
-  const plannedRuns = candidates.filter((candidate) => !candidate.static_rejection).length * approved.length * 5;
+  const plannedRuns = candidates.filter((candidate) => !candidate.static_rejection).length * evals.length * 5;
   const estimatedCeiling = candidates
     .filter((candidate) => !candidate.static_rejection)
-    .reduce((sum, candidate) => sum + candidate.estimated_cost_usd_per_run * approved.length * 5, 0);
+    .reduce((sum, candidate) => sum + candidate.estimated_cost_usd_per_run * evals.length * 5, 0);
   process.stdout.write(`static reservation ceiling: $${estimatedCeiling.toFixed(4)} public-catalog estimate · ${plannedRuns} runs · provider overage remains possible\n`);
   const sandboxConformance = await verifySandboxConformance();
   if (!sandboxConformance) throw new Error("cave_sandbox_conformance_failed");
@@ -1182,9 +1188,9 @@ const MAX_TRACE_ROWS = 50_000;
 async function buildProfiled(
   root: string,
   loaded: LoadedBuildInputs,
-  approved: EvalDefinition[],
+  evals: EvalDefinition[],
 ): Promise<void> {
-  const splits = splitProfiledEvals(approved);
+  const splits = splitProfiledEvals(evals);
   const imported = await importProfileTrajectories(root, loaded.agent);
   const profileSource: ProfileSource = imported.length > 0 ? "imported_traces" : "profile_evals";
   if (imported.length === 0 && splits.profile.length === 0) {
@@ -1257,7 +1263,7 @@ async function buildProfiled(
     `target: pi ${PI_ADAPTER_VERSION} / upstream ${PI_UPSTREAM_VERSION}`,
     `profile source: ${profileSource === "imported_traces"
       ? `${imported.length} content-blind trace rows`
-      : `${splits.profile.length} approved profile evals`}`,
+      : `${splits.profile.length} profile evals`}`,
     `validation: ${splits.development.length} development / ${splits.holdout.length} untouched holdout evals`,
     `static reservation ceiling: $${estimatedCeiling.toFixed(4)} public-catalog estimate · ${plannedRuns} runs`,
     `configured search budget: $${loaded.config.maxSearchCostUsd.toFixed(4)} · terminal provider overage remains possible`,
@@ -1387,27 +1393,27 @@ export async function prepareProfiledPlanningState(
   };
 }
 
-function splitProfiledEvals(approved: readonly EvalDefinition[]): ProfiledEvalSplits {
-  const missing = approved.find((fixture) => fixture.split === undefined);
+function splitProfiledEvals(evals: readonly EvalDefinition[]): ProfiledEvalSplits {
+  const missing = evals.find((fixture) => fixture.split === undefined);
   if (missing !== undefined) {
     throw new Error(`cave_compiler_eval_split_required:${missing.id}`);
   }
-  const missingLineage = approved.find((fixture) =>
+  const missingLineage = evals.find((fixture) =>
     typeof fixture.lineageId !== "string" || fixture.lineageId.trim() === "");
   if (missingLineage !== undefined) {
     throw new Error(`cave_compiler_eval_lineage_required:${missingLineage.id}`);
   }
-  if (new Set(approved.map((fixture) => fixture.id)).size !== approved.length) {
+  if (new Set(evals.map((fixture) => fixture.id)).size !== evals.length) {
     throw new Error("cave_compiler_duplicate_eval_id");
   }
-  const profile = approved.filter((fixture) => fixture.split === "profile");
-  const development = approved.filter((fixture) => fixture.split === "development");
-  const holdout = approved.filter((fixture) => fixture.split === "holdout");
+  const profile = evals.filter((fixture) => fixture.split === "profile");
+  const development = evals.filter((fixture) => fixture.split === "development");
+  const holdout = evals.filter((fixture) => fixture.split === "holdout");
   if (development.length === 0 || holdout.length === 0) {
     throw new Error("cave_compiler_eval_split_empty: development and holdout are required");
   }
   const lineageOwner = new Map<string, EvalDefinition["split"]>();
-  for (const fixture of approved) {
+  for (const fixture of evals) {
     const existing = lineageOwner.get(fixture.lineageId!);
     if (existing !== undefined && existing !== fixture.split) {
       throw new Error("cave_compiler_eval_lineage_overlap");
@@ -1770,7 +1776,7 @@ function profiledBuildNextAction(status: CompileProfiledResult["status"]): strin
   if (status === "holdout_failed") return "keep baseline; inspect holdout failures";
   if (status === "capability_refused") return "inspect target identity, sandbox, privacy, and tool-effect conformance";
   if (status === "search_budget_exceeded") return "raise maxSearchCostUsd or narrow candidate models";
-  if (status === "needs_eval") return "approve independent development and holdout evals";
+  if (status === "needs_eval") return "add independent development and holdout evals";
   if (status === "no_passing_build") return "keep baseline and inspect development evidence";
   if (status === "incomplete_evidence") return "fix missing usage, grader, privacy, or sandbox evidence";
   return "run caveman-agent doctor, then rebuild";
@@ -1835,7 +1841,7 @@ function buildNextAction(status: CompileResult["status"]): string {
     case "locked":
       return "run npm run check before deployment";
     case "needs_eval":
-      return "review required evals, set approved: true, then run npm run build";
+      return "add eval fixtures, then run npm run build";
     case "search_budget_exceeded":
       return "raise maxSearchCostUsd or narrow allowed models, then run npm run build";
     case "no_passing_build":
@@ -1936,7 +1942,7 @@ async function check(args: string[]): Promise<void> {
     lock = await readLock(root);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      throw new Error("cave_build_lock_missing: approve required evals, then run npm run build");
+      throw new Error("cave_build_lock_missing: add eval fixtures, then run npm run build");
     }
     throw error;
   }
@@ -2077,9 +2083,7 @@ async function checkCurrentLock(
       sourceSha256: loaded.sourceSha256,
       agentDefinitionSha256: agentDefinitionSHA256(loaded.agent),
       contextIRSha256,
-      evalSuiteSha256: sha256(stableStringify(
-        loaded.evals.filter((item) => item.approved && item.required),
-      )),
+      evalSuiteSha256: sha256(stableStringify(loaded.evals)),
       runtimeVersion: FRAMEWORK_VERSION,
       adapterVersion: PI_ADAPTER_VERSION,
       upstreamVersion: PI_UPSTREAM_VERSION,
@@ -2126,9 +2130,8 @@ async function checkCurrentLock(
 }
 
 function profiledEvalSuiteSHA256(evals: readonly EvalDefinition[]): string {
-  const approved = evals.filter((fixture) => fixture.approved && fixture.required);
-  const development = approved.filter((fixture) => fixture.split === "development");
-  const holdout = approved.filter((fixture) => fixture.split === "holdout");
+  const development = evals.filter((fixture) => fixture.split === "development");
+  const holdout = evals.filter((fixture) => fixture.split === "holdout");
   return sha256(stableStringify({
     development: sha256(stableStringify(development)),
     holdout: sha256(stableStringify(holdout)),
@@ -2273,7 +2276,18 @@ async function readLock(root: string): Promise<AnyCaveBuildLock> {
   ));
 }
 
-function importFresh(path: string): Promise<unknown> {
+const retainedImports: LoadedDevModule[] = [];
+
+async function importFresh(path: string): Promise<unknown> {
+  const extension = extname(path);
+  const projectRelative = relative(process.cwd(), path);
+  if ([".ts", ".mts", ".cts"].includes(extension) &&
+      projectRelative !== ".." && !projectRelative.startsWith("../") &&
+      !projectRelative.startsWith("..\\") && !isAbsolute(projectRelative)) {
+    const loaded = await loadDevModule(process.cwd(), path);
+    retainedImports.push(loaded);
+    return loaded.imported;
+  }
   return import(`${pathToFileURL(path).href}?cave=${Date.now()}-${crypto.randomUUID()}`);
 }
 
@@ -2289,7 +2303,9 @@ function formatBill(bill: Record<string, number>): string {
   return Object.entries(bill).sort(([a], [b]) => a.localeCompare(b)).map(([kind, tokens]) => `${kind}=${tokens}`).join(" ");
 }
 
-main().catch((error) => {
+main().finally(async () => {
+  await Promise.all(retainedImports.splice(0).map((loaded) => loaded.dispose()));
+}).catch((error) => {
   const message = error instanceof Error ? error.message : String(error);
   process.stderr.write(`caveman-agent: ${message}\n`);
   process.exitCode = 1;

@@ -1,5 +1,6 @@
 import type { AgentDefinition } from "./index.js";
 import type { ToolDefinition } from "./primitives.js";
+import { toolSchemaSemanticsVerified } from "./tool-internal.js";
 
 const TOOL_IMPLEMENTATION_SOURCE = Symbol.for(
   "@caveman-ai/agent:tool-implementation-source",
@@ -27,6 +28,23 @@ export function agentGraphHasSubagents(root: AgentDefinition): boolean {
       const children = subagentChildren(declared);
       if (children.length > 0) return true;
       if (children.some(visit)) return true;
+    }
+    return false;
+  };
+  return visit(root);
+}
+
+/** True when any reachable tool depends on mutable validator state without a digest. */
+export function graphHasUnverifiedToolSchemaSemantics(root: AgentDefinition): boolean {
+  const visited = new Set<AgentDefinition>();
+  const visit = (definition: AgentDefinition): boolean => {
+    if (!definition || visited.has(definition) || !Array.isArray(definition.tools)) return false;
+    visited.add(definition);
+    for (const declared of definition.tools) {
+      const inspect = (tool: ToolDefinition): boolean =>
+        !toolSchemaSemanticsVerified(tool) || (tool.nestedTools ?? []).some(inspect);
+      if (inspect(declared)) return true;
+      if (subagentChildren(declared).some(visit)) return true;
     }
     return false;
   };

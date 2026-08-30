@@ -5,16 +5,13 @@ import { ALL_EVENT_KINDS, type TurnEventKind } from "../src/events.ts";
 import {
   ACP_MAPPING,
   ACP_METHODS,
-  ACP_PERMISSION_OPTION_KINDS,
   ACP_STOP_REASONS,
   ACP_UPDATE_VARIANTS,
   acpRowFor,
-  PERMISSION_DECISION_TO_ACP,
   STOP_REASON_TO_ACP,
   TOOL_OUTCOME_TO_ACP_STATUS,
 } from "../src/acp.ts";
 import {
-  PERMISSION_DECISIONS,
   STOP_REASONS,
   TOOL_OUTCOMES,
 } from "../src/events.ts";
@@ -57,18 +54,10 @@ test("stop-reason mapping is total over the frozen enum and stays in ACP's set",
   }
 });
 
-test("permission decision mapping covers exactly the three decisions", () => {
-  assert.deepEqual(Object.keys(PERMISSION_DECISION_TO_ACP).sort(), [
-    ...PERMISSION_DECISIONS,
-  ].sort());
-  for (const decision of PERMISSION_DECISIONS) {
-    assert.ok(
-      (ACP_PERMISSION_OPTION_KINDS as readonly string[]).includes(
-        PERMISSION_DECISION_TO_ACP[decision],
-      ),
-      decision,
-    );
-  }
+test("legacy permission frames have no ACP operation", () => {
+  assert.equal(acpRowFor("permission.request").acpMethod, null);
+  assert.equal(acpRowFor("permission.resolve").acpMethod, null);
+  assert.ok(!ACP_METHODS.includes("session/request_permission"));
 });
 
 test("tool outcome mapping is total; cancellation is client-owned in ACP", () => {

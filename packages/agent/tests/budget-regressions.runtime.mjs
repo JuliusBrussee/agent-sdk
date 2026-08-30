@@ -250,6 +250,32 @@ test("N5: a breached ledger refuses a tranche release", () => {
   assert.equal(meter.released, 2);
 });
 
+test("durable restore validates tranche history and never moves its call watermark backward", () => {
+  const meter = new BudgetMeter(normalizeRunBudget({ maxTokens: 10, initialTokens: 2 }));
+  meter.restorePrior({
+    settled: 0,
+    calls: 1,
+    tranches: [{ amount: 1, reason: "prior checkpoint", atCall: 2 }],
+  });
+  assert.equal(meter.release(1, "next checkpoint").atCall, 2);
+
+  for (const prior of [
+    { settled: 0, calls: -1, tranches: [] },
+    { settled: 0.5, calls: 0, tranches: [] },
+    {
+      settled: 0,
+      calls: 2,
+      tranches: [
+        { amount: 1, reason: "later", atCall: 2 },
+        { amount: 1, reason: "time travel", atCall: 1 },
+      ],
+    },
+  ]) {
+    const corrupt = new BudgetMeter(normalizeRunBudget({ maxTokens: 10, initialTokens: 2 }));
+    assert.throws(() => corrupt.restorePrior(prior), /cave_durable_journal_corrupt/);
+  }
+});
+
 // ---------------------------------------------------------------------------
 // B2 — the summarizer's usage reached the receipt but not RunResult's own
 // totals, so costUsd understated the run by the whole compaction and parents
@@ -347,7 +373,10 @@ test("B3: a compaction nothing used bought nothing", () => {
   // Recorded directly, because the honest zero is the case where the run stops
   // before any call carries the smaller context.
   const recorder = new ReceiptRecorder();
-  recorder.recordCall(fauxReceiptCall());
+  const meter = new BudgetMeter(normalizeRunBudget({ maxUsd: 1 }));
+  const held = meter.reserve(0.02, 1_000);
+  meter.settle(held, 0.02);
+  recorder.recordCompactionCall({ ...fauxReceiptCall(), estimatedUsd: 0.02 });
   recorder.recordCompaction({
     tier: "summarized",
     preTokens: 40_000,
@@ -362,7 +391,7 @@ test("B3: a compaction nothing used bought nothing", () => {
     runId: "r",
     agentId: "a",
     stopReason: "budget_exhausted",
-    meter: undefined,
+    meter,
   });
   assert.equal(receipt.compactions[0].workingCallsAfter, 0);
   assert.equal(receipt.compactions[0].modeledNetTokens, 0);
@@ -372,10 +401,45 @@ test("B3: a compaction nothing used bought nothing", () => {
     runId: "r",
     agentId: "a",
     stopReason: "complete",
-    meter: undefined,
+    meter,
   });
   assert.equal(after.compactions[0].workingCallsAfter, 1);
   assert.equal(after.compactions[0].modeledNetTokens, 40_000 - 4_000 - 4_000);
+});
+
+test("B3: later summarizers never count as working calls for earlier compactions", () => {
+  const recorder = new ReceiptRecorder();
+  const summaryCall = fauxReceiptCall();
+  const compaction = (preTokens, postTokens) => ({
+    tier: "summarized",
+    preTokens,
+    postTokens,
+    pinnedSegmentIds: [],
+    elidedSegmentDigests: [],
+    summarySchemaVersion: 1,
+    cacheState: "cold",
+    meteredCost: 0,
+  });
+
+  recorder.recordCompactionCall(summaryCall);
+  recorder.recordCompaction(compaction(100, 50));
+  recorder.recordCall(fauxReceiptCall());
+  recorder.recordCompactionCall(summaryCall);
+  recorder.recordCompaction(compaction(80, 40));
+  recorder.recordCall(fauxReceiptCall());
+
+  const built = recorder.build({
+    runId: "two-compactions",
+    agentId: "agent",
+    stopReason: "complete",
+    meter: undefined,
+  });
+  assert.deepEqual(
+    built.compactions.map((entry) => entry.workingCallsAfter),
+    [2, 1],
+  );
+  assert.equal(built.compactions[0].modeledNetTokens, 50);
+  assert.equal(built.compactions[1].modeledNetTokens, 0);
 });
 
 // ---------------------------------------------------------------------------
@@ -1083,6 +1147,85 @@ test("N1: a breached subagent wallet surfaces on the top-level receipt", async (
   assert.equal(nested.overspent > 0, true);
 });
 
+test("a completed child with unavailable usage remains on the parent's error receipt", async () => {
+  const child = agent({
+    id: "unavailable-receipt-child",
+    instructions: "Answer.",
+    model: auto(),
+    sandbox: "fixture",
+  });
+  const parent = agent({
+    id: "unavailable-receipt-parent",
+    instructions: "Delegate.",
+    model: auto(),
+    sandbox: "fixture",
+    tools: [subagent({
+      name: "delegate",
+      description: "Delegate.",
+      agent: child,
+      maxTokens: 10_000,
+    })],
+  });
+  let providerInvocations = 0;
+  let failure;
+  await assert.rejects(
+    run(parent, "go", {
+      ensureRuntime: false,
+      model: pricedFauxModel(),
+      budget: { maxTokens: 100_000 },
+      streamFn: (selected) => {
+        providerInvocations += 1;
+        if (providerInvocations === 1) {
+          return pushMessage(
+            selected,
+            [{ type: "toolCall", id: "delegate-1", name: "delegate", arguments: { task: "sub" } }],
+            "toolUse",
+            usage({ input: 500, output: 50 }),
+          );
+        }
+        return pushMessage(
+          selected,
+          [{ type: "text", text: "child answer" }],
+          "stop",
+          {
+            input: 300,
+            output: 30,
+            cacheRead: 0,
+            cacheWrite: 0,
+            reasoning: 0,
+            totalTokens: 1,
+            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+          },
+        );
+      },
+    }),
+    (error) => {
+      failure = error;
+      return /cave_nested_usage_incomplete|cave_provider_terminal_error/.test(error.message);
+    },
+  );
+
+  assert.equal(failure.receipt.subagents.length, 1);
+  const [childReceipt] = failure.receipt.subagents;
+  assert.equal(childReceipt.agentId, "unavailable-receipt-child");
+  assert.equal(childReceipt.calls.length, 1);
+  assert.equal(childReceipt.calls[0].usageBasis, "unavailable");
+  assert.equal(childReceipt.spent > 0, true);
+  const recursiveCalls = failure.receipt.calls.length +
+    failure.receipt.subagents.reduce((sum, receipt) => sum + receipt.calls.length, 0);
+  assert.equal(recursiveCalls, providerInvocations);
+  const ownEvidenced = failure.receipt.calls.reduce(
+    (sum, call) => sum + call.inputTokens + call.outputTokens +
+      call.cacheReadTokens + call.cacheWriteTokens,
+    0,
+  );
+  const childSpend = failure.receipt.subagents.reduce(
+    (sum, receipt) => sum + receipt.spent,
+    0,
+  );
+  assert.equal(failure.receipt.spent, ownEvidenced + childSpend);
+});
+
 test("N7: overspent is this level's own, never a double-counted tree total", () => {
   // The reviewer's repro. settleCarve books the child's REAL spend against the
   // parent, so the same dollars appear in both meters: parent max 2, child
@@ -1099,12 +1242,7 @@ test("N7: overspent is this level's own, never a double-counted tree total", () 
   assert.equal(parentMeter.settled, 5);
   assert.equal(parentMeter.overspent, 3);
 
-  const childReceipt = new ReceiptRecorder().build({
-    runId: "c",
-    agentId: "child",
-    stopReason: "budget_exhausted",
-    meter: carve.child,
-  });
+  const childReceipt = meteredReceipt("c", "child", carve.child);
   const recorder = new ReceiptRecorder();
   recorder.recordSubagent(childReceipt);
   const parent = recorder.build({
@@ -1124,23 +1262,13 @@ test("N7: overspent is this level's own, never a double-counted tree total", () 
 });
 
 test("N1: the breach flag rolls up even when the parent's own cap held", () => {
-  const child = new ReceiptRecorder().build({
-    runId: "c1",
-    agentId: "child-one",
-    stopReason: "budget_exhausted",
-    meter: breachedMeter(1, 3),
-  });
-  const sibling = new ReceiptRecorder().build({
-    runId: "c2",
-    agentId: "child-two",
-    stopReason: "budget_exhausted",
-    meter: breachedMeter(2, 5),
-  });
+  const child = meteredReceipt("c1", "child-one", breachedMeter(1, 3));
+  const sibling = meteredReceipt("c2", "child-two", breachedMeter(2, 5));
   const clean = new ReceiptRecorder().build({
     runId: "c3",
     agentId: "child-three",
     stopReason: "complete",
-    meter: undefined,
+    meter: new BudgetMeter(normalizeRunBudget({ maxUsd: 1 })),
   });
   assert.equal(child.overspent, 2);
   assert.equal(sibling.overspent, 3);
@@ -1150,15 +1278,18 @@ test("N1: the breach flag rolls up even when the parent's own cap held", () => {
   parent.recordSubagent(child);
   parent.recordSubagent(sibling);
   parent.recordSubagent(clean);
+  const parentMeter = new BudgetMeter(normalizeRunBudget({ maxUsd: 10 }));
+  const childSpend = parentMeter.reserve(8, 1_000);
+  parentMeter.settle(childSpend, 8);
   const rolled = parent.build({
     runId: "p",
     agentId: "parent",
     stopReason: "complete",
-    meter: undefined,
+    meter: parentMeter,
   });
-  // The flag rolls up; the amount does not. This parent has no meter of its
-  // own, so it has no overspend of its own — the children's amounts stay on
-  // the children's receipts, where each is reported exactly once.
+  // The flag rolls up; the amount does not. The parent settled both child
+  // spends within its own cap, so it has no overspend of its own — the child
+  // breach amounts stay on their receipts, where each is reported once.
   assert.equal(rolled.capBreached, true);
   assert.equal(rolled.overspent, 0);
   assert.deepEqual(rolled.subagents.map((entry) => entry.overspent), [2, 3, 0]);
@@ -1166,6 +1297,7 @@ test("N1: the breach flag rolls up even when the parent's own cap held", () => {
   // A parent with its own breach reports its own amount, not a total.
   const both = new ReceiptRecorder();
   both.recordSubagent(child);
+  both.recordCall({ ...fauxReceiptCall(), estimatedUsd: 14 });
   const withOwn = both.build({
     runId: "p2",
     agentId: "parent-two",
@@ -1350,6 +1482,17 @@ function breachedMeter(max, settled) {
   const held = meter.reserve(max, 1_000);
   meter.settle(held, settled);
   return meter;
+}
+
+function meteredReceipt(runId, agentId, meter) {
+  const recorder = new ReceiptRecorder();
+  recorder.recordCall({ ...fauxReceiptCall(), estimatedUsd: meter.settled });
+  return recorder.build({
+    runId,
+    agentId,
+    stopReason: "budget_exhausted",
+    meter,
+  });
 }
 
 function fauxReceiptCall() {
