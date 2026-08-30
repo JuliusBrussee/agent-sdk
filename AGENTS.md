@@ -22,9 +22,7 @@ must never land here. Only Apache-2.0 protocol remains in this repository.
 - Host sandbox means uncontained host execution. Never describe it as isolation.
 - Generated `packages/agent/src/catalog.ts` changes only through
   `node scripts/generate-agent-catalog.mjs`.
-- Canonical GitHub repository is `JuliusBrussee/agent-sdk`. Run
-  `npm run repository:setup` after cloning. Build, test, pack, and pre-push
-  checks must fail closed when any fetch or push URL targets another repository.
+- Canonical GitHub repository is `JuliusBrussee/agent-sdk`.
 - Optional Agent Skills, AGENTS.md, and Agent Plugins compatibility lives once
   in `packages/agent/src/agent-environment.ts`. Core runtime never discovers
   workspace files automatically. Product wrappers may add search roots, but

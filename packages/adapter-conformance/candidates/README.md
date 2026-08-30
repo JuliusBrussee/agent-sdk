@@ -16,7 +16,7 @@ host-owned exactly as their manifests state.
 Generate report JSON for review:
 
 ```bash
-node packages/adapters/vercel-ai-sdk/conformance/run-candidates.mjs --print vercel-ai-sdk
+node packages/adapter-conformance/candidates/run-candidates.mjs --print vercel-ai-sdk
 ```
 
 Repack the exact installed adapter/upstream sources, rerun cases and suite-owned
@@ -24,8 +24,11 @@ performance measurements, validate report self-digests, compare deterministic
 evidence and artifact digests, and enforce the 25 KiB adapter budget:
 
 ```bash
-node packages/adapters/vercel-ai-sdk/conformance/run-candidates.mjs --check
+npm run test:conformance-candidates
 ```
+
+Root `npm test` runs that check, so a committed report can never drift from the
+adapter source it describes.
 
 The checked report retains the generation host/runtime and measured p99.
 Reproduction compares all semantic output and performance status while omitting

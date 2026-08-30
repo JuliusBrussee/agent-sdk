@@ -38,7 +38,6 @@
     "LICENSE"
   ],
   "scripts": {
-    "bench": "node bench/hooks.mjs",
     "test": "npm run test:runtime && npm run test:types",
     "test:runtime": "node --test tests/*.test.mjs",
     "test:types": "tsc --project tsconfig.test.json"

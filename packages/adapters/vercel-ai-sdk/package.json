@@ -20,7 +20,6 @@
   },
   "files": ["src", "README.md"],
   "scripts": {
-    "bench": "node bench/hooks.mjs",
     "test": "node --test tests/*.test.mjs && npm run test:types",
     "test:types": "tsc --noEmit --project tsconfig.json"
   },

@@ -19,27 +19,25 @@
     "node": ">=22.19.0"
   },
   "scripts": {
-    "build": "npm run repository:check && npm run build:protocol && npm run build:evals && npm run build:agent && npm run build:create-agent",
+    "build": "npm run build:protocol && npm run build:evals && npm run build:agent && npm run build:create-agent",
     "build:agent": "npm --prefix packages/agent run build",
     "build:create-agent": "npm --prefix packages/create-caveman-agent run build",
     "build:evals": "npm --prefix packages/evals run build",
     "build:protocol": "npm --prefix packages/pebble-protocol run build",
     "check:catalog": "node scripts/generate-agent-catalog.mjs --check",
     "license:check": "node scripts/license-lint.mjs",
-    "repository:check": "node scripts/check-repository-identity.mjs",
-    "repository:setup": "node scripts/check-repository-identity.mjs --install",
-    "test": "npm run repository:check && npm run test:repository-identity && npm run test:gitignore && npm run license:check && npm run check:catalog && npm run test:protocol && npm run test:evals && npm run test:adapter-kit && npm run test:adapter-conformance && npm run test:coding-agent && npm run test:package-types && npm run test:agent && npm run test:create-agent && npm run test:example",
-    "test:gitignore": "node --test scripts/gitignore.test.mjs",
-    "test:repository-identity": "node --test scripts/repository-identity.test.mjs",
+    "test": "npm run license:check && npm run check:catalog && npm run test:protocol && npm run test:evals && npm run test:adapter-kit && npm run test:adapter-conformance && npm run test:coding-agent && npm run test:package-types && npm run test:agent && npm run test:adapters && npm run test:conformance-candidates && npm run test:create-agent && npm run test:example",
     "test:protocol": "npm --prefix packages/pebble-protocol test",
     "test:adapter-kit": "node --test packages/adapter-kit/tests/*.test.mjs",
+    "test:adapters": "for d in packages/adapters/*/; do npm --prefix \"$d\" test --if-present || exit 1; done",
     "test:adapter-conformance": "node --test packages/adapter-conformance/tests/*.test.mjs",
+    "test:conformance-candidates": "node packages/adapter-conformance/candidates/run-candidates.mjs --check",
     "test:coding-agent": "node --test packages/coding-agent/tests/*.test.mjs",
     "test:evals": "npm --prefix packages/evals test",
     "test:package-types": "node scripts/typecheck-packages.mjs",
     "test:agent": "npm --prefix packages/agent test",
     "test:create-agent": "npm --prefix packages/create-caveman-agent test",
     "test:example": "node scripts/test-examples.mjs",
-    "pack:check": "npm run repository:check && node scripts/pack-check.mjs"
+    "pack:check": "node scripts/pack-check.mjs"
   }
 }

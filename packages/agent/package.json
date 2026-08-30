@@ -84,10 +84,6 @@
       "types": "./dist/durable.d.ts",
       "import": "./dist/durable.js"
     },
-    "./session": {
-      "types": "./dist/session.d.ts",
-      "import": "./dist/session.js"
-    },
     "./model-boundary": {
       "types": "./dist/model-boundary.d.ts",
       "import": "./dist/model-boundary.js"
@@ -104,25 +100,9 @@
       "types": "./dist/input.d.ts",
       "import": "./dist/input.js"
     },
-    "./credentials": {
-      "types": "./dist/credentials.d.ts",
-      "import": "./dist/credentials.js"
-    },
-    "./runtime-descriptor": {
-      "types": "./dist/runtime-descriptor.d.ts",
-      "import": "./dist/runtime-descriptor.js"
-    },
     "./runtime-model": {
       "types": "./dist/runtime-model.d.ts",
       "import": "./dist/runtime-model.js"
-    },
-    "./checkpoints": {
-      "types": "./dist/checkpoints.d.ts",
-      "import": "./dist/checkpoints.js"
-    },
-    "./tracing": {
-      "types": "./dist/tracing.d.ts",
-      "import": "./dist/tracing.js"
     },
     "./run-receipt": {
       "types": "./dist/run-receipt.d.ts",

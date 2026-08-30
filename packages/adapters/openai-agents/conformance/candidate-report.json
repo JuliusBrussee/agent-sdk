@@ -26,7 +26,7 @@
       "role": "adapter",
       "name": "@caveman-ai/adapter-openai-agents",
       "version": "0.1.0",
-      "sha256": "c6554c2d2bacd5f192e55e5737b9e0dd80ffb688a98451472e172aae2ad471a9"
+      "sha256": "4d09d0268f771b6f165f578fa67e97ad0cb22a4a34e41b2ca8f32a4de2c9ca5f"
     },
     {
       "role": "upstream",
@@ -277,7 +277,7 @@
         "value": 100
       },
       "sampleCount": 2000,
-      "observed": 4.583,
+      "observed": 3.25,
       "status": "passed",
       "code": null
     },
@@ -319,5 +319,5 @@
       "total": 4
     }
   },
-  "reportDigest": "sha256:2aaab8a4a9a2dd2ba4ec0681fcdee434e62824f83375a0eef408c8a7227b3ff1"
+  "reportDigest": "sha256:d95a27ccc2d869245a9489a874a2dd7c0fe1989b7adc1ecbf576fbc8df6272e1"
 }

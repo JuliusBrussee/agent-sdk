@@ -14,35 +14,35 @@ import {
   canonicalSerialize,
   defineConformanceReport,
   runAdapterConformance,
-} from "../../../adapter-conformance/src/index.js";
+} from "../src/index.js";
 import {
   createCloudflareAgentsAdapter,
   manifest as cloudflareManifest,
-} from "../../cloudflare-agents/src/index.js";
+} from "../../adapters/cloudflare-agents/src/index.js";
 import {
   createLangGraphAdapter,
   manifest as langGraphManifest,
-} from "../../langgraph/src/index.js";
+} from "../../adapters/langgraph/src/index.js";
 import {
   createMastraAdapter,
   manifest as mastraManifest,
   normalizeMastraUsage,
-} from "../../mastra/src/index.js";
+} from "../../adapters/mastra/src/index.js";
 import {
   createOpenAIAgentsAdapter,
   manifest as openAIManifest,
   normalizeOpenAIAgentsUsage,
-} from "../../openai-agents/src/index.js";
+} from "../../adapters/openai-agents/src/index.js";
 import {
   createVercelAISDKAdapter,
   manifest as vercelManifest,
   normalizeVercelUsage,
-} from "../src/index.js";
+} from "../../adapters/vercel-ai-sdk/src/index.js";
 
 const execFileAsync = promisify(execFile);
 const encoder = new TextEncoder();
 const currentDirectory = dirname(fileURLToPath(import.meta.url));
-const repositoryRoot = resolve(currentDirectory, "../../../..");
+const repositoryRoot = resolve(currentDirectory, "../../..");
 const capabilityOrder = new Map([
   "runLifecycle",
   "modelInterception",

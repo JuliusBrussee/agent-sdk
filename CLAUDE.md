@@ -93,6 +93,8 @@ npm --prefix packages/agent test
 npm --prefix packages/pebble-protocol test
 npm --prefix packages/create-caveman-agent test
 node --test packages/adapter-kit/tests/*.test.mjs
+npm run test:adapters
+npm run test:conformance-candidates
 node --test packages/coding-agent/tests/*.test.mjs
 node scripts/typecheck-packages.mjs
 ```
@@ -119,6 +121,8 @@ node scripts/typecheck-packages.mjs
 
 ## Notes for future agents
 
-- There are extra directories under `packages/` not listed in root workspaces (for example `pebble`, `pebble-sessions`, `pebble-tui`, `libpebble`, `evals`, `shared`). Treat them as supporting/internal material unless the task clearly requires them.
+- There are extra directories under `packages/` not listed in root workspaces (for example `pebble`, `pebble-sessions`, `pebble-tui`, `libpebble`, `shared`). Treat them as supporting/internal material unless the task clearly requires them.
 - macOS restricted-tool tests may depend on `sandbox-exec` and loopback permissions.
-- Root `npm test` includes license, catalog, protocol, adapter-kit, coding-agent, package-type, agent, create-agent, and example coverage.
+- Root `npm test` includes license, catalog, protocol, evals, adapter-kit,
+  adapter-conformance, coding-agent, package-type, agent, adapters,
+  conformance-candidate reproduction, create-agent, and example coverage.

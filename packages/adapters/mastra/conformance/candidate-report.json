@@ -26,7 +26,7 @@
       "role": "adapter",
       "name": "@caveman-ai/adapter-mastra",
       "version": "0.1.0",
-      "sha256": "4692f09d963ed61ae62c637aed61c9adfb80382bac075d5c6da5c186e3b7500e"
+      "sha256": "0e36cf54375efd365db2d96621cb0def01ac7b82ad0ae47b0a2d78bfe825c3b7"
     },
     {
       "role": "upstream",
@@ -309,7 +309,7 @@
         "value": 100
       },
       "sampleCount": 2000,
-      "observed": 11.625,
+      "observed": 9.042,
       "status": "passed",
       "code": null
     },
@@ -363,7 +363,7 @@
         "value": 100
       },
       "sampleCount": 2000,
-      "observed": 49.25,
+      "observed": 22.458,
       "status": "passed",
       "code": null
     },
@@ -381,7 +381,7 @@
         "value": 100
       },
       "sampleCount": 2000,
-      "observed": 7.292,
+      "observed": 3.875,
       "status": "passed",
       "code": null
     },
@@ -423,5 +423,5 @@
       "total": 6
     }
   },
-  "reportDigest": "sha256:32dc28cbe00c21eed706b3ff8a577e0064e069cb2aa15c0b7b3cc4ad92bf2e00"
+  "reportDigest": "sha256:9341799476691665629e60dcffbd8a1bb39ce30b8dff9455d92f5232baa19615"
 }

@@ -194,23 +194,27 @@ async function runClaudeAgentWithOptions(
         alwaysLoad: true,
       });
     }
+    const sdkEnv: NonNullable<ClaudeSDKOptions["env"]> = {
+      ...process.env as Record<string, string>,
+      ANTHROPIC_CUSTOM_HEADERS: claudeHeaders({
+        definition,
+        sessionID,
+        bill,
+        prefixSHA256,
+      }),
+      CLAUDE_AGENT_SDK_CLIENT_APP: `caveman-agent/${FRAMEWORK_VERSION}`,
+    };
+    // Observe-only keeps the provider's own base URL: the SDK talks to
+    // Anthropic directly, no transform runs, and the gateway measures nothing
+    // about this run. An ambient ANTHROPIC_BASE_URL would silently reroute that
+    // traffic while this run still reports itself as observe-only, so the
+    // inherited value never survives.
+    if (useGateway) sdkEnv.ANTHROPIC_BASE_URL = `${gatewayURL}/anthropic`;
+    else delete sdkEnv.ANTHROPIC_BASE_URL;
     const sdkOptions: ClaudeSDKOptions = {
       abortController: controller,
       cwd: rootDir,
-      env: {
-        ...process.env,
-        // Observe-only keeps the provider's own base URL: the SDK talks to
-        // Anthropic directly, no transform runs, and the gateway measures
-        // nothing about this run.
-        ...(useGateway ? { ANTHROPIC_BASE_URL: `${gatewayURL}/anthropic` } : {}),
-        ANTHROPIC_CUSTOM_HEADERS: claudeHeaders({
-          definition,
-          sessionID,
-          bill,
-          prefixSHA256,
-        }),
-        CLAUDE_AGENT_SDK_CLIENT_APP: `caveman-agent/${FRAMEWORK_VERSION}`,
-      },
+      env: sdkEnv,
       systemPrompt: instructions,
       model: selected,
       tools: [],

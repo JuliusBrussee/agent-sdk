@@ -196,7 +196,7 @@
         "value": 100
       },
       "sampleCount": 2000,
-      "observed": 9.416,
+      "observed": 7.917,
       "status": "passed",
       "code": null
     },
@@ -214,7 +214,7 @@
         "value": 100
       },
       "sampleCount": 2000,
-      "observed": 22.583,
+      "observed": 11.5,
       "status": "passed",
       "code": null
     },
@@ -232,7 +232,7 @@
         "value": 100
       },
       "sampleCount": 2000,
-      "observed": 25.083,
+      "observed": 12.375,
       "status": "passed",
       "code": null
     },
@@ -250,7 +250,7 @@
         "value": 50
       },
       "sampleCount": 10000,
-      "observed": 2.959,
+      "observed": 1.333,
       "status": "passed",
       "code": null
     }
@@ -274,5 +274,5 @@
       "total": 4
     }
   },
-  "reportDigest": "sha256:41984a422be83557727fd4432fc97c539609ba3806b616931e709d75b06771d9"
+  "reportDigest": "sha256:ef81da2819b149ee28c38a0e69a2ba6b87935722f206c4f14923a684a3ca94d8"
 }
