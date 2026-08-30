@@ -250,6 +250,30 @@ Public entry points:
   `build` BEFORE the eval gate; renderers are snapshot-tested byte-exact
   against `goldens/failures/`, and wire codes appear only under
   `caveman-agent build --verbose`;
+- `src/wire.ts` — the portable provider-wire transport (`@caveman-ai/agent/wire`).
+  `createCavemanTransport({ budget, cache })` returns a `fetch` for any provider
+  client that accepts one, so the request ceiling, exact provider-reported usage,
+  and native cache hints reach EVERY framework adapter without per-framework
+  code — this layer scales by provider, not by framework. Anthropic
+  `/v1/messages` and OpenAI `/v1/chat/completions` + `/v1/responses` only, matched
+  on host AND path; every other target, non-POST, or unparseable body passes
+  through unmetered and unedited. Cache release carries the SAME #225 live-path
+  gate as `runtime.ts` (OpenAI affinity routing key only); `cache: "all"` is an
+  explicit opt-in to unproven-live grammars and is never a default. The cache
+  epoch digests the stable slice (`system`/`tools`/`instructions`/`toolConfig`) so
+  changed instructions open a new epoch instead of permanently tripping prefix
+  drift. Usage merges across Anthropic's split `message_start`/`message_delta`
+  and OpenAI's final chunk; a response whose usage cannot be measured settles at
+  the FULL reserve, never zero, and a transport error cancels the reservation.
+  `ModelUsage.cost` follows the model-usage contract (priced only when every
+  count including reasoning is known, so Anthropic records are honestly
+  `unknown`), while the METER settles on a separately derived exact figure when
+  both extremes of an unknown reasoning split price identically. OpenAI's absent
+  cache-write count is the one field defaulted to zero, because OpenAI has no
+  cache-write class (`cacheWritePerMillion: null`). Compaction and routing
+  deliberately do NOT live here: they rewrite what the framework believes it
+  sent, so they stay on the adapter `modelBoundary` seam. Positioning and limits:
+  `docs/PORTABILITY.md`;
 - `src/claude.ts` — public unlocked Claude Agent SDK facade;
 - `src/claude-runtime.ts` — exact-pinned public Claude executor. Public calls
   cannot inject build identity. Every locked/candidate call rejects before SDK

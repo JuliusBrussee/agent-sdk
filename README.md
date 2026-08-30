@@ -320,6 +320,26 @@ registry performs discovery only. Candidate conformance never grants execution
 or mints release certification. Adapter presence never implies behavioral
 compiler support or live provider certification.
 
+### Portable optimizations
+
+Adapters carry lifecycle, usage observation, and a model boundary. The
+economics — request ceiling, exact accounting, provider-native cache hints —
+attach one layer lower, at the provider `fetch`, so they need no per-framework
+code and work even where an adapter declares `modelInterception` unsupported:
+
+```ts
+import { createAnthropic } from "@ai-sdk/anthropic";
+import { createCavemanTransport } from "@caveman-ai/agent/wire";
+
+const caveman = createCavemanTransport({ budget: { maxTokens: 2_000_000 } });
+const anthropic = createAnthropic({ fetch: caveman.fetch });
+```
+
+Compaction and routing stay on the adapter boundary because they rewrite what
+the framework believes it sent. Cache hints stay on the same live-path gate the
+native runtime uses. Boundary rationale, current scope, and limits:
+[docs/PORTABILITY.md](./docs/PORTABILITY.md).
+
 ## Optional workspace compatibility
 
 Core runtime accepts explicit instructions, contexts, tools, and definition
