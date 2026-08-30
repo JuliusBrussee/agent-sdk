@@ -125,6 +125,8 @@ export interface LoadAgentEnvironmentOptions {
   readonly pluginCollections?: readonly string[];
   readonly includeAgentInstructions?: boolean;
   readonly includeDefaultRoots?: boolean;
+  /** Auto-detect a plugin manifest at cwd. Defaults true. */
+  readonly includeWorkspacePlugin?: boolean;
 }
 
 export interface ApplyAgentEnvironmentOptions {
@@ -663,7 +665,8 @@ export async function loadAgentEnvironment(
     }
   }
   const pluginRoots: string[] = [...explicitPluginRoots];
-  if (await resolveAgentPluginManifest(cwd) !== undefined) pluginRoots.push(cwd);
+  if ((options.includeWorkspacePlugin ?? true) &&
+      await resolveAgentPluginManifest(cwd) !== undefined) pluginRoots.push(cwd);
   for (const collection of collections) {
     try {
       pluginRoots.push(...await immediateDirectories(collection));
