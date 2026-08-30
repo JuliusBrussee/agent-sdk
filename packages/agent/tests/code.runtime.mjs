@@ -890,6 +890,69 @@ test("caveman_code drives command sessions through canonical nested dispatch", a
   });
 });
 
+test("successful code cells retain yielded commands until owner cancellation", async () => {
+  await withWorkspace(async (workspace) => {
+    const codingAgent = createCodingAgent({
+      workspace,
+      model: "anthropic/faux-1",
+      toolSet: "pebble-v1",
+      toolMode: "programmatic",
+    });
+    try {
+      const codeTool = codingAgent.definition.tools[0];
+      const nested = new Map(codeTool.nestedTools.map((item) => [item.name, item]));
+      const context = {
+        toolCallId: "cross-cell-parent",
+        parentToolCallId: "cross-cell-parent",
+        dispatch(name, input, options) {
+          const definition = nested.get(name);
+          if (definition === undefined) return Promise.reject(new Error(`test_unknown_tool:${name}`));
+          return definition.execute(input, options?.signal);
+        },
+      };
+      const command = [
+        "node -e '",
+        'const fs=require("fs");',
+        'fs.appendFileSync("cross-cell-runs.txt","x");',
+        'setTimeout(()=>process.stdout.write("cross-cell-late\\n"),120);',
+        "setInterval(()=>{},1000)",
+        "'",
+      ].join("");
+      const owner = new AbortController();
+      const first = await codeTool.execute({
+        code: `return await bash(${JSON.stringify({ command, yieldTimeMs: 0, timeoutMs: 2_000 })})`,
+      }, owner.signal, context);
+      const sessionId = first.match(/session (cmd_[a-f0-9]{32})/)?.[1];
+      const cursor = Number(first.match(/next cursor (\d+)/)?.[1]);
+      assert.match(first, /· running/);
+      assert.equal(typeof sessionId, "string");
+
+      const second = await codeTool.execute({
+        code: `return await bash(${JSON.stringify({
+          sessionId,
+          action: "read",
+          cursor,
+          waitMs: 1_000,
+        })})`,
+      }, undefined, context);
+      assert.match(second, /cross-cell-late/);
+      assert.match(second, /· running/);
+      assert.equal(await readFile(resolve(workspace, "cross-cell-runs.txt"), "utf8"), "x");
+
+      owner.abort(new Error("test_owner_cancelled"));
+      const bash = nested.get("bash");
+      let stopped = await bash.execute({ sessionId, action: "read" });
+      for (let reads = 0; reads < 20 && stopped.includes("· running"); reads++) {
+        await new Promise((accept) => setTimeout(accept, 20));
+        stopped = await bash.execute({ sessionId, action: "read" });
+      }
+      assert.match(stopped, /· killed · killed/);
+    } finally {
+      await codingAgent.close();
+    }
+  });
+});
+
 test("bash writes stdin into its existing command session", async () => {
   await withWorkspace(async (workspace) => {
     const codingAgent = createCodingAgent({ workspace, model: "anthropic/faux-1" });

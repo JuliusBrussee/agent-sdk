@@ -907,10 +907,17 @@ async function runProgram(
       finishRequested = true;
       clearTimeout(timer);
       signal?.removeEventListener("abort", abort);
-      programController.abort(error ?? new Error("cave_program_complete"));
-      if (error !== undefined) void worker.terminate();
+      // `done` arrives only after the worker drains admitted calls. A settled
+      // call may return a runtime-owned handle, such as a yielded command
+      // session, whose lifetime must outlive this cell. Only cell failure
+      // triggers local cancellation; owner cancellation remains attached.
+      if (error !== undefined) {
+        programController.abort(error);
+        void worker.terminate();
+      }
       void (async () => {
         if (!await boundedProgramSettlement([...activeCalls])) {
+          programController.abort(new Error("cave_program_nested_calls_unquiesced"));
           settled = true;
           void worker.terminate();
           reject(new Error("cave_program_nested_calls_unquiesced"));
