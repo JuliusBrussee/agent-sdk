@@ -1,0 +1,26 @@
+# The adapters pin their upstream frameworks exactly, on purpose. Dependabot is
+# what keeps that from turning into a manual treadmill: it opens the bump PR,
+# CI runs the adapter conformance suite on it, and a human decides.
+# `scripts/upstream-drift.mjs` is the backstop for pins Dependabot cannot see
+# (peerDependencies with no devDependency mirror).
+version: 2
+updates:
+  - package-ecosystem: npm
+    # `/` covers every workspace through the root `workspaces` field. Listing
+    # `/packages/*` as well would put each manifest in scope twice and burn the
+    # PR limit on duplicates. `examples/coding-agent` has its own lockfile.
+    directories:
+      - "/"
+      - "/examples/coding-agent"
+    schedule:
+      interval: weekly
+    versioning-strategy: increase
+    open-pull-requests-limit: 10
+    groups:
+      dev-tooling:
+        patterns: ["@types/*", "typescript", "ajv"]
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
