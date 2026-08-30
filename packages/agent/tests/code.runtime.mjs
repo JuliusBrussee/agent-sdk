@@ -2126,6 +2126,22 @@ test("task economics fails an interrupted attempt schedule closed", () => {
   assert.deepEqual(report.issues, ["attempt_cardinality_mismatch"]);
 });
 
+test("task economics never reports favorable zero totals for no attempts", () => {
+  const report = summarizeCodingTaskAttempts([], { expectedAttempts: 1 });
+
+  assert.equal(report.status, "incomplete_evidence");
+  assert.equal(report.attempted, 0);
+  assert.equal(report.completed, 0);
+  assert.equal(report.completionRate, null);
+  assert.equal(report.totalCostUsd, null);
+  assert.equal(report.costPerCompletedTaskUsd, null);
+  assert.equal(report.priceBasis, null);
+  assert.equal(report.totalTokens, null);
+  assert.equal(report.tokensPerCompletedTask, null);
+  assert.equal(report.usageBasis, null);
+  assert.deepEqual(report.issues, ["attempt_cardinality_mismatch", "no_attempts"]);
+});
+
 test("task economics refuses favorable numbers from missing or mixed evidence", () => {
   const missing = summarizeCodingTaskAttempts([{
     taskId: "task-a",

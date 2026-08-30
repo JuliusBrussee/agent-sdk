@@ -1389,6 +1389,12 @@ export function summarizeCodingTaskAttempts(
   let totalCostUsd = 0;
   let totalTokens = 0;
 
+  if (attempts.length === 0) {
+    completionEvidenceComplete = false;
+    costEvidenceComplete = false;
+    usageEvidenceComplete = false;
+  }
+
   for (const attempt of attempts) {
     if (attempt.taskId.trim() === "" || attempt.attemptId.trim() === "") {
       issues.add("attempt_identity_missing");
