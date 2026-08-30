@@ -525,7 +525,7 @@ function codingTools(
       "Run one shell command in the workspace and return combined stdout/stderr. " +
       "Set yieldTimeMs to keep a still-running command as an inspectable session. " +
       "Resume that same process with sessionId plus action read, write, or kill; read cursors " +
-      "are absolute bytes and never rerun the command. " +
+      "are absolute bytes and never rerun the command; write can close stdin to send EOF. " +
       `Hard timeout is ${BASH_TIMEOUT_MS} ms; output is capped at ${caps.bash} bytes.`,
     input: schema.union([
       schema.object({
@@ -544,6 +544,7 @@ function codingTools(
         sessionId: schema.string(),
         action: schema.literal("write"),
         input: schema.string(),
+        closeStdin: schema.optional(schema.boolean()),
         cursor: schema.optional(schema.integer()),
         limit: schema.optional(schema.integer()),
         waitMs: schema.optional(schema.integer()),
@@ -649,15 +650,21 @@ function codingTools(
 
       validateBashSessionReadInput(input, caps.bash);
       let prefix: string | undefined;
+      let waitedForClose = false;
       if (input.action === "write") {
         const write = await commandSessions.write({
           sessionId: input.sessionId,
           input: input.input,
+          ...(input.closeStdin === undefined ? {} : { closeStdin: input.closeStdin }),
           ...(signal === undefined ? {} : { signal }),
         });
         prefix = write.accepted
-          ? `stdin accepted ${write.bytes} bytes`
+          ? `stdin accepted ${write.bytes} bytes${input.closeStdin === true ? " · stdin closed" : ""}`
           : `stdin not accepted · ${write.state}`;
+        if (write.accepted && input.closeStdin === true && input.waitMs !== undefined) {
+          await waitForCommandSession(commandSessions, input.sessionId, input.waitMs, signal);
+          waitedForClose = true;
+        }
       } else if (input.action === "kill") {
         await commandSessions.kill(input.sessionId);
       }
@@ -665,7 +672,7 @@ function codingTools(
         sessionId: input.sessionId,
         ...(input.cursor === undefined ? {} : { cursor: input.cursor }),
         limit: input.limit ?? bashSessionPageLimit(caps.bash),
-        ...(input.action === "kill" || input.waitMs === undefined
+        ...(input.action === "kill" || input.waitMs === undefined || waitedForClose
           ? {}
           : { waitMs: input.waitMs }),
         ...(signal === undefined ? {} : { signal }),

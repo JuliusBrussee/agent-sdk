@@ -918,6 +918,44 @@ test("bash writes stdin into its existing command session", async () => {
   });
 });
 
+test("bash writes stdin and closes it so the same process can finish on EOF", async () => {
+  await withWorkspace(async (workspace) => {
+    const codingAgent = createCodingAgent({ workspace, model: "anthropic/faux-1" });
+    try {
+      const bash = codingAgent.definition.tools.find((item) => item.name === "bash");
+      const started = await bash.execute({
+        command:
+          "node -e 'let body=\"\";process.stdin.on(\"data\",d=>body+=d);" +
+          "process.stdin.on(\"end\",()=>process.stdout.write(\"stdin:\"+body))'",
+        yieldTimeMs: 20,
+      });
+      const sessionId = started.match(/session (cmd_[a-f0-9]{32})/)?.[1];
+      const cursor = Number(started.match(/next cursor (\d+)/)?.[1]);
+      const finished = await bash.execute({
+        sessionId,
+        action: "write",
+        input: "hello-eof",
+        closeStdin: true,
+        cursor,
+        waitMs: 2_000,
+      });
+      assert.match(finished, /stdin accepted 9 bytes · stdin closed/);
+      assert.match(finished, /· exited · exit 0/);
+      assert.match(finished, /stdin:hello-eof/);
+
+      const rejected = await bash.execute({
+        sessionId,
+        action: "write",
+        input: "must-not-run",
+      });
+      assert.match(rejected, /stdin not accepted · exited/);
+      assert.match(rejected, /· exited · exit 0/);
+    } finally {
+      await codingAgent.close();
+    }
+  });
+});
+
 test("bash session kill, timeout, and unknown-after-restart states fail closed", async () => {
   await withWorkspace(async (workspace) => {
     const codingAgent = createCodingAgent({ workspace, model: "anthropic/faux-1" });
@@ -1091,6 +1129,88 @@ test("command session runtime retains bounded output with absolute byte cursors"
         () => runtime.read({ sessionId: started.sessionId, limit: 33 }),
         /command_session_limit_invalid/,
       );
+    } finally {
+      await runtime.close();
+    }
+  });
+});
+
+test("command session runtime can send empty input and EOF atomically", async () => {
+  await withWorkspace(async (workspace) => {
+    const runtime = createCommandSessionRuntime({ maxTimeoutMs: 2_000, maxWaitMs: 1_000 });
+    try {
+      const started = await runtime.start({
+        command: process.execPath,
+        args: [
+          "-e",
+          'process.stdin.on("end",()=>{process.stdout.write("empty-eof");setInterval(()=>{},1000)});' +
+            "process.stdin.resume()",
+        ],
+        cwd: workspace,
+        env: {},
+        timeoutMs: 2_000,
+      });
+      const written = await runtime.write({
+        sessionId: started.sessionId,
+        input: "",
+        closeStdin: true,
+      });
+      assert.deepEqual(written, {
+        sessionId: started.sessionId,
+        state: "running",
+        accepted: true,
+        bytes: 0,
+      });
+      const captured = await runtime.read({
+        sessionId: started.sessionId,
+        cursor: 0,
+        limit: 64,
+        waitMs: 1_000,
+      });
+      assert.equal(captured.state, "running");
+      assert.equal(captured.output, "empty-eof");
+      const rejected = await runtime.write({
+        sessionId: started.sessionId,
+        input: "late",
+        closeStdin: true,
+      });
+      assert.equal(rejected.accepted, false);
+      assert.equal(rejected.state, "running");
+    } finally {
+      await runtime.close();
+    }
+  });
+});
+
+test("command session stdin pipe failure returns rejected instead of crashing host", async () => {
+  await withWorkspace(async (workspace) => {
+    const runtime = createCommandSessionRuntime({ maxTimeoutMs: 2_000, maxWaitMs: 1_000 });
+    try {
+      const started = await runtime.start({
+        command: process.execPath,
+        args: [
+          "-e",
+          'require("node:fs").closeSync(0);process.stdout.write("ready");setInterval(()=>{},1000)',
+        ],
+        cwd: workspace,
+        env: {},
+        timeoutMs: 2_000,
+      });
+      const ready = await runtime.read({
+        sessionId: started.sessionId,
+        cursor: 0,
+        limit: 64,
+        waitMs: 1_000,
+      });
+      assert.equal(ready.output, "ready");
+      const rejected = await runtime.write({
+        sessionId: started.sessionId,
+        input: "x".repeat(64 * 1024),
+        closeStdin: true,
+      });
+      assert.equal(rejected.accepted, false);
+      assert.equal(rejected.bytes, 0);
+      assert.equal(rejected.state, "running");
     } finally {
       await runtime.close();
     }

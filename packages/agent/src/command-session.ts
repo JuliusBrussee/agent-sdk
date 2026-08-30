@@ -78,6 +78,8 @@ export interface CommandSessionReadResult {
 export interface CommandSessionWriteOptions {
   sessionId: string;
   input: string;
+  /** End stdin after this input is flushed, allowing readers to observe EOF. */
+  closeStdin?: boolean;
   /** Cancels this write operation only. It never kills the session. */
   signal?: AbortSignal;
 }
@@ -382,6 +384,9 @@ export function createCommandSessionRuntime(
       } catch (error) {
         throw new Error(`command_session_spawn_failed:${errorMessage(error)}`);
       }
+      // Pipe failures must resolve the owning write operation, never become an
+      // unhandled process-level error when a child closes fd 0 early.
+      child.stdin.on("error", () => {});
       let resolveDone!: () => void;
       const done = new Promise<void>((accept) => { resolveDone = accept; });
       const session: CommandSession = {
@@ -439,6 +444,9 @@ export function createCommandSessionRuntime(
       throwIfOperationAborted(input.signal);
       validateSessionId(input.sessionId);
       if (typeof input.input !== "string") throw new Error("command_session_input_must_be_string");
+      if (input.closeStdin !== undefined && typeof input.closeStdin !== "boolean") {
+        throw new Error("command_session_close_stdin_must_be_boolean");
+      }
       const bytes = Buffer.byteLength(input.input, "utf8");
       if (bytes > maxInputBytes) throw new Error("command_session_input_limit_exceeded");
       const session = sessions.get(input.sessionId);
@@ -470,9 +478,15 @@ export function createCommandSessionRuntime(
         };
         const abort = () => finish(false);
         input.signal?.addEventListener("abort", abort, { once: true });
-        session.child.stdin.write(input.input, "utf8", (error) => {
+        const completed = (error?: Error | null) => {
           finish(error === null || error === undefined);
-        });
+        };
+        try {
+          session.child.stdin.write(input.input, "utf8", completed);
+          if (input.closeStdin === true) session.child.stdin.end();
+        } catch {
+          finish(false);
+        }
         if (input.signal?.aborted === true) abort();
       });
       throwIfOperationAborted(input.signal);
