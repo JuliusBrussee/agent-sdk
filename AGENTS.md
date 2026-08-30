@@ -43,5 +43,19 @@ npm run license:check
 npm run pack:check
 ```
 
+Two of the checks inside `npm test` are ratchets. They fail on purpose and are
+resolved by shrinking, not by widening:
+
+- `npm run check:api` — `packages/agent/api-surface.txt` is the published type
+  surface of `@caveman-ai/agent`. Adding, removing, or renaming a reachable
+  export fails until you run `npm run api:update` and justify the diff. See
+  `docs/RELEASING.md` for what counts as breaking.
+- `npm run check:size` — `size-budget.json` caps source-file line counts. Growing
+  a file past its budget fails until you split it or run
+  `node scripts/size-budget.mjs --update` and justify the diff.
+
+`npm run check:drift` (weekly in CI, not in `npm test`) reports exact-pinned
+upstreams that have moved. It needs network access.
+
 On restricted hosts, rerun macOS `sandbox-exec` and loopback-dependent tests with
 required permissions before classifying failures as product defects.

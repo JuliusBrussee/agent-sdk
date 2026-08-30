@@ -1,0 +1,23 @@
+name: upstream drift
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.19.0
+      # Informational: the job summary lists every drifted pin and which
+      # packages hold it. It does not fail — a job that is permanently red
+      # gets muted, and Dependabot opens the actual bump PRs. The hard gate is
+      # the peer/dev pin parity assertion in the adapter registry test.
+      - run: node scripts/upstream-drift.mjs

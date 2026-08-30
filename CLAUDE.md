@@ -74,6 +74,14 @@ npm run license:check
 npm run pack:check
 ```
 
+`npm test` includes two ratchets that fail until you shrink or deliberately
+re-baseline: `check:api` (published export surface of `@caveman-ai/agent`, golden
+file `packages/agent/api-surface.txt`, re-baseline with `npm run api:update`) and
+`check:size` (source line-count caps in `size-budget.json`, re-baseline with
+`node scripts/size-budget.mjs --update`). Re-baselining is a reviewed diff, not a
+routine step. `npm run check:drift` reports moved upstream pins; it needs network
+and runs weekly in CI, not in `npm test`.
+
 ### Build
 
 ```bash
