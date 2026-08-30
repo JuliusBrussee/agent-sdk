@@ -362,7 +362,7 @@ const reviewer = applyAgentEnvironment(agent({
 }), environment);
 ```
 
-Optional adapter supports hierarchical `AGENTS.md`, Agent Skills, declarative
+Optional adapter supports Agent Skills, declarative
 Agent Plugins v1, Vercel OpenPlugin, and compatible Claude/Cursor manifests.
 MCP, hooks, custom agents, plugin subprocesses, and ambient-secret inheritance
 remain disabled.

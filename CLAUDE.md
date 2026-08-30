@@ -46,10 +46,11 @@ Follow these even if a local change seems harmless:
 - Tool/subprocess environments must use explicit allowlists, never ambient secret inheritance.
 - Generated `packages/agent/src/catalog.ts` changes only via:
   - `node scripts/generate-agent-catalog.mjs`
-- Optional Agent Skills / `AGENTS.md` / plugin compatibility lives in one place:
+- Optional Agent Skills / plugin compatibility lives in one place:
   - `packages/agent/src/agent-environment.ts`
   - core runtime never discovers workspace files automatically
   - wrappers may add roots, but must not fork validation/precedence/invocation behavior.
+- Never rebuild what exact-pinned Pi already provides (tool loop, `beforeToolCall`/`afterToolCall`/`shouldStopAfterTurn`/`transformContext`, steering and follow-up queues, event stream). Check `node_modules/@earendil-works/pi-agent-core/dist/types.d.ts` before adding a runtime capability. Consuming a Pi hook to enforce an invariant Pi lacks (budget, breakers, deadlines, durability) is the product; re-exposing Pi's surface under a Caveman name is duplication and is refused.
 - Agent Plugins v1 / OpenPlugin support is declarative-only; do not add execution for MCP/hooks/custom agents. Executable integrations stay host-owned and require separate environment-allowlist and lifecycle contracts.
 - `@pebble-agent/protocol` is frozen and byte-sensitive. Be careful with event shapes, framing, ordering, enums, and fixtures.
 
@@ -60,7 +61,6 @@ Run from repo root unless noted.
 ### Install
 
 ```bash
-npm ci
 npm ci
 npm --prefix packages/pebble-protocol run build
 npm ci --prefix examples/coding-agent --ignore-scripts

@@ -12,7 +12,17 @@
 > do not add new framework/product surface there when it can live in its package.
 
 `@caveman-ai/agent`: opinionated TypeScript efficiency framework over exact-pinned
-Pi. `src/runtime.ts` owns agent execution, cache safety, tool isolation, runtime
+Pi. Pi is a complete agent core and this package never rebuilds it: Pi owns
+the tool loop, its lifecycle hooks (`beforeToolCall`, `afterToolCall`,
+`shouldStopAfterTurn`, post-turn injection, `transformContext`), the steering
+and follow-up queues, and the event stream — read
+`node_modules/@earendil-works/pi-agent-core/dist/types.d.ts` before adding any
+runtime capability. `runtime.ts` CONSUMES those hooks to enforce what Pi has no
+opinion about (budget reserve/settle, breakers, deadlines, durable journaling);
+that enforcement is the product. A parallel Caveman-named re-export of a Pi
+surface is not, and is refused. The seams this package does own point OUTWARD at
+frameworks it does not control (`src/wire.ts`, `src/model-boundary.ts`), never
+inward at Pi. `src/runtime.ts` owns agent execution, cache safety, tool isolation, runtime
 supervision, and content-blind evidence. Loopback runtime readiness requires
 health identity plus proxy-validated run-state/PID/executable ownership.
 `src/build.ts` owns finite candidate search, eval-complete selection, immutable
