@@ -376,9 +376,7 @@ function codeToolDescription(definitions: readonly ToolDefinition[]): string {
     `declare function ${definition.name}(args: ${schemaType(definition.input)}): Promise<string>;`
   );
   return [
-    "Run one bounded async JavaScript/TypeScript-style cell. Tools exist as direct functions and under tools.",
-    "Use Promise.all for independent calls. Use print(value) or return a value; only that output reaches context.",
-    "Arguments must match declarations. JSON-compatible literal arguments enable safe read speculation.",
+    "Bounded async JavaScript cell. Tools are direct functions and under tools.",
     ...declarations,
   ].join("\n");
 }

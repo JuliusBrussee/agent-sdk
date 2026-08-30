@@ -446,10 +446,11 @@ test("programmatic runtime collapses ordinary tools into one typed code surface"
   const description = runtime.definition.tools[0]!.description;
   assert.match(description, /declare function read_file\(args:/);
   assert.match(description, /declare function write_file\(args:/);
-  assert.match(description, /Promise\.all/);
+  assert.doesNotMatch(description, /Promise\.all|TypeScript-style/);
   const instructions = runtime.definition.instructions;
   assert.equal(typeof instructions, "string");
   if (typeof instructions !== "string") throw new Error("test_programmatic_instructions_invalid");
+  assert.match(instructions, /Promise\.all/);
   assert.match(instructions, /Intermediate tool results stay outside model context/);
   assert.match(instructions, /project rule$/);
   runtime.close();
