@@ -750,6 +750,36 @@ Live coding sessions are never lock-eligible: host mode makes `compile` refuse
 with `cave_host_sandbox_lock_ineligible`, so nothing a session does becomes a
 Cave Build. Runnable example: [`examples/coding-agent`](../../examples/coding-agent).
 
+## Deploy
+
+`caveman-agent serve` is the deployable target: one agent directory behind
+`POST /runs` + `GET /runs/{runId}` + `/healthz` + `/readyz`, with every run
+journaled. `runId` is the caller-assigned idempotency key, so resubmitting a
+settled run replays its journaled outcome and spends nothing.
+
+```bash
+CAVE_SERVE_TOKEN=$(openssl rand -hex 24) caveman-agent serve
+```
+
+`/runs` has no unauthenticated mode; it spends money and returns model output.
+
+Durability is the journal's, not the server's. The server adds an idempotent
+submit, recovery (on boot AND every 60s, so a run stranded by a peer
+instance's death is reclaimed rather than waiting for a redeploy), and a
+SIGTERM drain that is best effort by design — unfinished runs stay journaled
+and the next instance resumes them. The guarantee remains at-least-once at the
+step boundary, and the uncertainty window is on the receipt as
+`resume.possibleDoubleCountCalls`, never silent.
+
+The deployable unit is a container, because the runtime shells out for
+host-sandbox tools. [`hosting/`](hosting/README.md) ships the Dockerfile and a
+complete Cloudflare recipe: the agent in a Container, the journal in a Durable
+Object — Workers has no `node:child_process`, and container disk does not
+survive the instance. On any platform, two things decide whether the deployment
+is actually durable: the journal must outlive the instance (a volume at
+`/app/.caveman`, or `CAVE_JOURNAL_URL` pointing at an `HttpDurableStore`
+endpoint), and health checks must distinguish `/healthz` from `/readyz`.
+
 ## Evals and Cave Build
 
 ```ts

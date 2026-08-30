@@ -84,6 +84,10 @@
       "types": "./dist/durable.d.ts",
       "import": "./dist/durable.js"
     },
+    "./serve": {
+      "types": "./dist/serve.d.ts",
+      "import": "./dist/serve.js"
+    },
     "./model-boundary": {
       "types": "./dist/model-boundary.d.ts",
       "import": "./dist/model-boundary.js"
@@ -118,10 +122,11 @@
     }
   },
   "files": [
+    "LICENSE",
+    "README.md",
     "dist",
     "docs",
-    "README.md",
-    "LICENSE"
+    "hosting"
   ],
   "scripts": {
     "build": "tsc",

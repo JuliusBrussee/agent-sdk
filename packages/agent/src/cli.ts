@@ -70,6 +70,8 @@ import {
   type StaticPlanFailure,
 } from "./cache-planner/static-checks.js";
 import { writeRunReceipt } from "./receipt-print.js";
+import { createAgentServer } from "./serve.js";
+import { HttpDurableStore, type DurableStore } from "./durable.js";
 import { lowerAgentContext } from "./execution-kernel.js";
 import { createConversation, type AgentDefinition } from "./index.js";
 import {
@@ -124,6 +126,10 @@ async function main(): Promise<void> {
     await register(args);
     return;
   }
+  if (command === "serve") {
+    await serve(args);
+    return;
+  }
   if (command === "connect") {
     process.exitCode = await new ConnectRuntime().delegate(args);
     return;
@@ -137,6 +143,7 @@ function printHelp(): void {
     "",
     "Usage:",
     "caveman-agent dev [entry] [prompt]",
+    "caveman-agent serve [dir] [--port N] [--host H] [--locked]",
     "caveman-agent build [config] [--verbose] [--accept-prefix-shrink]",
     "  --accept-prefix-shrink resets the frozen-prefix baseline; if the build",
     "  then stops before locking (e.g. needs_eval), no new baseline is written",
@@ -680,6 +687,72 @@ async function register(_args: string[]): Promise<void> {
     "provider savings: not claimed",
     "",
   ].join("\n"));
+}
+
+/**
+ * The deployable target. Serves one agent over HTTP with every run journaled,
+ * resuming whatever the previous instance left unfinished before it reports
+ * ready. Configuration is environment-only, because that is what every
+ * container platform supplies:
+ *
+ *   CAVE_SERVE_TOKEN    required bearer token for /runs
+ *   CAVE_JOURNAL_URL    optional HTTP journal (default: local disk)
+ *   CAVE_JOURNAL_TOKEN  bearer token for that journal
+ *   PORT / HOST         defaults 8080 / 0.0.0.0
+ */
+async function serve(args: string[]): Promise<void> {
+  const flags = new Set(args.filter((argument) => argument.startsWith("--")));
+  const positional = args.filter((argument) => !argument.startsWith("--"));
+  const flagValue = (name: string): string | undefined => {
+    const index = args.indexOf(name);
+    return index === -1 ? undefined : args[index + 1];
+  };
+  const token = process.env.CAVE_SERVE_TOKEN;
+  if (token === undefined || token === "") {
+    throw new Error(
+      "caveman-agent serve: set CAVE_SERVE_TOKEN; an unauthenticated agent endpoint spends money for anyone who finds it",
+    );
+  }
+  const root = resolve(process.cwd(), positional[0] ?? ".");
+  const definition = await hasAgentDirConvention(root)
+    ? await loadAgentDir(root)
+    : await loadAgent(resolve(root, "src/agent.ts"));
+
+  const journalUrl = process.env.CAVE_JOURNAL_URL;
+  let store: DurableStore | undefined;
+  if (journalUrl !== undefined && journalUrl !== "") {
+    const journalToken = process.env.CAVE_JOURNAL_TOKEN;
+    if (journalToken === undefined || journalToken === "") {
+      throw new Error("caveman-agent serve: CAVE_JOURNAL_URL needs CAVE_JOURNAL_TOKEN");
+    }
+    store = new HttpDurableStore({ url: journalUrl, token: journalToken });
+  }
+
+  const port = Number(flagValue("--port") ?? process.env.PORT ?? 8080);
+  const host = flagValue("--host") ?? process.env.HOST ?? "0.0.0.0";
+  if (!Number.isSafeInteger(port) || port < 0 || port > 65_535) {
+    throw new Error("caveman-agent serve: --port must be a valid port number");
+  }
+  const server = createAgentServer({
+    definition,
+    token,
+    rootDir: root,
+    ...(store === undefined ? {} : { store }),
+    ...(flags.has("--locked") ? { build: await readLock(root) } : {}),
+  });
+  const bound = await server.listen(port, host);
+  process.stdout.write(
+    `caveman-agent serve: listening on ${host}:${String(bound)}${
+      journalUrl === undefined ? " (journal: local disk)" : " (journal: http)"
+    }\n`,
+  );
+  // A platform stops an instance with SIGTERM. Draining is best effort:
+  // anything unfinished is journaled and resumed by the next instance.
+  for (const signal of ["SIGTERM", "SIGINT"] as const) {
+    process.once(signal, () => {
+      void server.close().then(() => process.exit(0));
+    });
+  }
 }
 
 async function dev(args: string[]): Promise<void> {

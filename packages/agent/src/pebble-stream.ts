@@ -170,3 +170,36 @@ export class PebbleEventEncoder {
     return [this.event({ kind: "turn.end", stopReason: protocolStopReason(event.result) })];
   }
 }
+
+/**
+ * The mechanical `CavemanRunEvent` → Pebble mapping, with no policy in it.
+ *
+ * Callers that need policy (retry, degrade, session bookkeeping) inspect the
+ * run event themselves and still encode through here, so the wire shape has
+ * exactly one definition no matter which surface emits it.
+ */
+export function encodeRunEvent(
+  encoder: PebbleEventEncoder,
+  event: CavemanRunEvent,
+): TurnEvent[] {
+  switch (event.type) {
+    case "pi":
+      return encoder.pi(event.event);
+    case "nested_tool_start":
+      return [encoder.nestedToolStart(event.id, event.name, event.args)];
+    case "nested_tool_end":
+      return [encoder.nestedToolEnd(event.id, event.isError, event.result)];
+    case "model_route":
+      return [encoder.event({
+        kind: "route.decided",
+        model: event.decision.model,
+        reason: event.decision.reason,
+        signals: [...event.decision.signals],
+      })];
+    case "run_end":
+    case "run_error":
+      return encoder.terminal(event);
+    default:
+      return [];
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "my-agent",
+  "main": "worker.ts",
+  "compatibility_date": "2025-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // The agent runtime lives in the container, not the Worker: it needs
+  // node:child_process, which Workers does not provide.
+  "containers": [
+    {
+      "class_name": "AgentContainer",
+      // Path to hosting/Dockerfile, resolved from your project root.
+      "image": "../Dockerfile",
+      "instance_type": "standard-1",
+      "max_instances": 1
+    }
+  ],
+
+  "durable_objects": {
+    "bindings": [
+      { "name": "AGENT", "class_name": "AgentContainer" },
+      { "name": "JOURNAL", "class_name": "RunJournal" }
+    ]
+  },
+
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["AgentContainer", "RunJournal"]
+    }
+  ],
+
+  // The container reaches the journal over the public origin, so this must be
+  // the deployed Worker URL (or your custom domain).
+  "vars": {
+    "PUBLIC_URL": "https://my-agent.<your-subdomain>.workers.dev"
+  }
+
+  // Secrets, set with `wrangler secret put <NAME>`:
+  //   CAVE_SERVE_TOKEN    bearer token callers present to POST /runs
+  //   CAVE_JOURNAL_TOKEN  bearer token the container presents to the journal
+  //   ANTHROPIC_API_KEY   provider credential handed to the agent process
+}

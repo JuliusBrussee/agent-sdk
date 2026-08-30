@@ -348,9 +348,48 @@ Public entry points:
   `previousSummary` restart on resume. Synthesized refusal and error/aborted
   turns are never journaled as state, and an error turn without a live
   reservation journals no settle — a phantom zero settle would hide the
-  double-count. `tests/durable.runtime.mjs` covers crash-mid-call resume,
+  double-count.
+  Out-of-band control lives in `src/durable-control.ts`, as journal events
+  rather than process state, so it survives a restart and reaches a run this
+  process is not driving. `cancel_requested` is Temporal's CANCEL not its
+  TERMINATE: cooperative, idempotent, and it never rewrites a settled run — a
+  cancelled run settles as `run_failed` with `cave_durable_run_cancelled` (not a
+  fourth terminal shape, which would read as "pending" to every reader not
+  taught about it), and a sweep settles it with NO provider call.
+  `sleep_scheduled` is the cost primitive: an absolute, last-write-wins wake
+  time after which the run is eligible again, so a wait costs a date instead of
+  a process (no `sleep_settled` — once `wakeAt` passes the sleep is over by
+  definition). `nextDurableWake` / `server.nextWakeAt()` expose the earliest due
+  instant so a host can scale to zero; an overdue sleeper means "work now", and
+  a store that cannot enumerate means "unknown", never "nothing pending".
+  Storage is split into `src/durable-stores.ts` (bytes) and
+  `src/durable-limits.ts` (the shapes both halves must agree on).
+  `tests/durable.runtime.mjs` covers crash-mid-call resume,
   lost-turn restart, idempotent replay, identity refusals, the lock, and
   subagent settles landing path-tagged in the root journal;
+- `src/serve.ts` — the deployable target (`@caveman-ai/agent/serve`).
+  `createAgentServer({ definition, token, store })` puts ONE agent behind
+  `POST /runs` + `GET /runs/{runId}` + `/healthz` + `/readyz`, with every run
+  journaled through `src/durable.ts`. It adds exactly three things to the
+  journal and no scheduler, queue, or orchestration beyond them: an idempotent
+  submit (`runId` IS the durable idempotency key, so a settled run replays its
+  journaled outcome and spends nothing), recovery (boot plus a 60s sweep
+  re-drives every journal with no terminal event — the periodic pass is what
+  reclaims a run stranded by a PEER instance's death, which a boot-only sweep
+  would leave forever), and a SIGTERM drain (best effort; unfinished runs are
+  journaled and resumed by the next instance, so the drain is never the
+  correctness boundary). Fail-closed at the trust boundary: no unauthenticated
+  mode (a bearer token under 16 chars refuses at construction, compared
+  length-independently), text input only (multimodal journals a digest, which
+  no unattended resume could reconstruct), 1 MiB body cap, and `durable` in
+  caller `runOptions` is refused because the server owns it. A store that
+  cannot enumerate reports `listable: false` rather than an empty sweep.
+  `caveman-agent serve [dir] [--port] [--host] [--locked]` is the CLI lane;
+  `hosting/` ships the Dockerfile plus a complete Cloudflare Container +
+  Durable-Object-journal recipe, because Workers has no `node:child_process`
+  and container disk does not survive the instance. `tests/serve.runtime.mjs`
+  covers idempotent replay, boot recovery of a crashed run, auth refusal, and
+  submission validation;
 - `src/cli.ts` — `dev`, `build`, `check`, zero-spend `doctor`, `register`;
   bare `dev` and `defineBuild({ entry: "." })` resolve to the directory
   convention when `instructions.md` exists at the root, and markdown joins
