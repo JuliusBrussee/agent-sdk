@@ -31,6 +31,7 @@
   ],
   "scripts": {
     "build": "tsc",
+    "prepack": "npm run build",
     "lint": "tsc --noEmit && tsc --project tsconfig.test.json",
     "test": "node --test 'tests/*.test.ts'"
   },
