@@ -1,3 +1,8 @@
+// In-process network deny: DEFENSE IN DEPTH ONLY, never a boundary. The
+// kernel boundary lives in `sandbox/backend.ts`, and the egress allowlist in
+// `sandbox/egress-proxy.ts`. This stays because it is a cheap redundant layer
+// inside a process that is already contained, and it is bypassable by design
+// of the JS runtime — see SANDBOX_THREAT_MODEL.md.
 import { createRequire, syncBuiltinESMExports } from "node:module";
 
 const require = createRequire(import.meta.url);
@@ -30,37 +35,4 @@ export function installNetworkDeny(): void {
     }
   }
   syncBuiltinESMExports();
-}
-
-export function networkIsolatedNode(nodeArgs: readonly string[]): {
-  command: string;
-  args: string[];
-} {
-  if (process.platform === "darwin") {
-    return {
-      command: "/usr/bin/sandbox-exec",
-      args: [
-        "-p",
-        "(version 1)(allow default)(deny network*)",
-        process.execPath,
-        "--no-addons",
-        ...nodeArgs,
-      ],
-    };
-  }
-  if (process.platform === "linux") {
-    return {
-      command: "/usr/bin/unshare",
-      args: [
-        "--user",
-        "--map-root-user",
-        "--net",
-        "--",
-        process.execPath,
-        "--no-addons",
-        ...nodeArgs,
-      ],
-    };
-  }
-  throw new Error("cave_sandbox_os_network_isolation_unavailable");
 }

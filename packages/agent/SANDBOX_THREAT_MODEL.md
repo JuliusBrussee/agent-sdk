@@ -2,7 +2,7 @@
 
 What the tool sandbox does and does **not** contain, per platform, and where the
 real boundaries are. Read this before changing anything under
-`executeSandboxedTool`, `networkIsolatedNode`, `installNetworkDeny`, or the
+`executeSandboxedTool`, `src/sandbox/*`, `installNetworkDeny`, or the
 `sandboxProfile` type. The honesty rule that governs this file: **name the real
 boundary, and name every gap** — a sandbox that claims more than it enforces is
 a correctness bug, not a doc nit.
@@ -22,26 +22,76 @@ a correctness bug, not a doc nit.
 
 ## The real boundary (`required` mode)
 
-`executeSandboxedTool` spawns the tool worker under **two** independent kernel
-mechanisms:
+`executeSandboxedTool` picks a **containment backend** (`src/sandbox/backend.ts`),
+which declares what it can and cannot enforce. The selector returns the
+strongest available backend that satisfies the request and refuses otherwise; it
+never downgrades silently.
 
-1. **OS network isolation** (`networkIsolatedNode`):
-   - **Linux**: `unshare --user --map-root-user --net` — a fresh network
-     namespace with no interfaces, so no IP egress (TCP/UDP/DNS) is possible.
-   - **macOS**: `sandbox-exec -p '(version 1)(allow default)(deny network*)'` —
-     kernel denial of network operations.
-   - **Other platforms**: `cave_sandbox_os_network_isolation_unavailable` — the
-     tool cannot run at all (fails closed).
-2. **Node permission model** (`--permission` + `--allow-fs-read`/`--allow-fs-write`):
-   filesystem reads restricted to the staged source graph, the framework
-   package root, the dependency closure, and an ephemeral workspace; writes
-   restricted to the workspace. `child_process` is denied entirely
-   (`cave_sandbox_child_process_containment_unavailable`).
+| Backend | Platform | Mechanism | AF_UNIX contained | Scoped egress |
+|---|---|---|---|---|
+| `bubblewrap` | Linux, `bwrap` present | mount + net + pid + user namespaces | yes | yes |
+| `seatbelt` | macOS | `sandbox-exec`, `(deny network*)` | yes | yes |
+| `unshare` | Linux, no `bwrap` | `unshare --user --map-root-user --net` | **no** | no |
 
-`sandbox_passed` / `verifySandboxConformance` spawns a probe under mechanism (1)
-and asserts home-read denial, child-process denial, and network/DNS/UDP denial.
-The probe runs under the real boundary, so a pass reflects the kernel boundary,
-not the in-process layer.
+On top of the backend, every tool runs under the **Node permission model**
+(`--permission` + `--allow-fs-read`/`--allow-fs-write`): reads restricted to the
+staged source graph, framework package root, dependency closure, and an
+ephemeral workspace; writes to the workspace only. `child_process` is denied
+entirely (`cave_sandbox_child_process_containment_unavailable`). The permission
+model supplies read *granularity* the namespace cannot; the namespace supplies
+containment the permission model has no concept of.
+
+`sandbox_passed` / `verifySandboxConformance` spawns a probe under the selected
+backend and asserts home-read denial, child-process denial, and network/DNS/UDP
+denial. It accepts either `ERR_ACCESS_DENIED` (permission model refused) or
+`ENOENT` (mount namespace never showed the file); the parent creates the file
+immediately before spawning, so `ENOENT` can only mean the namespace hid it.
+
+## Scoped network egress
+
+`sandboxProfile.network` takes three values:
+
+- `false` — no network. The kernel removes every route out.
+- a `SandboxEgressPolicy` — **scoped egress**. Allowed.
+- `true` — unbounded egress. Still refused
+  (`cave_sandbox_network_egress_unbounded`). Tool code holding a provider
+  credential does not get an unfiltered socket; name the hosts instead.
+
+Scoped egress is the architecture every serious agent sandbox converged on: the
+contained process keeps **no network stack of its own**, and its single reachable
+peer is a proxy the parent owns.
+
+```
+tool worker  ──▶  loopback :8118  ──▶  /run/cave-egress.sock  ──▶  egress proxy  ──▶  origin
+(no route out)    (private netns)      (bound in by bwrap)         (parent process,
+                                                                    holds the allowlist)
+```
+
+On macOS there is no mount namespace, so the Seatbelt profile re-allows loopback
+and the child reaches the proxy's port directly — no bridge.
+
+The child is configured with `NODE_USE_ENV_PROXY=1` plus `HTTP_PROXY`/
+`HTTPS_PROXY`/`NO_PROXY` (Node ≥22.21 honours these for `fetch` and for
+`node:http(s)`), so every HTTP client in the process routes through the
+allowlist with no patching. The bridge in `sandbox/egress-client.ts` is
+**plumbing, not a boundary** — a tool that tears it down or dials the socket
+directly gains nothing, because the parent proxy is the enforcement point and
+the kernel has already removed every other route.
+
+Policy matching (`src/sandbox/policy.ts`) is strict on purpose. The known
+real-world break in this class of allowlist was a *parsing* bug (a SOCKS5
+hostname with a NUL byte matched `*.example.com` by string suffix while the
+resolver used only the prefix). So hostnames are matched label-wise, never by
+string suffix; any byte outside LDH rejects the host before matching; `*.` is
+the only wildcard, only leading, and never matches the apex; and the port is
+part of the decision.
+
+**What scoped egress does not do:** the proxy tunnels `CONNECT` byte-for-byte
+and never terminates TLS. It constrains the destination the client names, not
+the payload — domain fronting defeats it. Terminating TLS would mean minting a
+CA the tool trusts, which trades one risk for a worse one. Denials are counted
+and surface on a failing tool as `:egress_denied=<n>`; hostnames are never put
+in the error, because they are tool-controlled input.
 
 ## `installNetworkDeny` is DEFENSE-IN-DEPTH, not a boundary
 
@@ -62,21 +112,21 @@ patch.
 
 ## Known gaps (tracked, not silently accepted)
 
-- **Linux unix-domain sockets** — a network namespace does **not** cover
-  `AF_UNIX`. A tool that can see a host unix socket path (e.g.
-  `/var/run/docker.sock`) can still `connect` to it, and the Node permission
-  model does not gate `AF_UNIX` connect. Closing this needs a **mount namespace**
-  that hides such paths (bwrap / `unshare --mount` direction). Until then,
-  `required` mode does not contain unix-socket egress on Linux. **Tracked
-  follow-up: bwrap migration.**
-- **Scoped network egress** — `sandboxProfile.network: true` used to spawn with
-  **no** OS boundary (unrestricted egress with credentials in env). It now
-  **fails closed** (`cave_sandbox_network_egress_unbounded`). Real scoped egress
-  needs a parent-owned CONNECT proxy bound to an allow-list. **Tracked
-  follow-up.**
-- **`child_process`** — fails closed (`cave_sandbox_child_process_containment_unavailable`)
-  until portable, verifiable descendant containment exists.
+- **Linux without bubblewrap** — the `unshare` backend has no mount namespace,
+  so a tool that can see a host unix socket path (e.g. `/var/run/docker.sock`)
+  can still `connect` to it, and the Node permission model does not gate
+  `AF_UNIX` connect. Installing `bwrap` closes this. Scoped egress is refused
+  outright on this backend (`cave_sandbox_scoped_egress_unavailable`) rather
+  than served over a weaker boundary.
+- **No TLS interception** — see above. Destination-level, not payload-level.
+- **`child_process`** — fails closed
+  (`cave_sandbox_child_process_containment_unavailable`) until portable,
+  verifiable descendant containment exists.
 - **Non-Linux/macOS** — no OS isolation available; tools fail closed.
+- **Shared kernel** — none of these backends is a VM. A kernel vulnerability
+  could enable escape. Deployments that need kernel-level isolation should run
+  the whole agent inside gVisor or a microVM; this sandbox is the inner layer,
+  not the only one.
 
 ## Credentials
 

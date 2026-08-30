@@ -9,6 +9,7 @@ import { validateAgentGraph } from "./definition-graph.js";
 import type { AgentDefinition } from "./index.js";
 import type { ToolExecutionContext } from "./primitives.js";
 import { installNetworkDeny } from "./sandbox-network.js";
+import { installSandboxEgressBridge } from "./sandbox/egress-client.js";
 import { executeRawTool, settleToolOutput } from "./tool-internal.js";
 
 // The result travels on a DEDICATED fd 3, length-prefixed — never stdout
@@ -146,7 +147,15 @@ try {
       typeof request.allowNetwork !== "boolean") {
     throw new Error("cave_sandbox_request_invalid");
   }
-  if (request.allowNetwork !== true) installNetworkDeny();
+  // Egress is a kernel property of this process, decided by the parent before
+  // it spawned us. When it is off, the in-process deny stays as a redundant
+  // inner layer; when it is on, the bridge to the parent's proxy must be
+  // listening before any tool code can issue a request.
+  if (request.allowNetwork !== true) {
+    installNetworkDeny();
+  } else {
+    await installSandboxEgressBridge();
+  }
   const imported = await import(request.entry) as { default?: AgentDefinition; agent?: AgentDefinition };
   let definition = imported.default ?? imported.agent;
   if (!definition || definition.kind !== "agent") throw new Error("cave_sandbox_agent_export_missing");
