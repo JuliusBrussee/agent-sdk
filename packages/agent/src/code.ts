@@ -669,6 +669,7 @@ function codingTools(
       }
       validateBashSessionReadInput(input, caps.bash);
       let prefix: string | undefined;
+      let writeOutputCursor: number | undefined;
       let waitedForClose = false;
       if (input.action === "write") {
         const write = await commandSessions.write({
@@ -677,6 +678,7 @@ function codingTools(
           ...(input.closeStdin === undefined ? {} : { closeStdin: input.closeStdin }),
           ...(signal === undefined ? {} : { signal }),
         });
+        writeOutputCursor = write.outputCursor;
         prefix = write.accepted
           ? `stdin accepted ${write.bytes} bytes${input.closeStdin === true ? " · stdin closed" : ""}`
           : `stdin not accepted · ${write.state}`;
@@ -687,9 +689,10 @@ function codingTools(
       } else if (input.action === "kill") {
         await commandSessions.kill(input.sessionId);
       }
+      const readCursor = input.cursor ?? writeOutputCursor;
       const page = await commandSessions.read({
         sessionId: input.sessionId,
-        ...(input.cursor === undefined ? {} : { cursor: input.cursor }),
+        ...(readCursor === undefined ? {} : { cursor: readCursor }),
         ...(input.action === "read" && input.query !== undefined ? { query: input.query } : {}),
         limit: input.limit ?? bashSessionPageLimit(caps.bash),
         ...(input.action === "kill" || input.waitMs === undefined || waitedForClose

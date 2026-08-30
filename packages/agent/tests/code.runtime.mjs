@@ -1027,6 +1027,36 @@ test("bash writes stdin into its existing command session", async () => {
   });
 });
 
+test("bash write without a cursor returns only output produced after the write", async () => {
+  await withWorkspace(async (workspace) => {
+    const codingAgent = createCodingAgent({ workspace, model: "anthropic/faux-1" });
+    try {
+      const bash = codingAgent.definition.tools.find((item) => item.name === "bash");
+      const started = await bash.execute({
+        command:
+          "node -e 'process.stdout.write(\"READY\");" +
+          "process.stdin.once(\"data\",()=>setTimeout(()=>process.stdout.write(\"RESPONSE\"),50));" +
+          "process.stdin.resume();setInterval(()=>{},1000)'",
+        yieldTimeMs: 500,
+      });
+      assert.match(started, /READY/);
+      const sessionId = started.match(/session (cmd_[a-f0-9]{32})/)?.[1];
+      const written = await bash.execute({
+        sessionId,
+        action: "write",
+        input: "go",
+        waitMs: 2_000,
+      });
+      assert.match(written, /stdin accepted 2 bytes/);
+      assert.match(written, /RESPONSE/);
+      assert.doesNotMatch(written, /READY/);
+      assert.match(written, /· running/);
+    } finally {
+      await codingAgent.close();
+    }
+  });
+});
+
 test("bash writes stdin and closes it so the same process can finish on EOF", async () => {
   await withWorkspace(async (workspace) => {
     const codingAgent = createCodingAgent({ workspace, model: "anthropic/faux-1" });
@@ -1512,6 +1542,7 @@ test("running literal search resumes across its prior cursor", async () => {
         closeStdin: true,
       });
       assert.equal(released.accepted, true);
+      assert.equal(released.outputCursor, Buffer.byteLength(prefix));
 
       const resumed = await runtime.read({
         sessionId: started.sessionId,
@@ -1841,6 +1872,7 @@ test("command session runtime can send empty input and EOF atomically", async ()
         state: "running",
         accepted: true,
         bytes: 0,
+        outputCursor: 0,
       });
       const captured = await runtime.read({
         sessionId: started.sessionId,
@@ -1857,6 +1889,19 @@ test("command session runtime can send empty input and EOF atomically", async ()
       });
       assert.equal(rejected.accepted, false);
       assert.equal(rejected.state, "running");
+      assert.equal(rejected.outputCursor, Buffer.byteLength("empty-eof"));
+
+      const unknown = await runtime.write({
+        sessionId: "cmd_00000000000000000000000000000000",
+        input: "ignored",
+      });
+      assert.deepEqual(unknown, {
+        sessionId: "cmd_00000000000000000000000000000000",
+        state: "unknown_after_restart",
+        accepted: false,
+        bytes: 0,
+        outputCursor: 0,
+      });
     } finally {
       await runtime.close();
     }
@@ -1892,6 +1937,7 @@ test("command session stdin pipe failure returns rejected instead of crashing ho
       assert.equal(rejected.accepted, false);
       assert.equal(rejected.bytes, 0);
       assert.equal(rejected.state, "running");
+      assert.equal(rejected.outputCursor, Buffer.byteLength("ready"));
     } finally {
       await runtime.close();
     }

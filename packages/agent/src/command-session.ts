@@ -124,6 +124,11 @@ export interface CommandSessionWriteResult {
   readonly state: CommandSessionState;
   readonly accepted: boolean;
   readonly bytes: number;
+  /**
+   * Absolute output end captured before the stdin write attempt. Unknown
+   * sessions return `0` because no owned output stream exists.
+   */
+  readonly outputCursor: number;
 }
 
 export interface CommandSessionRuntime {
@@ -703,6 +708,7 @@ export function createCommandSessionRuntime(
           state: "unknown_after_restart" as const,
           accepted: false,
           bytes: 0,
+          outputCursor: 0,
         });
       }
       if (session.state !== "running" ||
@@ -713,8 +719,10 @@ export function createCommandSessionRuntime(
           state: session.state,
           accepted: false,
           bytes: 0,
+          outputCursor: session.availableTo,
         });
       }
+      const outputCursor = session.availableTo;
       const accepted = await new Promise<boolean>((accept) => {
         let settled = false;
         const finish = (value: boolean) => {
@@ -742,6 +750,7 @@ export function createCommandSessionRuntime(
         state: session.state,
         accepted,
         bytes: accepted ? bytes : 0,
+        outputCursor,
       });
     },
 
