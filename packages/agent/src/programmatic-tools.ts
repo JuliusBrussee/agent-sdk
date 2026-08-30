@@ -376,7 +376,7 @@ function codeToolDescription(definitions: readonly ToolDefinition[]): string {
     `declare function ${definition.name}(args: ${schemaType(definition.input)}): Promise<string>;`
   );
   return [
-    "Bounded async JavaScript cell. Tools are direct functions and under tools.",
+    "Bounded async JS cell. Tools are direct functions and under tools.",
     ...declarations,
   ].join("\n");
 }

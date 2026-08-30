@@ -928,13 +928,16 @@ test("successful code cells retain yielded commands until owner cancellation", a
       assert.equal(typeof sessionId, "string");
 
       const second = await codeTool.execute({
-        code: `return await bash(${JSON.stringify({
-          sessionId,
-          action: "read",
-          cursor,
-          waitMs: 1_000,
-        })})`,
+        code: [
+          'const sessions=await bash({"action":"list"});',
+          'const sessionId=/cmd_[a-f0-9]{32}/.exec(sessions)?.[0];',
+          'if(!sessionId)throw new Error("missing retained session");',
+          `const page=await bash({sessionId,action:"read",cursor:${cursor},waitMs:1000});`,
+          'return sessions+"\\n"+page;',
+        ].join(""),
       }, undefined, context);
+      assert.match(second, /command sessions: 1 retained · oldest first/);
+      assert.match(second, new RegExp(`${sessionId} · running · stdin open`));
       assert.match(second, /cross-cell-late/);
       assert.match(second, /· running/);
       assert.equal(await readFile(resolve(workspace, "cross-cell-runs.txt"), "utf8"), "x");
@@ -1194,6 +1197,64 @@ test("command session runtime retains bounded output with absolute byte cursors"
       );
     } finally {
       await runtime.close();
+    }
+  });
+});
+
+test("command session runtime lists immutable retained-state snapshots", async () => {
+  await withWorkspace(async (workspace) => {
+    const runtime = createCommandSessionRuntime({
+      maxSessions: 2,
+      maxOutputBytes: 64,
+      maxTimeoutMs: 2_000,
+      maxWaitMs: 1_000,
+    });
+    try {
+      const live = await runtime.start({
+        command: process.execPath,
+        args: ["-e", 'process.stdout.write("live");setInterval(()=>{},1000)'],
+        cwd: workspace,
+        env: {},
+        timeoutMs: 2_000,
+      });
+      await runtime.read({ sessionId: live.sessionId, cursor: 0, limit: 4, waitMs: 1_000 });
+      const finished = await runtime.start({
+        command: process.execPath,
+        args: ["-e", 'process.stdout.write("done")'],
+        cwd: workspace,
+        env: {},
+        stdin: "closed",
+        timeoutMs: 2_000,
+      });
+      let settled = await runtime.read({
+        sessionId: finished.sessionId,
+        cursor: 0,
+        limit: 4,
+        waitMs: 1_000,
+      });
+      while (settled.state === "running") {
+        settled = await runtime.read({
+          sessionId: finished.sessionId,
+          cursor: settled.availableTo,
+          limit: 1,
+          waitMs: 1_000,
+        });
+      }
+
+      const listed = runtime.list();
+      assert.equal(Object.isFrozen(listed), true);
+      assert.equal(listed.every(Object.isFrozen), true);
+      assert.deepEqual(listed.map((session) => session.sessionId), [live.sessionId, finished.sessionId]);
+      assert.deepEqual(listed.map((session) => session.state), ["running", "exited"]);
+      assert.deepEqual(listed.map((session) => session.stdinOpen), [true, false]);
+      assert.deepEqual(listed.map((session) => session.availableTo), [4, 4]);
+
+      await runtime.kill(live.sessionId);
+      assert.equal(listed[0].state, "running");
+      assert.equal(runtime.list()[0].state, "killed");
+    } finally {
+      await runtime.close();
+      assert.deepEqual(runtime.list(), []);
     }
   });
 });

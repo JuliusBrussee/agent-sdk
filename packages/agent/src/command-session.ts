@@ -75,6 +75,17 @@ export interface CommandSessionReadResult {
   readonly spawnError?: string;
 }
 
+export interface CommandSessionSummary {
+  readonly sessionId: string;
+  readonly state: CommandSessionState;
+  readonly availableFrom: number;
+  readonly availableTo: number;
+  readonly stdinOpen: boolean;
+  readonly exitCode: number | null;
+  readonly exitSignal: NodeJS.Signals | null;
+  readonly spawnError?: string;
+}
+
 export interface CommandSessionWriteOptions {
   sessionId: string;
   input: string;
@@ -93,6 +104,8 @@ export interface CommandSessionWriteResult {
 
 export interface CommandSessionRuntime {
   start(options: CommandSessionStartOptions): Promise<CommandSessionStartResult>;
+  /** Snapshot retained sessions in start order. Command text is not retained or exposed. */
+  list(): readonly CommandSessionSummary[];
   read(options: CommandSessionReadOptions): Promise<CommandSessionReadResult>;
   write(options: CommandSessionWriteOptions): Promise<CommandSessionWriteResult>;
   kill(sessionId: string): Promise<CommandSessionReadResult>;
@@ -360,6 +373,20 @@ export function createCommandSessionRuntime(
   };
 
   const runtime: CommandSessionRuntime = {
+    list() {
+      return Object.freeze([...sessions.values()].map((session) => Object.freeze({
+        sessionId: session.id,
+        state: session.state,
+        availableFrom: session.availableTo - session.output.byteLength,
+        availableTo: session.availableTo,
+        stdinOpen: session.state === "running" &&
+          !session.child.stdin.destroyed && !session.child.stdin.writableEnded,
+        exitCode: session.exitCode,
+        exitSignal: session.exitSignal,
+        ...(session.spawnError === undefined ? {} : { spawnError: session.spawnError }),
+      })));
+    },
+
     async start(input) {
       if (closed) throw new Error("command_session_runtime_closed");
       validateStart(input, maxTimeoutMs);

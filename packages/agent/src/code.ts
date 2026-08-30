@@ -58,6 +58,7 @@ import {
   createCommandSessionRuntime,
   type CommandSessionReadResult,
   type CommandSessionRuntime,
+  type CommandSessionSummary,
 } from "./command-session.js";
 import { hostShellInvocation, killProcessTree, portableInvocation } from "./portable-process.js";
 import {
@@ -522,9 +523,9 @@ function codingTools(
   const bashTool = tool({
     name: "bash",
     description:
-      "Run one shell command in the workspace and return combined stdout/stderr. " +
+      "Run shell command in the workspace and return combined stdout/stderr. " +
       "Set yieldTimeMs to keep a still-running command as an inspectable session. " +
-      "Resume that same process with sessionId plus action read, write, or kill; read cursors " +
+      "List finds retained sessions; read, write, or kill resumes one by sessionId. Read cursors " +
       "are absolute bytes and never rerun the command; write can close stdin to send EOF. " +
       `Hard timeout is ${BASH_TIMEOUT_MS} ms; output is capped at ${caps.bash} bytes.`,
     input: schema.union([
@@ -532,6 +533,9 @@ function codingTools(
         command: schema.string(),
         timeoutMs: schema.optional(schema.integer()),
         yieldTimeMs: schema.optional(schema.integer()),
+      }),
+      schema.object({
+        action: schema.literal("list"),
       }),
       schema.object({
         sessionId: schema.string(),
@@ -648,6 +652,11 @@ function codingTools(
         return text;
       }
 
+      if (input.action === "list") {
+        const text = formatCommandSessionList(commandSessions.list(), caps.bash);
+        record("bash:list", text);
+        return text;
+      }
       validateBashSessionReadInput(input, caps.bash);
       let prefix: string | undefined;
       let waitedForClose = false;
@@ -947,6 +956,28 @@ function formatCommandSessionPage(
     ].join("\n"),
     outputCap,
   );
+}
+
+function formatCommandSessionList(
+  sessions: readonly CommandSessionSummary[],
+  outputCap: number,
+): string {
+  if (sessions.length === 0) return "command sessions: none";
+  return capOutput([
+    `command sessions: ${sessions.length} retained · oldest first`,
+    ...sessions.map((session) => {
+      const exit = session.state === "exited"
+        ? ` · exit ${session.exitCode}`
+        : session.state === "timed_out"
+          ? " · hard timeout"
+          : session.state === "killed"
+            ? " · killed"
+            : "";
+      return `${session.sessionId} · ${session.state}${exit} · ` +
+        `${session.stdinOpen ? "stdin open" : "stdin closed"} · ` +
+        `retained bytes ${session.availableFrom}-${session.availableTo}`;
+    }),
+  ].join("\n"), outputCap);
 }
 
 /**
