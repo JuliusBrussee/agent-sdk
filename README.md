@@ -3,7 +3,7 @@
 </p>
 
 <p align="center"><strong>Build agents that can work, remember, recover, and prove what they spent.</strong></p>
-
+<p align="center"><strong>IN BETA</strong></p>
 <p align="center">
   A TypeScript runtime and profile-guided compiler for tool-using agents.<br>
   One SDK for programmatic tools, durable memory, typed compaction,<br>
