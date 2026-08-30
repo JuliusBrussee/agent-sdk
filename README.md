@@ -385,6 +385,8 @@ remain disabled.
 - `internal/agentbench/corpus` — pinned Apache-2.0 deterministic compiler
   replay corpus.
 
+Full documentation — guides, concepts, and a generated API reference for every
+published entrypoint: [caveman-docs/](./caveman-docs/README.md).
 Detailed SDK API: [packages/agent/README.md](./packages/agent/README.md).
 Monorepo boundaries: [docs/MONOREPO.md](./docs/MONOREPO.md).
 
