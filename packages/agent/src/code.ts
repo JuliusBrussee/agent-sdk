@@ -620,6 +620,28 @@ function codingTools(
           ...(toolSet === "full" ? { store: storedOutputs } : {}),
           label: `bash:${input.command.slice(0, 60)}`,
           complete: capture.availableFrom === 0,
+          ...(toolSet !== "pebble-v1"
+            ? {}
+            : capture.availableFrom === 0
+              ? {
+                  recovery:
+                    `resume retained output with bash(${JSON.stringify({
+                      sessionId: started.sessionId,
+                      action: "read",
+                      cursor: 0,
+                    })})`,
+                }
+              : {
+                  source:
+                    `retained bytes ${capture.availableFrom}-${capture.availableTo}; ` +
+                    `older output discarded before absolute byte ${capture.availableFrom}`,
+                  recovery:
+                    `resume retained output with bash(${JSON.stringify({
+                      sessionId: started.sessionId,
+                      action: "read",
+                      cursor: capture.availableFrom,
+                    })})`,
+                }),
         })}`;
         record(`bash:${input.command.slice(0, 60)}`, text);
         return text;
@@ -976,16 +998,22 @@ function capToolOutput(input: {
   store?: ToolOutputStore;
   label: string;
   complete: boolean;
+  source?: string;
+  recovery?: string;
 }): string {
   const encoded = Buffer.from(input.text, "utf8");
   if (encoded.byteLength <= input.maxBytes && input.complete) return input.text;
   const handle = input.store?.put(input.label, input.text, input.complete);
-  const source = input.complete ? "captured bytes" : "captured bytes; later process output unavailable";
-  const recovery = input.store === undefined
-    ? "recovery paging is not exposed; narrow original request"
-    : handle === undefined
-      ? "result too large for recovery store; narrow original request"
-    : `use read_tool_output with handle ${handle}`;
+  const source = input.source ?? (
+    input.complete ? "captured bytes" : "captured bytes; later process output unavailable"
+  );
+  const recovery = input.recovery ?? (
+    input.store === undefined
+      ? "recovery paging is not exposed; narrow original request"
+      : handle === undefined
+        ? "result too large for recovery store; narrow original request"
+        : `use read_tool_output with handle ${handle}`
+  );
   const marker = `\n[caveman-code: output capped from ${encoded.byteLength} ${source}; ${recovery}]`;
   const previewBytes = Math.max(0, input.maxBytes - Buffer.byteLength(marker, "utf8"));
   const preview = input.direction === "head"

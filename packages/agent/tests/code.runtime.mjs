@@ -213,12 +213,53 @@ test("Pebble v1 coding surface exposes only read, shell, write, and edit", async
   assert.doesNotMatch(codingAgent.definition.instructions, /read_tool_output|grep searches/);
   const bash = codingAgent.definition.tools.find((item) => item.name === "bash");
   const output = await bash.execute({ command: "printf '%0400d' 0" });
-  assert.match(output, /narrow original request/);
+  assert.match(output, /resume retained output with bash/);
   assert.doesNotMatch(output, /use read_tool_output/);
   assert.throws(
     () => createCodingAgent({ workspace: tmpdir(), model: "anthropic/faux-1", toolSet: "unknown" }),
     /coding_tool_set_invalid:unknown/,
   );
+});
+
+test("Pebble v1 recovers capped foreground shell output without rerunning", async () => {
+  await withWorkspace(async (workspace) => {
+    const codingAgent = createCodingAgent({
+      workspace,
+      model: "anthropic/faux-1",
+      toolSet: "pebble-v1",
+      outputCaps: { bash: 1_200 },
+    });
+    const expected = "0123456789".repeat(300);
+    try {
+      const bash = codingAgent.definition.tools.find((item) => item.name === "bash");
+      const output = await bash.execute({
+        command:
+          "node -e 'const fs=require(\"node:fs\");" +
+          "fs.appendFileSync(\"runs.txt\",\"x\");" +
+          "process.stdout.write(\"0123456789\".repeat(300))'",
+      });
+      const recovery = output.match(
+        /bash\(\{"sessionId":"(cmd_[a-f0-9]{32})","action":"read","cursor":(\d+)\}\)/,
+      );
+      assert.equal(recovery !== null, true);
+      const sessionId = recovery?.[1];
+      let cursor = Number(recovery?.[2]);
+      let recovered = "";
+      while (cursor < Buffer.byteLength(expected)) {
+        const page = await bash.execute({ sessionId, action: "read", cursor });
+        assert.doesNotMatch(page, /output capped/);
+        const range = page.match(/bytes (\d+)-(\d+) of (\d+)/);
+        assert.equal(range !== null, true);
+        assert.equal(Number(range?.[1]), cursor);
+        recovered += page.split("\n")[2] ?? "";
+        cursor = Number(range?.[2]);
+      }
+      assert.equal(recovered, expected);
+      assert.equal(await readFile(resolve(workspace, "runs.txt"), "utf8"), "x");
+    } finally {
+      await codingAgent.close();
+    }
+  });
 });
 
 test("cold machine starts observe-only and says so loudly", async () => {
