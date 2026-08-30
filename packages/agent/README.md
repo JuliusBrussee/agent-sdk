@@ -509,8 +509,7 @@ const coding = createCodingAgent({
 });
 ```
 
-Loader reads AGENTS.md from repository root through current directory, scans
-project then user `.agents/skills/<name>/SKILL.md`, and discovers plugins under
+Loader scans project then user `.agents/skills/<name>/SKILL.md`, and discovers plugins under
 `.agents/plugins/<plugin>`. Both Agent Plugins v1 root `plugin.json` and
 OpenPlugin `.plugin/plugin.json` manifests work; Claude and Cursor compatibility
 manifests are accepted too. Explicit roots are available for product wrappers.

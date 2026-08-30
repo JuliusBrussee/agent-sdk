@@ -44,8 +44,6 @@ async function fixture() {
     mkdir(join(root, ".agents", "plugins", "vercel", "agents"), { recursive: true }),
   ]);
   await Promise.all([
-    writeFile(join(root, "AGENTS.md"), "root rule\n"),
-    writeFile(join(root, "packages", "AGENTS.md"), "package rule\n"),
     writeFile(
       join(root, ".agents", "skills", "review", "SKILL.md"),
       [
@@ -103,14 +101,10 @@ async function fixture() {
   return { base, root, cwd, home };
 }
 
-test("environment loads AGENTS.md, Agent Plugins v1, and OpenPlugin skills and commands", async () => {
+test("environment loads Agent Plugins v1 and OpenPlugin skills and commands", async () => {
   const { base, cwd, home } = await fixture();
   try {
     const environment = await loadAgentEnvironment({ cwd, homeDir: home });
-    assert.deepEqual(environment.instructions.map((entry) => entry.body), [
-      "root rule\n",
-      "package rule\n",
-    ]);
     assert.deepEqual(environment.skills.map((entry) => entry.id), [
       "review",
       "standard-plugin:audit",
@@ -224,7 +218,6 @@ test("generic definitions receive same environment contexts and lazy loader", as
     }), environment);
     assert.equal(definition.tools.some((entry) => entry.name === "load_skill"), true);
     assert.deepEqual(definition.contexts.map((entry) => entry.id), [
-      "agent.instructions",
       "agent.skills",
       "agent.plugin-commands",
     ]);

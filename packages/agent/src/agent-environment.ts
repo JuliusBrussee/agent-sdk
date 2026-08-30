@@ -20,12 +20,10 @@ import { parseDocument } from "yaml";
 export const AGENT_PLUGINS_SCHEMA =
   "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json";
 export const AGENT_SKILLS_CONTEXT_ID = "agent.skills";
-export const AGENT_INSTRUCTIONS_CONTEXT_ID = "agent.instructions";
 export const AGENT_PLUGIN_COMMANDS_CONTEXT_ID = "agent.plugin-commands";
 
 const MAX_SKILL_BYTES = 1024 * 1024;
 const MAX_RESOURCE_BYTES = 4 * 1024 * 1024;
-const MAX_INSTRUCTIONS_BYTES = 512 * 1024;
 const SKILL_NAME = /^(?!.*--)[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/;
 const PLUGIN_NAME = /^(?!.*--)(?!.*\.\.)[a-z0-9](?:[a-z0-9.-]{0,62}[a-z0-9])?$/;
 
@@ -45,11 +43,6 @@ export interface AgentEnvironmentDiagnostic {
   readonly code: AgentEnvironmentDiagnosticCode;
   readonly path: string;
   readonly message: string;
-}
-
-export interface AgentInstructionFile {
-  readonly path: string;
-  readonly body: string;
 }
 
 export interface AgentSkill {
@@ -111,7 +104,6 @@ export interface AgentPlugin {
 export interface AgentEnvironment {
   readonly cwd: string;
   readonly workspaceRoot: string;
-  readonly instructions: readonly AgentInstructionFile[];
   readonly skills: readonly AgentSkill[];
   readonly commands: readonly AgentPluginCommand[];
   readonly plugins: readonly AgentPlugin[];
@@ -127,7 +119,6 @@ export interface LoadAgentEnvironmentOptions {
   readonly pluginRoots?: readonly string[];
   /** Directories whose immediate children may be plugin package roots. */
   readonly pluginCollections?: readonly string[];
-  readonly includeAgentInstructions?: boolean;
   readonly includeDefaultRoots?: boolean;
   /** Auto-detect a plugin manifest at cwd. Defaults true. */
   readonly includeWorkspacePlugin?: boolean;
@@ -589,34 +580,6 @@ export async function findAgentWorkspaceRoot(cwd: string): Promise<string> {
   }
 }
 
-async function loadAgentInstructions(
-  cwd: string,
-  root: string,
-): Promise<AgentInstructionFile[]> {
-  const directories: string[] = [];
-  let cursor = cwd;
-  for (;;) {
-    directories.push(cursor);
-    if (cursor === root) break;
-    const parent = dirname(cursor);
-    if (parent === cursor || !contained(root, parent)) break;
-    cursor = parent;
-  }
-  directories.reverse();
-  const instructions: AgentInstructionFile[] = [];
-  for (const directory of directories) {
-    const candidate = join(directory, "AGENTS.md");
-    if (await optionalKind(candidate, "file") !== "valid") continue;
-    const file = await regularContainedFile(root, candidate);
-    const body = await readFile(file, "utf8");
-    if (Buffer.byteLength(body, "utf8") > MAX_INSTRUCTIONS_BYTES) {
-      throw new Error(`cave_agent_instructions_size_invalid:${file}`);
-    }
-    instructions.push(Object.freeze({ path: file, body }));
-  }
-  return instructions;
-}
-
 async function immediateDirectories(collection: string): Promise<string[]> {
   const kind = await optionalKind(collection, "directory");
   if (kind === "missing") return [];
@@ -728,13 +691,9 @@ export async function loadAgentEnvironment(
       });
     }
   }
-  const instructionFiles = options.includeAgentInstructions === false
-    ? []
-    : await loadAgentInstructions(cwd, root);
   return Object.freeze({
     cwd,
     workspaceRoot: root,
-    instructions: Object.freeze(instructionFiles),
     skills: Object.freeze([...skills.values()].sort((left, right) => left.id.localeCompare(right.id))),
     commands: Object.freeze([...commands.values()].sort((left, right) => left.id.localeCompare(right.id))),
     plugins: Object.freeze([...plugins.values()].sort((left, right) =>
@@ -777,18 +736,6 @@ export async function readAgentSkillResource(
 
 function environmentContexts(environment: AgentEnvironment): ContextDefinition[] {
   const contexts: ContextDefinition[] = [];
-  if (environment.instructions.length > 0) {
-    contexts.push(context({
-      id: AGENT_INSTRUCTIONS_CONTEXT_ID,
-      kind: "instruction",
-      source: [
-        "Repository AGENTS.md instructions, ordered broadest to closest. Explicit user requests win; closest file wins on conflict.",
-        ...environment.instructions.map((entry) =>
-          `\n<agents-md path=${JSON.stringify(relative(environment.workspaceRoot, entry.path) || "AGENTS.md")}>\n${entry.body}\n</agents-md>`),
-      ].join("\n"),
-      stability: "build",
-    }));
-  }
   if (environment.skills.length > 0) {
     contexts.push(context({
       id: AGENT_SKILLS_CONTEXT_ID,
