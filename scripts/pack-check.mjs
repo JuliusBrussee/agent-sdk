@@ -47,8 +47,22 @@ function declaredBinPaths(packagePath) {
   return Object.values(manifest.bin);
 }
 
+const LOCAL_SPEC = /^(file:|link:|portal:|workspace:|\.{1,2}\/|\/)/;
+
+function assertPublishableSpecs(packagePath) {
+  const manifest = JSON.parse(readFileSync(resolve(root, packagePath, "package.json"), "utf8"));
+  for (const field of ["dependencies", "peerDependencies", "optionalDependencies"]) {
+    for (const [name, spec] of Object.entries(manifest[field] ?? {})) {
+      if (typeof spec === "string" && LOCAL_SPEC.test(spec)) {
+        throw new Error(`pack_check_local_dependency:${packagePath}:${field}:${name}:${spec}`);
+      }
+    }
+  }
+}
+
 try {
   for (const packagePath of packages) {
+    assertPublishableSpecs(packagePath);
     const result = spawnSync(
       npm,
       ["pack", "--ignore-scripts", "--json", "--pack-destination", packDestination],

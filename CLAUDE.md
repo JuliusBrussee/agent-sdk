@@ -59,9 +59,8 @@ Run from repo root unless noted.
 
 ```bash
 npm ci
-npm ci --prefix packages/pebble-protocol
-npm ci --prefix packages/agent
-npm ci --prefix packages/create-caveman-agent
+npm ci
+npm --prefix packages/pebble-protocol run build
 npm ci --prefix examples/coding-agent --ignore-scripts
 ```
 

@@ -35,9 +35,8 @@ must never land here. Only Apache-2.0 protocol remains in this repository.
 ## Checks
 
 ```bash
-npm ci --prefix packages/agent
-npm ci --prefix packages/pebble-protocol
-npm ci --prefix packages/create-caveman-agent
+npm ci
+npm --prefix packages/pebble-protocol run build
 npm ci --prefix examples/coding-agent --ignore-scripts
 npm test
 npm run license:check

@@ -66,9 +66,8 @@ Requires Node.js 22.19+ and one supported provider credential.
 ```bash
 git clone https://github.com/JuliusBrussee/agent-sdk.git
 cd agent-sdk
-npm ci --prefix packages/pebble-protocol
-npm ci --prefix packages/agent
-npm ci --prefix packages/create-caveman-agent
+npm ci
+npm --prefix packages/pebble-protocol run build
 npm ci --prefix examples/coding-agent --ignore-scripts
 npm test
 ```
@@ -370,9 +369,8 @@ Monorepo boundaries: [docs/MONOREPO.md](./docs/MONOREPO.md).
 ## Develop
 
 ```bash
-npm ci --prefix packages/agent
-npm ci --prefix packages/pebble-protocol
-npm ci --prefix packages/create-caveman-agent
+npm ci
+npm --prefix packages/pebble-protocol run build
 npm ci --prefix examples/coding-agent --ignore-scripts
 npm test
 npm run license:check
