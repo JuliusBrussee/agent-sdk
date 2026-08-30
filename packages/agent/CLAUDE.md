@@ -582,9 +582,13 @@ Public entry points:
   keeps the REAL metered cost and the MODELED effect in separate fields with
   separate bases; the word "saved" appears nowhere.
 
-`doctor` is framework readiness truth surface: Node, sandbox, engine registry,
-runtime CLI, project/Context IR, lock drift, provider selection, and per-harness
-locked-execution state. It also recognizes a vercel/eve agent directory (F7:
+`doctor` is framework readiness truth surface: Node, sandbox, optional peers,
+engine registry, runtime CLI, project/Context IR, lock drift, provider
+selection, and per-harness locked-execution state. Optional peers
+(`src/optional-peers.ts`) are read off this package's own
+`peerDependenciesMeta`, never hardcoded: each backs a subpath export only, so a
+default install never downloads it, and doctor names the lane plus the exact
+install command rather than letting it surface as `ERR_MODULE_NOT_FOUND`. It also recognizes a vercel/eve agent directory (F7:
 nested `agent/` layout, or flat with eve-only `channels/`/`schedules/`/
 `connections/`/`hooks/`; suppressed whenever `caveman.config.ts` exists) and
 prints what maps, what needs a rewrite, and what has no v1 equivalent —

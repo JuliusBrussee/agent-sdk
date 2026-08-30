@@ -422,6 +422,18 @@ authoritative thinking-token split, so results expose
 `reasoningUsageBasis: "unavailable"`; `reasoningTokens: 0` is a non-evidence
 placeholder and must not be read as measured zero.
 
+`@anthropic-ai/claude-agent-sdk` and `zod` are optional peers, not dependencies:
+they are reachable only through `@caveman-ai/agent/claude`, so a default install
+never downloads them. Using that subpath means installing them yourself:
+
+```bash
+npm install @anthropic-ai/claude-agent-sdk@^0.3.220 zod@^4.4.3
+```
+
+`caveman-agent doctor` reports which optional lanes this installation can reach
+and prints the exact install command for any that are missing, so an absent peer
+surfaces before a run instead of as `ERR_MODULE_NOT_FOUND`.
+
 Package pins `@anthropic-ai/claude-agent-sdk` 0.3.220 and Claude Code 2.1.220
 identity. Anthropic SDK is not open source; its README points to Anthropic
 Commercial Terms and describes data collection. Framework source remains

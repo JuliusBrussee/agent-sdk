@@ -84,6 +84,7 @@ import {
   type ConversationState,
 } from "./runtime.js";
 import type { ContextKind, EvalDefinition } from "./primitives.js";
+import { optionalPeerCheck } from "./optional-peers.js";
 import { normalizeTrajectory, type NormalizedTrajectory } from "./trajectory-ir.js";
 import { projectSourceFiles, sourceGraphSHA256 } from "./source-graph.js";
 import {
@@ -311,6 +312,8 @@ async function doctor(args: string[]): Promise<void> {
       detail: `Node ${node}; framework requires >=22.19.0`,
       fix: "install Node 22.19 or newer",
     });
+
+  checks.push(await optionalPeerCheck());
 
   try {
     if (!await verifySandboxConformance()) throw new Error("probe returned false");

@@ -262,8 +262,19 @@ test("package lifecycle builds executable framework CLI before packing", async (
     types: "./dist/connect.d.ts",
     import: "./dist/connect.js",
   });
-  assert.equal(pkg.peerDependencies, undefined);
-  assert.equal(pkg.peerDependenciesMeta, undefined);
+  // Core stays installable on its own: every peer here is reachable only
+  // through a subpath export, so a default install never downloads it. A
+  // required peer in core would force the cost back onto every consumer.
+  assert.deepEqual(Object.keys(pkg.peerDependencies), [
+    "@anthropic-ai/claude-agent-sdk",
+    "zod",
+  ]);
+  for (const name of Object.keys(pkg.peerDependencies)) {
+    assert.equal(pkg.peerDependenciesMeta[name]?.optional, true);
+    // tsc still has to resolve the static import behind the subpath.
+    assert.ok(pkg.devDependencies[name]);
+    assert.equal(pkg.dependencies[name], undefined);
+  }
   for (const [directory, upstream, version] of [
     ["vercel-ai-sdk", "ai", "7.0.84"],
     ["eve", "eve", "0.29.2"],
@@ -344,6 +355,19 @@ test("framework doctor reports actionable foundation and honest harness readines
     assert.equal(report.ready, true);
     assert.equal(report.checks.find((item) => item.id === "sandbox").status, "pass");
     assert.equal(report.checks.find((item) => item.id === "project").status, "warn");
+    // Optional peers are read off the manifest, not hardcoded in doctor: a peer
+    // added or dropped there has to show up here or this drifts silently.
+    const manifest = JSON.parse(
+      await readFile(new URL("../package.json", import.meta.url), "utf8"),
+    );
+    const optionalPeers = Object.keys(manifest.peerDependencies).filter(
+      (name) => manifest.peerDependenciesMeta[name]?.optional === true,
+    );
+    assert.ok(optionalPeers.length > 0);
+    const peerState = report.checks.find((item) => item.id === "optional_peers");
+    // Installed as devDependencies in this workspace, so the lane is reachable.
+    assert.equal(peerState.status, "pass");
+    for (const name of optionalPeers) assert.ok(peerState.detail.includes(name));
     const providerState = report.checks.find((item) => item.id === "provider");
     assert.equal(providerState.status, "warn");
     assert.match(providerState.detail, /openai\/gpt-5\.4-mini selected; OPENAI_API_KEY missing/);
