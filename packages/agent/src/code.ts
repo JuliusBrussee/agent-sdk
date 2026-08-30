@@ -92,6 +92,7 @@ export {
   type CommandSessionStartOptions,
   type CommandSessionStartResult,
   type CommandSessionState,
+  type CommandSessionSummary,
   type CommandSessionWriteOptions,
   type CommandSessionWriteResult,
 } from "./command-session.js";
