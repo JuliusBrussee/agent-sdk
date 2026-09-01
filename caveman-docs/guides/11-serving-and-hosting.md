@@ -116,9 +116,12 @@ WS     /sessions/{id}/ws               → bidirectional session transport
 ```
 
 All session routes use the same bearer authentication as `/runs`. WebSocket
-clients that can set headers send `Authorization: Bearer …`. Browser clients
-use subprotocols `caveman-agent` and `cave-bearer.<base64url-token>`; server
-selects only `caveman-agent`, so token is never echoed.
+clients that can set headers send `Authorization: Bearer …`. Non-browser
+clients that cannot set headers may offer subprotocols `caveman-agent` and
+`cave-bearer.<base64url-token>`; the server selects only `caveman-agent`, so
+the token is never echoed. Browsers never hold the server token: `useSession`
+from `@caveman-ai/react` speaks to a same-origin proxy that adds the bearer
+(on the upgrade too), the same way `useAgent` does.
 
 Client WebSocket messages are either
 `{"type":"message","text":"…","author"?:"…","mode"?:"followUp"|"steer"}`
