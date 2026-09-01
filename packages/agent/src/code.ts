@@ -17,7 +17,7 @@
 import { isUtf8 } from "node:buffer";
 import { randomUUID } from "node:crypto";
 import { createInterface } from "node:readline/promises";
-import { isAbsolute, relative, resolve } from "node:path";
+import { relative, resolve } from "node:path";
 import type { Readable, Writable } from "node:stream";
 import type { TurnEvent } from "@pebble-agent/protocol";
 import type { Api, CacheRetention, Model, Models } from "@earendil-works/pi-ai";
@@ -62,9 +62,18 @@ import {
 } from "./command-session.js";
 import {
   localExecutionBackend,
-  type ExecResult,
   type ExecutionBackend,
 } from "./execution-backend.js";
+import {
+  backendContainedPath,
+  backendIsFile,
+  backendWorkspaceRoot,
+  backendWriteFile,
+  buildCodingProcessEnv,
+  combinedProcessOutput,
+  localBackendInternals,
+  runBackendProcess,
+} from "./coding-backend.js";
 import { hostShellInvocation } from "./portable-process.js";
 import {
   createConversation,
@@ -488,7 +497,11 @@ function codingTools(
       if (!await backendIsFile(executionBackend, target)) {
         throw new Error(`caveman-code: not a file: ${input.path}`);
       }
-      const content = Buffer.from(await executionBackend.readFile(target)).toString("utf8");
+      const data = await executionBackend.readFile(target).catch((error: NodeJS.ErrnoException) => {
+        if (error.code === "EISDIR") throw new Error(`caveman-code: not a file: ${input.path}`);
+        throw error;
+      });
+      const content = Buffer.from(data).toString("utf8");
       const lines = content.split("\n");
       const offset = Math.max(1, input.offset ?? 1);
       const limit = input.limit === undefined ? lines.length : Math.max(1, input.limit);
@@ -557,27 +570,41 @@ function codingTools(
   });
 
   const bashInput = commandSessions === undefined
-    ? schema.object({ command: schema.string(), timeoutMs: schema.optional(schema.integer()) })
+    ? schema.object({
+      command: schema.string(),
+      timeoutMs: schema.optional(schema.integer()),
+    })
     : schema.union([
       schema.object({
-        command: schema.string(), timeoutMs: schema.optional(schema.integer()),
+        command: schema.string(),
+        timeoutMs: schema.optional(schema.integer()),
         yieldTimeMs: schema.optional(schema.integer()),
       }),
-      schema.object({ action: schema.literal("list") }),
       schema.object({
-        sessionId: schema.string(), action: schema.literal("read"),
-        cursor: schema.optional(schema.integer()), query: schema.optional(schema.string()),
-        limit: schema.optional(schema.integer()), waitMs: schema.optional(schema.integer()),
+        action: schema.literal("list"),
       }),
       schema.object({
-        sessionId: schema.string(), action: schema.literal("write"), input: schema.string(),
-        closeStdin: schema.optional(schema.boolean()),
-        cursor: schema.optional(schema.integer()), limit: schema.optional(schema.integer()),
+        sessionId: schema.string(),
+        action: schema.literal("read"),
+        cursor: schema.optional(schema.integer()),
+        query: schema.optional(schema.string()),
+        limit: schema.optional(schema.integer()),
         waitMs: schema.optional(schema.integer()),
       }),
       schema.object({
-        sessionId: schema.string(), action: schema.literal("kill"),
-        cursor: schema.optional(schema.integer()), limit: schema.optional(schema.integer()),
+        sessionId: schema.string(),
+        action: schema.literal("write"),
+        input: schema.string(),
+        closeStdin: schema.optional(schema.boolean()),
+        cursor: schema.optional(schema.integer()),
+        limit: schema.optional(schema.integer()),
+        waitMs: schema.optional(schema.integer()),
+      }),
+      schema.object({
+        sessionId: schema.string(),
+        action: schema.literal("kill"),
+        cursor: schema.optional(schema.integer()),
+        limit: schema.optional(schema.integer()),
       }),
     ]);
   const bashTool = tool({
@@ -599,13 +626,14 @@ function codingTools(
         const timeoutMs = Math.min(input.timeoutMs ?? BASH_TIMEOUT_MS, BASH_TIMEOUT_MS);
         const yieldTimeMs = "yieldTimeMs" in input ? input.yieldTimeMs : undefined;
         validateBashWait(yieldTimeMs, "yieldTimeMs");
-        const env = buildCodingProcessEnv();
-        const shell = localBackendInternals(executionBackend) !== undefined
+        const local = localBackendInternals(executionBackend) !== undefined;
+        const env = buildCodingProcessEnv(local);
+        const shell = local
           ? hostShellInvocation(input.command, process.platform, env)
-          : { command: "sh", args: ["-lc", input.command] as readonly string[] };
+          : { command: "sh", args: ["-c", input.command] as readonly string[] };
         if (commandSessions === undefined) {
           if (yieldTimeMs !== undefined) {
-            throw new Error("cave_execution_backend_command_sessions_local_only");
+            throw new Error(local ? "cave_execution_backend_command_sessions_disabled" : "cave_execution_backend_command_sessions_local_only");
           }
           const run = await executionBackend.exec({
             command: shell.command,
@@ -616,13 +644,14 @@ function codingTools(
             maxOutputBytes: PROCESS_CAPTURE_MAX_BYTES,
             ...(signal === undefined ? {} : { signal }),
           });
-          if (run.code === null && run.stderr.startsWith("cave_execution_backend_spawn_failed:")) {
+          if (run.code === 127 || run.startFailed === true) {
             throw new Error("caveman-code: host command shell is not available");
           }
           const status = run.timedOut ? `exit timeout after ${timeoutMs}ms` : `exit ${run.code}`;
-          const output = `${run.stdout}${run.stderr}`.trim() === ""
+          const combined = combinedProcessOutput(run);
+          const output = combined.trim() === ""
             ? "(no output)"
-            : `${run.stdout}${run.stderr}`;
+            : combined;
           const text = `${status}\n${capToolOutput({
             text: output,
             maxBytes: Math.max(1, caps.bash - Buffer.byteLength(`${status}\n`, "utf8")),
@@ -1093,64 +1122,6 @@ function formatCommandSessionList(
   ].join("\n"), outputCap);
 }
 
-const LOCAL_BACKEND_INTERNALS = Symbol.for("@caveman-ai/agent/execution-backend-local-internals");
-type LocalBackendInternals = {
-  resolvePath(workspace: string, candidate: string): Promise<string>;
-  isFile(path: string): Promise<boolean>;
-  writeFile(path: string, data: Uint8Array, exclusive: boolean): Promise<void>;
-};
-function localBackendInternals(backend: ExecutionBackend): LocalBackendInternals | undefined {
-  return (backend as ExecutionBackend & {
-    [LOCAL_BACKEND_INTERNALS]?: LocalBackendInternals;
-  })[LOCAL_BACKEND_INTERNALS];
-}
-function backendWorkspaceRoot(backend: ExecutionBackend, workspace: string): Promise<string> {
-  const internals = localBackendInternals(backend);
-  return internals === undefined
-    ? Promise.resolve(resolve(workspace))
-    : internals.resolvePath(workspace, ".");
-}
-async function backendContainedPath(
-  backend: ExecutionBackend,
-  workspace: string,
-  candidate: string,
-): Promise<string> {
-  const internals = localBackendInternals(backend);
-  if (internals !== undefined) return internals.resolvePath(workspace, candidate);
-  const target = resolve(workspace, candidate);
-  const path = relative(workspace, target);
-  if (path === ".." || path.startsWith("../") || path.startsWith("..\\") || isAbsolute(path)) {
-    throw new Error(`caveman-code: path escapes the workspace: ${candidate}`);
-  }
-  return target;
-}
-async function backendIsFile(backend: ExecutionBackend, path: string): Promise<boolean> {
-  return await localBackendInternals(backend)?.isFile(path) ?? true;
-}
-async function backendWriteFile(
-  backend: ExecutionBackend,
-  path: string,
-  data: Uint8Array,
-  exclusive: boolean,
-): Promise<void> {
-  const internals = localBackendInternals(backend);
-  if (internals !== undefined) return internals.writeFile(path, data, exclusive);
-  if (exclusive) {
-    try {
-      await backend.readFile(path, { maxBytes: 1 });
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-        await backend.writeFile(path, data);
-        return;
-      }
-      throw error;
-    }
-    const error = new Error(`EEXIST: file already exists, open '${path}'`) as NodeJS.ErrnoException;
-    error.code = "EEXIST";
-    throw error;
-  }
-  await backend.writeFile(path, data);
-}
 export function capOutput(text: string, maxBytes: number): string {
   const encoded = new TextEncoder().encode(text);
   if (encoded.byteLength <= maxBytes) return text;
@@ -1193,68 +1164,6 @@ function firstLines(text: string, limit: number): string {
   const lines = text.split("\n");
   if (lines.length <= limit) return text;
   return `${lines.slice(0, limit).join("\n")}\n[caveman-code: matches limited to first ${limit}; narrow pattern or path]`;
-}
-
-type ProcessRun = {
-  output: string;
-  code: number | null;
-  timedOut: boolean;
-  spawnFailed: boolean;
-  captureComplete: boolean;
-};
-
-/**
- * Baseline environment for the coding agent's host subprocesses.
- *
- * NOT a spread of `process.env`: a model-driven `bash`/`grep`/`rg` must not
- * inherit the framework's own account and provider credentials
- * (`CAVE_API_KEY`, `ANTHROPIC_API_KEY`, …) and exfiltrate them. Only a fixed
- * shell/locale baseline passes through.
- *
- * This is a credential boundary, NOT a sandbox: `bash` is **uncontained by
- * design** — it runs arbitrary host commands with the user's own privileges.
- * The env allow-list only removes the framework-managed secrets from what those
- * commands can read; it does not, and is not meant to, contain what they do.
- */
-function buildCodingProcessEnv(): Record<string, string> {
-  const allow = [
-    "PATH", "HOME", "USER", "LOGNAME", "SHELL", "LANG", "LC_ALL", "LC_CTYPE",
-    "TZ", "TERM", "TMPDIR", "PWD", "ComSpec", "PATHEXT", "SystemRoot", "TEMP",
-    "TMP", "USERPROFILE", "APPDATA", "LOCALAPPDATA",
-  ];
-  const env: Record<string, string> = {};
-  for (const key of allow) {
-    const value = process.env[key];
-    if (value !== undefined) env[key] = value;
-  }
-  return env;
-}
-
-async function runBackendProcess(
-  backend: ExecutionBackend,
-  command: string,
-  args: readonly string[],
-  cwd: string,
-  timeoutMs: number,
-  signal?: AbortSignal,
-): Promise<ProcessRun> {
-  const result: ExecResult = await backend.exec({
-    command,
-    args,
-    cwd,
-    env: buildCodingProcessEnv(),
-    timeoutMs,
-    maxOutputBytes: PROCESS_CAPTURE_MAX_BYTES,
-    ...(signal === undefined ? {} : { signal }),
-  });
-  return {
-    output: `${result.stdout}${result.stderr}`,
-    code: result.code,
-    timedOut: result.timedOut,
-    spawnFailed: result.code === null &&
-      result.stderr.startsWith("cave_execution_backend_spawn_failed:"),
-    captureComplete: !result.truncated,
-  };
 }
 
 function resolveCodingModelID(explicit: string | undefined): string {
@@ -1721,6 +1630,7 @@ export async function runCodingTurn(
   // route are merged in, which are the very fields the guard forbids a caller
   // from forging.
   rejectInternalRunOptions(overrides);
+  const runtimeOwnedRoute = overrides.streamFn === undefined;
   const base: RunOptions & { caveRoute: ResolvedCaveRoute } = {
     rootDir: session.agent.workspace,
     conversation: session.conversation,
@@ -1746,7 +1656,7 @@ export async function runCodingTurn(
   const prepared = withProgrammaticTransport(session.agent, base);
   const startedOptimized = session.mode === "optimized";
   let result: RunResult;
-  if (startedOptimized) {
+  if (startedOptimized && runtimeOwnedRoute) {
     try {
       result = await runAgentInternal(session.agent.definition, input, {
         ...prepared,
@@ -1763,11 +1673,10 @@ export async function runCodingTurn(
   } else {
     result = await runAgentInternal(session.agent.definition, input, prepared);
   }
-  // The run itself is the authority on whether the gateway optimized this
-  // traffic: a reachable gateway that does not proxy this model's provider
-  // still comes back observe-only, and that degrades the session exactly like a
-  // missing runtime does.
-  if (result.mode === "observe-only") degrade(session);
+  // Runtime-owned routing is authoritative for session health. A caller stream
+  // override is honestly observe-only for that bill, but says nothing about the
+  // pinned gateway route used by later turns.
+  if (runtimeOwnedRoute && result.mode === "observe-only") degrade(session);
   return recordCodingTurn(session, input, result, startedOptimized);
 }
 
@@ -1827,6 +1736,7 @@ export async function* streamCodingTurn(
 ): AsyncGenerator<TurnEvent, StreamingCodingTurnResult | undefined> {
   const overrides = options.overrides ?? {};
   rejectInternalRunOptions(overrides);
+  const runtimeOwnedRoute = overrides.streamFn === undefined;
   const controller = options.controller ?? new AgentRunController();
   const encoder = pebbleEncoder(session);
   const signals: CodingStreamSignal[] = [];
@@ -1874,7 +1784,7 @@ export async function* streamCodingTurn(
       const prepared = withProgrammaticTransport(session.agent, base);
       const runtime = streamAgentInternalOptions(session.agent.definition, input, {
         ...prepared,
-        ...(session.mode === "optimized" && attempt === 0 && !durable
+        ...(session.mode === "optimized" && attempt === 0 && !durable && runtimeOwnedRoute
           ? { candidatePlan: session.agent.plan }
           : {}),
       });
@@ -1935,7 +1845,7 @@ export async function* streamCodingTurn(
         }
         const event = signal.event;
         if (event.type === "run_error") {
-          if (attempt === 0 && startedOptimized &&
+          if (attempt === 0 && startedOptimized && runtimeOwnedRoute &&
               classifyTurnFailure(event.message) === "degrade_to_observe_only") {
             degrade(session);
             retry = true;
@@ -1946,7 +1856,7 @@ export async function* streamCodingTurn(
           return { failed: true, receipt: event.receipt };
         }
         if (event.type === "run_end") {
-          if (event.result.mode === "observe-only") degrade(session);
+          if (runtimeOwnedRoute && event.result.mode === "observe-only") degrade(session);
           for (const translated of encodeRunEvent(encoder, event)) yield translated;
           return recordCodingTurn(session, input, event.result, startedOptimized);
         }

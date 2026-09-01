@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, rm } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
@@ -187,11 +187,50 @@ test("non-local coding turn routes every workspace/process tool through backend 
     fixture.calls.filter((call) => call.operation === "exec").map((call) => call.request.command),
     ["rg", "sh"],
   );
+  const execRequests = fixture.calls.filter((call) => call.operation === "exec");
+  assert.deepEqual(execRequests.at(-1).request.args.slice(0, 1), ["-c"]);
+  for (const { request } of execRequests) {
+    assert.equal(Object.hasOwn(request.env, "PATH"), false);
+    assert.equal(Object.hasOwn(request.env, "HOME"), false);
+    assert.equal(Object.hasOwn(request.env, "PWD"), false);
+  }
   assert.equal(fixture.calls.filter((call) => call.operation === "readFile").length, 3);
   assert.equal(fixture.calls.filter((call) => call.operation === "writeFile").length, 2);
   await assert.rejects(() => access(workspace), /ENOENT/);
   await assert.rejects(() => access(hostSentinel), /ENOENT/);
   await coding.close();
+});
+
+test("remote rg start failure falls back to grep and process streams stay separated", async () => {
+  const calls = [];
+  const backend = {
+    id: "fallback-fixture",
+    async exec(request) {
+      calls.push(request);
+      if (request.command === "rg") {
+        return { stdout: "", stderr: "missing", code: 127, timedOut: false, truncated: false };
+      }
+      if (request.command === "grep") {
+        return { stdout: "match", stderr: "warning", code: 0, timedOut: false, truncated: false };
+      }
+      return { stdout: "out", stderr: "err", code: 0, timedOut: false, truncated: false };
+    },
+    async readFile() { throw missing("unused"); },
+    async writeFile() {},
+  };
+  const coding = createCodingAgent({
+    workspace: "/remote",
+    model: "anthropic/claude-haiku-4-5",
+    executionBackend: backend,
+  });
+  try {
+    const tools = Object.fromEntries(coding.definition.tools.map((tool) => [tool.name, tool]));
+    assert.match(await tools.grep.execute({ pattern: "match" }), /^match\nwarning$/);
+    assert.match(await tools.bash.execute({ command: "ignored" }), /^exit 0\nout\nerr$/);
+    assert.deepEqual(calls.map((request) => request.command), ["rg", "grep", "sh"]);
+  } finally {
+    await coding.close();
+  }
 });
 
 test("non-local backend refuses explicitly configured command sessions at construction", () => {
@@ -231,6 +270,14 @@ test("http backend round-trips exec/read/write, enforces bearer auth, and caps o
       return;
     }
     if (request.url === "/read") {
+      if (input.path === "/workspace/directory") {
+        response.writeHead(422).end(JSON.stringify({ error: "not_a_file" }));
+        return;
+      }
+      if (input.path === "/workspace/escape") {
+        response.writeHead(403).end(JSON.stringify({ error: "path_escapes_workspace" }));
+        return;
+      }
       const data = files.get(input.path);
       if (data === undefined) {
         response.writeHead(404).end(JSON.stringify({ error: "missing" }));
@@ -248,7 +295,7 @@ test("http backend round-trips exec/read/write, enforces bearer auth, and caps o
   });
   const fetch = inProcessServerFetch(server);
   try {
-    const url = "http://execution-backend.fixture";
+    const url = "http://127.0.0.1";
     const backend = httpExecutionBackend({ url, token: "correct-token", fetch });
     const read = await backend.readFile("/workspace/input.txt");
     assert.equal(Buffer.from(read).toString("utf8"), "hello");
@@ -282,49 +329,109 @@ test("http backend round-trips exec/read/write, enforces bearer auth, and caps o
       () => unauthorized.readFile("/workspace/input.txt"),
       /cave_execution_backend_http_read_failed:401/,
     );
+    await assert.rejects(
+      () => backend.readFile("/workspace/escape"),
+      new Error("caveman-code: path escapes the workspace"),
+    );
+    await assert.rejects(
+      () => backend.readFile("/workspace/directory"),
+      (error) => error.code === "EISDIR",
+    );
+    const coding = createCodingAgent({
+      workspace: "/workspace",
+      model: "anthropic/claude-haiku-4-5",
+      executionBackend: backend,
+    });
+    const readFileTool = coding.definition.tools.find((tool) => tool.name === "read_file");
+    await assert.rejects(
+      () => readFileTool.execute({ path: "directory" }),
+      new Error("caveman-code: not a file: directory"),
+    );
+    await coding.close();
   } finally {
     server.close();
   }
 });
 
-test("explicit local backend is byte-identical to default coding tool behavior", async () => {
-  const defaultWorkspace = await mkdtemp(resolve(tmpdir(), "cave-exec-default-"));
-  const explicitWorkspace = await mkdtemp(resolve(tmpdir(), "cave-exec-explicit-"));
+test("http backend caps streamed responses, maps abort, and refuses insecure remote URLs", async () => {
+  let cancelled = false;
+  const streamed = httpExecutionBackend({
+    url: "http://localhost",
+    token: "token",
+    fetch: async () => new Response(new ReadableStream({
+      start(controller) { controller.enqueue(new Uint8Array(5_000)); },
+      cancel() { cancelled = true; },
+    })),
+  });
+  await assert.rejects(
+    () => streamed.exec({
+      command: "x", args: [], cwd: "/workspace", env: {}, timeoutMs: 1_000,
+      maxOutputBytes: 1,
+    }),
+    /cave_execution_backend_http_response_too_large/,
+  );
+  assert.equal(cancelled, true);
+
+  const aborted = httpExecutionBackend({
+    url: "http://localhost",
+    token: "token",
+    fetch: async () => { throw new DOMException("aborted", "AbortError"); },
+  });
+  assert.deepEqual(await aborted.exec({
+    command: "x", args: [], cwd: "/workspace", env: {}, timeoutMs: 1_000,
+    maxOutputBytes: 1,
+  }), {
+    stdout: "", stderr: "cave_execution_backend_aborted", code: null,
+    timedOut: false, truncated: false,
+  });
+  assert.throws(
+    () => httpExecutionBackend({ url: "http://backend.example", token: "token" }),
+    /cave_execution_backend_http_insecure_url/,
+  );
+});
+
+test("local backend preserves streams, exit code, and combined output cap", async () => {
+  const workspace = await mkdtemp(resolve(tmpdir(), "cave-exec-local-"));
   try {
-    await Promise.all([
-      writeFile(resolve(defaultWorkspace, "source.txt"), "needle old\n", "utf8"),
-      writeFile(resolve(explicitWorkspace, "source.txt"), "needle old\n", "utf8"),
-    ]);
-    const defaultAgent = createCodingAgent({
-      workspace: defaultWorkspace,
-      model: "anthropic/claude-haiku-4-5",
+    const backend = localExecutionBackend();
+    const result = await backend.exec({
+      command: "sh",
+      args: ["-c", "echo out; echo err >&2; exit 3"],
+      cwd: workspace,
+      env: { PATH: process.env.PATH ?? "" },
+      timeoutMs: 1_000,
+      maxOutputBytes: 4,
     });
-    const explicitAgent = createCodingAgent({
-      workspace: explicitWorkspace,
+    assert.equal(result.stdout, "out\n");
+    assert.equal(result.stderr, "");
+    assert.equal(result.code, 3);
+    assert.equal(result.truncated, true);
+    const failed = await backend.exec({
+      command: resolve(workspace, "missing-command"),
+      args: [], cwd: workspace, env: {}, timeoutMs: 1_000, maxOutputBytes: 100,
+    });
+    assert.equal(failed.stdout, "");
+    assert.equal(failed.code, 127);
+    assert.equal(failed.startFailed, true);
+    assert.doesNotMatch(failed.stderr, /cave_execution_backend_spawn_failed/);
+
+    const coding = createCodingAgent({
+      workspace,
       model: "anthropic/claude-haiku-4-5",
       executionBackend: localExecutionBackend(),
+      commandSessions: false,
     });
-    const defaults = Object.fromEntries(defaultAgent.definition.tools.map((tool) => [tool.name, tool]));
-    const explicit = Object.fromEntries(explicitAgent.definition.tools.map((tool) => [tool.name, tool]));
-    const calls = [
-      ["read_file", { path: "source.txt" }],
-      ["write_file", { path: "created.txt", content: "created\n" }],
-      ["edit_file", { path: "source.txt", old_string: "old", new_string: "edited" }],
-      ["grep", { pattern: "needle", path: "source.txt" }],
-      ["bash", { command: "printf local-output" }],
-    ];
-    for (const [name, input] of calls) {
-      assert.equal(await explicit[name].execute(input), await defaults[name].execute(input), name);
-    }
-    assert.equal(
-      await readFile(resolve(explicitWorkspace, "source.txt"), "utf8"),
-      await readFile(resolve(defaultWorkspace, "source.txt"), "utf8"),
+    const bash = coding.definition.tools.find((tool) => tool.name === "bash");
+    assert.match(
+      await bash.execute({ command: "printf out; printf err >&2" }),
+      /^exit 0\nout\nerr$/,
     );
-    await Promise.all([defaultAgent.close(), explicitAgent.close()]);
+    await assert.rejects(
+      () => bash.execute({ command: "true", yieldTimeMs: 1 }),
+      /cave_execution_backend_command_sessions_disabled/,
+    );
+    await coding.close();
   } finally {
-    await Promise.all([
-      rm(defaultWorkspace, { recursive: true, force: true }),
-      rm(explicitWorkspace, { recursive: true, force: true }),
-    ]);
+    await rm(workspace, { recursive: true, force: true });
   }
 });

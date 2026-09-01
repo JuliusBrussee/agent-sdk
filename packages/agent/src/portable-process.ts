@@ -4,6 +4,15 @@ import { dirname, extname, isAbsolute, join, resolve } from "node:path";
 
 export type PortableInvocation = Readonly<{ command: string; args: readonly string[] }>;
 
+export const LOCAL_BACKEND_INTERNALS = Symbol.for(
+  "@caveman-ai/agent/execution-backend-local-internals",
+);
+export type LocalBackendInternals = {
+  resolvePath(workspace: string, candidate: string): Promise<string>;
+  isFile(path: string): Promise<boolean>;
+  writeFile(path: string, data: Uint8Array, exclusive: boolean): Promise<void>;
+};
+
 function envValue(env: NodeJS.ProcessEnv, name: string): string | undefined {
   const key = Object.keys(env).find((candidate) => candidate.toLowerCase() === name.toLowerCase());
   return key === undefined ? undefined : env[key];
