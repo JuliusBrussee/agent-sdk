@@ -6,9 +6,8 @@
  * The server this talks to is `createAgentServer` from `@caveman-ai/agent`,
  * whose `/runs` endpoint requires a bearer token it describes as spending money
  * and returning model output. That token belongs on your server, never in a
- * bundle, so `useAgent` has no token or absolute-origin option: it calls a
- * same-origin path in YOUR app. `useSession` also supports direct hosts and
- * accepts a short-lived token; the README documents that sharper boundary.
+ * bundle, so neither hook has a token or absolute-origin option: both call a
+ * same-origin path in YOUR app, and your route attaches the credential.
  *
  * Everything on the wire is a frozen Pebble v1 `TurnEvent`, so this file only
  * folds events into render state. It invents no fields and reports what it does
@@ -17,6 +16,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createBatcher } from "./batch.js";
+import { connectResuming } from "./socket.js";
 import {
   INITIAL_STATE,
   SESSION_INITIAL_STATE,
@@ -233,46 +233,31 @@ export function useAgent({ api }) {
   return { ...state, runId, submit, watch, stopWatching };
 }
 
-function sessionPath(url, sessionId, suffix = "") {
-  return `${url.replace(/\/$/u, "")}/sessions/${encodeURIComponent(sessionId)}${suffix}`;
+function sessionPath(api, sessionId, suffix = "") {
+  return `${api.replace(/\/$/u, "")}/sessions/${encodeURIComponent(sessionId)}${suffix}`;
 }
 
-function bearerProtocol(token) {
-  const bytes = new TextEncoder().encode(token);
-  let binary = "";
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return `cave-bearer.${btoa(binary).replace(/\+/gu, "-").replace(/\//gu, "_").replace(/=+$/gu, "")}`;
-}
-
-/** Parse complete SSE frames from a mutable text buffer. */
-function takeSseFrames(buffer, receive, gap) {
-  let boundary = buffer.indexOf("\n\n");
-  while (boundary !== -1) {
-    const frame = buffer.slice(0, boundary);
-    buffer = buffer.slice(boundary + 2);
-    if (!frame.startsWith(":")) {
-      const data = /^data: (.+)$/mu.exec(frame)?.[1];
-      if (data !== undefined) {
-        const parsed = JSON.parse(data);
-        if (/^event: gap$/mu.test(frame)) gap(parsed);
-        else receive(parsed);
-      }
-    }
-    boundary = buffer.indexOf("\n\n");
-  }
-  return buffer;
-}
+/** How long a dropped session socket waits before reopening. */
+const SOCKET_RETRY_MS = 250;
 
 /**
  * Attach to a durable multi-run session over SSE or WebSocket.
- * Token may be short-lived or injected by a same-origin proxy; never hard-code it.
+ *
+ * Like `useAgent`, `api` is a same-origin base path your app serves: it must
+ * proxy `GET /sessions/:id/events` (or the `/ws` upgrade), `POST
+ * /sessions/:id/messages`, and `DELETE /sessions/:id` to the agent server with
+ * the bearer attached. There is deliberately no token option. The server also
+ * accepts the bearer as a `cave-bearer.` WebSocket subprotocol, which exists
+ * for clients that cannot set headers — not for a browser, where a subprotocol
+ * is as public as the bundle it ships in.
  */
-export function useSession({ url, sessionId, token, transport = "sse" }) {
-  if (typeof url !== "string" || url === "") throw new Error("cave_react_session_url_required");
+export function useSession({ api, sessionId, transport = "sse" }) {
+  if (typeof api !== "string" || api === "") {
+    throw new Error("cave_react_api_required: pass the same-origin base path your app proxies");
+  }
   if (typeof sessionId !== "string" || sessionId === "") {
     throw new Error("cave_react_session_id_required");
   }
-  if (typeof token !== "string" || token === "") throw new Error("cave_react_session_token_required");
   if (transport !== "sse" && transport !== "ws") {
     throw new Error("cave_react_session_transport_invalid");
   }
@@ -299,109 +284,98 @@ export function useSession({ url, sessionId, token, transport = "sse" }) {
         fail("cave_react_session_websocket_unavailable");
         return undefined;
       }
-      const endpoint = new URL(sessionPath(url, sessionId, "/ws"), globalThis.location?.href);
+      const endpoint = new URL(sessionPath(api, sessionId, "/ws"), globalThis.location?.href);
       endpoint.protocol = endpoint.protocol === "https:" ? "wss:" : "ws:";
-      const socket = new WebSocket(endpoint, ["caveman-agent", bearerProtocol(token)]);
-      transportRef.current = socket;
-      socket.onmessage = (message) => {
-        try {
-          const event = JSON.parse(message.data);
-          if (event?.error === "cave_serve_events_gap") fail(event.error);
-          else receive(event);
-        } catch { fail("cave_react_event_unparsable"); }
-      };
-      socket.onerror = () => fail("cave_react_session_websocket_failed");
-      socket.onclose = () => {
-        if (!stopped.current) fail("cave_react_stream_closed");
-      };
+      transportRef.current = connectResuming({
+        url: endpoint.toString(),
+        open: (target) => new WebSocket(target, "caveman-agent"),
+        schedule: (retry) => setTimeout(retry, SOCKET_RETRY_MS),
+        receive,
+        fail,
+        // Between sockets the session is not being watched, and saying so is
+        // honest: the server keeps running the run either way.
+        retrying: () => batch.push((previous) => ({ ...previous, status: "connecting" })),
+      });
       return () => {
         stopped.current = true;
-        socket.close();
+        transportRef.current?.close();
         transportRef.current = null;
         batch.cancel();
       };
     }
 
-    const controller = new AbortController();
-    transportRef.current = controller;
-    void (async () => {
-      let lastEventId;
-      while (!controller.signal.aborted) {
-        const endpoint = new URL(sessionPath(url, sessionId, "/events"), globalThis.location?.href);
-        if (lastEventId !== undefined) endpoint.searchParams.set("lastEventId", lastEventId);
-        let response;
-        try {
-          response = await fetch(endpoint, {
-            headers: { authorization: `Bearer ${token}` },
-            signal: controller.signal,
-          });
-        } catch (error) {
-          if (!controller.signal.aborted) fail(`cave_react_session_fetch_failed:${String(error)}`);
-          return;
-        }
-        if (!response.ok || response.body === null) {
-          fail(`cave_react_session_fetch_failed:${response.status}`);
-          return;
-        }
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
-        try {
-          while (true) {
-            const next = await reader.read();
-            if (next.done) break;
-            buffer += decoder.decode(next.value, { stream: true });
-            buffer = takeSseFrames(buffer, (event) => {
-              lastEventId = String(event.seq);
-              receive(event);
-            }, (detail) => fail(detail.error ?? "cave_serve_events_gap"));
-          }
-        } catch (error) {
-          if (!controller.signal.aborted) fail(`cave_react_stream_closed:${String(error)}`);
-          return;
-        }
-        if (!controller.signal.aborted) await new Promise((resolve) => setTimeout(resolve, 250));
+    // `EventSource` retries transport failures itself and resumes from
+    // `Last-Event-ID`, which the server answers with the exact span this client
+    // missed. Your proxy route has to forward that header for the resume to work.
+    const source = new EventSource(sessionPath(api, sessionId, "/events"), {
+      withCredentials: true,
+    });
+    transportRef.current = source;
+    // A frame this client cannot parse is a hole in the transcript it renders,
+    // and it arrives over a proxy route the app writes: a trust boundary, not an
+    // impossible case. The `gap` frame goes through the same reducer, which
+    // records it as a marked hole rather than a dead stream.
+    const frame = (message) => {
+      let event;
+      try {
+        event = JSON.parse(message.data);
+      } catch {
+        fail("cave_react_event_unparsable");
+        return;
       }
-    })();
+      receive(event);
+    };
+    source.onmessage = frame;
+    source.addEventListener("gap", frame);
+    source.onerror = () => {
+      if (source.readyState !== EventSource.CLOSED || stopped.current) return;
+      fail("cave_react_stream_closed");
+    };
     return () => {
       stopped.current = true;
-      controller.abort();
+      source.close();
       transportRef.current = null;
       batch.cancel();
     };
-  }, [url, sessionId, token, transport, receive, fail, batch]);
+  }, [api, sessionId, transport, receive, fail, batch]);
 
   const send = useCallback(async (text, options = {}) => {
     if (typeof text !== "string" || text === "") throw new Error("cave_react_input_required");
-    const payload = { type: "message", text, ...options };
     if (transport === "ws") {
-      const socket = transportRef.current;
-      if (!(socket instanceof WebSocket) || socket.readyState !== WebSocket.OPEN) {
-        throw new Error("cave_react_session_socket_not_open");
-      }
-      socket.send(JSON.stringify(payload));
+      const connection = transportRef.current;
+      if (connection === null) throw new Error("cave_react_session_socket_not_open");
+      connection.send({ type: "message", text, ...options });
       return undefined;
     }
-    const response = await fetch(sessionPath(url, sessionId, "/messages"), {
+    const response = await fetch(sessionPath(api, sessionId, "/messages"), {
       method: "POST",
-      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      headers: { "content-type": "application/json" },
+      credentials: "same-origin",
       body: JSON.stringify({ text, ...options }),
     });
     if (!response.ok) throw new Error(`cave_react_session_send_failed:${response.status}`);
     return response.json();
-  }, [url, sessionId, token, transport]);
+  }, [api, sessionId, transport]);
 
+  /** Cancel the active run, drop the queue, and stop reconnecting. */
   const cancel = useCallback(async () => {
-    const response = await fetch(sessionPath(url, sessionId), {
+    const response = await fetch(sessionPath(api, sessionId), {
       method: "DELETE",
-      headers: { authorization: `Bearer ${token}` },
+      credentials: "same-origin",
     });
     if (!response.ok) throw new Error(`cave_react_session_cancel_failed:${response.status}`);
     stopped.current = true;
-    if (transportRef.current instanceof AbortController) transportRef.current.abort();
-    else transportRef.current?.close();
+    transportRef.current?.close();
+    transportRef.current = null;
     batch.push((previous) => ({ ...previous, status: "cancelled" }));
-  }, [url, sessionId, token, batch]);
+  }, [api, sessionId, batch]);
 
-  return { events: state.events, send, cancel, status: state.status };
+  return {
+    events: state.events,
+    status: state.status,
+    gap: state.gap,
+    lastGap: state.lastGap,
+    send,
+    cancel,
+  };
 }

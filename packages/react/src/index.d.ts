@@ -46,19 +46,38 @@ export interface AgentState {
 
 export declare const INITIAL_STATE: AgentState;
 
+export interface SessionGap {
+  /** The sequence this client asked to resume from. */
+  readonly requestedSeq: number;
+  /** The oldest sequence the server still held. Everything between is lost. */
+  readonly earliestSeq: number;
+}
+
 export interface SessionState {
   readonly events: readonly ({ kind: string } & Record<string, any>)[];
   readonly status: SessionStatus;
+  /**
+   * History before this point was evicted from the server's bounded window.
+   * The transcript is complete from here: the server sends the whole retained
+   * window after the gap and keeps streaming. Not an error.
+   */
+  readonly gap: boolean;
+  readonly lastGap: SessionGap | null;
 }
 
 export type SessionStatus = "connecting" | "streaming" | "complete" | "error" | "cancelled";
 
 export declare const SESSION_INITIAL_STATE: SessionState;
 
-/** Append one Pebble frame and derive multi-run session status. Pure. */
+/**
+ * Append one Pebble frame and derive multi-run session status. Pure.
+ *
+ * A server gap notice (`{ error: "cave_serve_events_gap", … }`) is recorded on
+ * `gap`/`lastGap` and never appended to `events`.
+ */
 export declare function reduceSessionEvent(
   state: SessionState,
-  event: { kind: string } & Record<string, any>,
+  event: ({ kind: string } | { error: "cave_serve_events_gap" }) & Record<string, any>,
 ): SessionState;
 
 /** Fold one Pebble v1 `TurnEvent` into agent state. Pure. */
@@ -98,9 +117,15 @@ export interface UseAgentResult extends AgentState {
 export declare function useAgent(options: UseAgentOptions): UseAgentResult;
 
 export interface UseSessionOptions {
-  readonly url: string;
+  /**
+   * Same-origin base path your app serves, e.g. `/api/agent`. It must proxy
+   * `GET /sessions/:id/events` (or the `/ws` upgrade), `POST
+   * /sessions/:id/messages`, and `DELETE /sessions/:id` to the agent server
+   * with the bearer token attached. There is deliberately no token option: that
+   * credential spends money and must not reach the browser.
+   */
+  readonly api: string;
   readonly sessionId: string;
-  readonly token: string;
   readonly transport?: "sse" | "ws";
 }
 
@@ -115,8 +140,11 @@ export interface UseSessionResult {
     text: string,
     options?: SessionSendOptions,
   ): Promise<{ readonly runId: string; readonly queued: boolean } | undefined>;
+  /** Cancel the active run, drop the queue, and stop reconnecting. */
   cancel(): Promise<void>;
   readonly status: SessionStatus;
+  readonly gap: SessionState["gap"];
+  readonly lastGap: SessionState["lastGap"];
 }
 
 export declare function useSession(options: UseSessionOptions): UseSessionResult;
