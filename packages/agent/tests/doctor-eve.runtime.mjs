@@ -58,11 +58,11 @@ test("doctor recognizes a nested eve agent directory and says what maps", async 
     // The mapping never overstates: what moves, what needs a rewrite, what
     // has no equivalent, and where the walk lives.
     assert.match(text.stdout, /moves as-is\s+instructions\.md/);
-    // tools/ and skills/ need their exports/frontmatter rewritten — the
+    // tools/ and skills/ need their exports/layout rewritten — the
     // doctor must never say they move as-is (Phase-5 gate finding).
     assert.doesNotMatch(text.stdout, /moves as-is[^\n]*tools\//);
     assert.doesNotMatch(text.stdout, /moves as-is[^\n]*skills\//);
-    assert.match(text.stdout, /rewrite\s+agent\.ts[^\n]*tools\/\*\.ts[^\n]*skills\/\*\.md/);
+    assert.match(text.stdout, /rewrite\s+agent\.ts[^\n]*tools\/\*\.ts[^\n]*\.agents\/skills\/<name>\/SKILL\.md/);
     assert.match(text.stdout, /no equivalent\s+channels\/ · schedules\//);
     assert.match(text.stdout, /Vercel Connect credentials are not supported/);
     assert.match(text.stdout, /docs\/eve-migration\.md/);

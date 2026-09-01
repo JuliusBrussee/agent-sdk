@@ -10,7 +10,7 @@ right place are picked up by the build; there is no registration step.
 | `instructions.md` | The agent's standing prose | Static by construction. Never put dates, ids, counters, or anything run-varying here — a volatile frozen prefix is a build failure. |
 | `agent.ts` | Behavior config | Default export `satisfies AgentDirConfig`: model, budget, breakers, and optional `context` — extra prefix segments as a name→value map. Context entries default to `stability: "build"` (frozen prefix, cached); the volatile-prefix check catches run-varying ones at build time. Declare `stability: "turn"` for values that belong in the live zone. The agent id is derived from the directory name, slugified to `[a-z0-9][a-z0-9_-]*` — rename the directory, rename the agent. |
 | `tools/<name>.ts` | One tool per file | Filename = tool name. Default export must be `tool({...})` with an honest `effect` (`"read"`, `"write"`, `"idempotent"`, `"external"`). The default sandbox denies network to tool code but does NOT make write-effect tools inert — declare effects truthfully. This scaffold uses only a read tool and never claims to mutate orders. |
-| `skills/<name>.md` | Relevance-loaded playbooks | Frontmatter with a one-line plain-text `description` (this line lives in the cached prefix), then the body (loaded on demand when the model asks). The frontmatter is line-parsed, NOT YAML — block scalars (`>`, `\|`) and quoted strings are build errors. Keep descriptions one line; keep bodies as long as they need to be. |
+| `.agents/skills/<name>/SKILL.md` | Relevance-loaded playbooks | Agent Skills YAML frontmatter with matching `name` and concise `description`, then body. Metadata lives in cached prefix; `load_skill` reads full body or contained resources on demand. |
 | `evals/*.eval.ts` | The build gate | `defineEval({...})` fixtures with `split: "profile"` / `"development"` / `"holdout"` and graders (`contains`, `not_contains`, `tool_called`, `exact_match`, `json_schema`). Invoking build runs every declared eval; holdout opens only after selection. |
 | `subagents/<name>/` | Nested agent directory | Same convention, one level down. Budget wallets and depth caps apply. |
 
@@ -18,8 +18,8 @@ right place are picked up by the build; there is no registration step.
 
 - **New tool:** create `tools/my_tool.ts`, default-export `tool()`. Prefer
   `effect: "read"`. Done — no imports to wire.
-- **New skill:** create `skills/my_topic.md` with frontmatter
-  `name` + one-line `description`. The description is what the model
+- **New skill:** create `.agents/skills/my-topic/SKILL.md` with frontmatter
+  `name: my-topic` + concise `description`. Description is what model
   sees when deciding to load it — write it like a good tooltip.
 - **New eval:** add a fixture to `evals/`. New behavior without an eval
   is unfinished; the eval is what lets the build defend the behavior.

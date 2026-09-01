@@ -36,9 +36,7 @@ Binary: `caveman-agent`. Node `>=22.19.0`.
 | `/serve` | `createAgentServer` |
 | `/model-boundary` | Adapter mutation seam |
 | `/model-usage` | Usage record contract |
-| `/model-router` | Pre-call model selection |
 | `/input` | `AgentInput` parts |
-| `/runtime-model` | Runtime model identity |
 | `/run-receipt` | Receipt contract |
 | `/cache-engine` | Cache planner (internal-facing) |
 | `/adapters` | Compatibility: generic locked-build harness |
@@ -125,7 +123,6 @@ explicitly requires them.
 | `packages/shared` | Pinned wire schemas and the provider-catalog snapshot used to regenerate and verify artifacts |
 | `packages/pebble`, `pebble-sessions`, `pebble-tui`, `libpebble` | Supporting Pebble material; the real implementation lives in a private sibling repository |
 | `examples/coding-agent` | Runnable example built on `@caveman-ai/coding-agent`; part of the public story and covered by tests |
-| `internal/agentbench/corpus` | Pinned Apache-2.0 deterministic compiler replay corpus |
 | `scripts/` | Catalog generation, licensing lint, pack verification, package type checks, docs generation |
 
 ## Dependency direction

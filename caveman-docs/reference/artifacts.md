@@ -10,7 +10,7 @@ my-agent/
 ├── instructions.md              agent-directory convention (optional)
 ├── agent.ts                     AgentDirConfig, or an agent() module
 ├── tools/*.ts                   one tool per file, filename = tool name
-├── skills/*.md                  frontmatter + body
+├── .agents/skills/<name>/SKILL.md  optional Agent Skills
 ├── subagents/<name>/            nested agent directories
 ├── evals/*.eval.ts              declared fixtures
 └── .caveman/                    generated — see below

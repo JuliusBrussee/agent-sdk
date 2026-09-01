@@ -9,7 +9,7 @@ Each entrypoint has its own page.
 
 | Import specifier | Declarations | Exported symbols | Reference |
 | --- | --- | --- | --- |
-| `@caveman-ai/agent` | `packages/agent/dist/index.d.ts` | 349 | [index.md](index.md) |
+| `@caveman-ai/agent` | `packages/agent/dist/index.d.ts` | 317 | [index.md](index.md) |
 | `@caveman-ai/agent/build` | `packages/agent/dist/build.d.ts` | 39 | [build.md](build.md) |
 | `@caveman-ai/agent/compiler` | `packages/agent/dist/compiler.d.ts` | 18 | [compiler.md](compiler.md) |
 | `@caveman-ai/agent/profile` | `packages/agent/dist/profile.d.ts` | 8 | [profile.md](profile.md) |
@@ -20,15 +20,13 @@ Each entrypoint has its own page.
 | `@caveman-ai/agent/programmatic-tools` | `packages/agent/dist/programmatic-tools.d.ts` | 12 | [programmatic-tools.md](programmatic-tools.md) |
 | `@caveman-ai/agent/connect` | `packages/agent/dist/connect.d.ts` | 28 | [connect.md](connect.md) |
 | `@caveman-ai/agent/plugins` | `packages/agent/dist/agent-environment.d.ts` | 26 | [plugins.md](plugins.md) |
-| `@caveman-ai/agent/compaction` | `packages/agent/dist/compaction-api.d.ts` | 40 | [compaction.md](compaction.md) |
+| `@caveman-ai/agent/compaction` | `packages/agent/dist/compaction-api.d.ts` | 42 | [compaction.md](compaction.md) |
 | `@caveman-ai/agent/memory` | `packages/agent/dist/memory-api.d.ts` | 43 | [memory.md](memory.md) |
 | `@caveman-ai/agent/durable` | `packages/agent/dist/durable.d.ts` | 56 | [durable.md](durable.md) |
 | `@caveman-ai/agent/serve` | `packages/agent/dist/serve.d.ts` | 4 | [serve.md](serve.md) |
 | `@caveman-ai/agent/model-boundary` | `packages/agent/dist/model-boundary.d.ts` | 15 | [model-boundary.md](model-boundary.md) |
 | `@caveman-ai/agent/model-usage` | `packages/agent/dist/model-usage.d.ts` | 8 | [model-usage.md](model-usage.md) |
-| `@caveman-ai/agent/model-router` | `packages/agent/dist/model-router.d.ts` | 19 | [model-router.md](model-router.md) |
-| `@caveman-ai/agent/input` | `packages/agent/dist/input.d.ts` | 22 | [input.md](input.md) |
-| `@caveman-ai/agent/runtime-model` | `packages/agent/dist/runtime-model.d.ts` | 14 | [runtime-model.md](runtime-model.md) |
+| `@caveman-ai/agent/input` | `packages/agent/dist/input.d.ts` | 23 | [input.md](input.md) |
 | `@caveman-ai/agent/run-receipt` | `packages/agent/dist/run-receipt.d.ts` | 3 | [run-receipt.md](run-receipt.md) |
 | `@caveman-ai/agent/cache-engine` | `packages/agent/dist/cache-planner/index.d.ts` | 57 | [cache-engine.md](cache-engine.md) |
 | `@caveman-ai/agent/adapters` | `packages/agent/dist/adapters.d.ts` | 16 | [adapters.md](adapters.md) |

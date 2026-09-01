@@ -115,9 +115,9 @@ full allowance, stop below the floor.
 routes matching one runtime segment collapse into `dynamic_route_ambiguous` and
 the segment passes through untouched.
 
-**Skill** — Markdown with `name` + one-line `description` frontmatter. The
-description enters the stable prefix; the body is served on demand by the
-framework `cave_skill` tool.
+**Skill** — Agent Skills-compatible `SKILL.md` under
+`.agents/skills/<name>/`. Metadata enters stable prefix; `load_skill` reads
+full instructions or contained resources on demand.
 
 **Speculation** — Starting a complete literal `effect: "read"` call while the
 provider is still streaming the composite cell. Never applied to writes,

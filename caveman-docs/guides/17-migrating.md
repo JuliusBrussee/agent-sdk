@@ -126,8 +126,8 @@ caveman-agent doctor                                # names what is missing, spe
 caveman-agent dev                                   # first turn ends with the receipt
 ```
 
-Keep the scaffold next to your real agent while you move `instructions.md`,
-`tools/*.ts`, and `skills/*.md` across. `doctor` makes zero provider calls.
+Keep scaffold next to real agent while moving `instructions.md`, `tools/*.ts`,
+and skills across. `doctor` makes zero provider calls.
 
 **Verify:** `caveman-agent doctor` passes Node, sandbox containment, config,
 Context IR, and provider selection; the end-of-run receipt shows a list-price
@@ -151,7 +151,7 @@ this table.
 | --- | --- | --- |
 | `agent/instructions.md` | `instructions.md` | Move as-is |
 | `agent/tools/*.ts` | `tools/*.ts` | Move; filename = tool name on both sides. Rewrite each export to this package's `tool()` |
-| `agent/skills/*.md` | `skills/*.md` | Move; keep `name` + one-line plain `description` frontmatter |
+| `agent/skills/*.md` | `.agents/skills/<name>/SKILL.md` | Move each file into matching directory; keep Agent Skills `name` and `description` frontmatter |
 | `agent/skills/*.ts` | — | No TypeScript skills here; a procedural skill becomes a tool |
 | `agent/subagents/<name>/` | `subagents/<name>/` | Move; same nested-directory idea |
 | `agent/agent.ts` | `agent.ts` | **Rewrite**, not move — here it exports an `AgentDirConfig` |

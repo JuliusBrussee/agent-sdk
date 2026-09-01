@@ -8,10 +8,10 @@ Declaration file: `packages/agent/dist/index.d.ts`.
 <details><summary>Symbol index</summary>
 
 - **Class**: `AgentRunController`, `BudgetController`, `CavemanRunError`, `ConnectRuntime`, `DiskDurableStore`, `HttpDurableStore`, `MemoryEngine`, `ProgrammaticSpeculationScope`
-- **Interface**: `AgentAudioInputPart`, `AgentDefinition`, `AgentDefinitionTransform`, `AgentDirConfig`, `AgentDirModules`, `AgentDirRunDefaults`, `AgentFileInputPart`, `AgentImageInputPart`, `AgentInputBase64Source`, `AgentInputEncoder`, `AgentInputURLSource`, `AgentOpaqueInputPart`, `AgentTextInputPart`, `ArtifactDefinition`, `BreakerEvent`, `BudgetExhaustionContext`, `BudgetTranche`, `CapturedModelBoundary`, `CapturedModelBoundaryCall`, `CompactionOptions`, `CompiledPipelineResult`, `CompileProfiledInput`, `CompileProfiledNativePiInput`, `CompileProfiledResult`, `CompilerTarget`, `CompleteModelUsage`, `CompletionMemorySidecarOptions`, `ConnectAction`, `ConnectConnection`, `ConnectEfficiencyComparison`, `ConnectEfficiencyRun`, `ConnectExecuteOptions`, `ConnectIntegration`, `ConnectMcpCallResult`, `ConnectMcpTool`, `ConnectMcpToolAnnotations`, `ConnectMcpToolExecution`, `ConnectMcpToolIcon`, `ConnectOptions`, `ConnectProcessResult`, `ConnectQualityPolicy`, `ConnectRuntimeOptions`, `ConnectSource`, `ConnectToolRuntimeDefinition`, `ContextAnchor`, `ContextCompactionFixture`, `ContextCompactionFixtureRound`, `ContextCompactionHarnessOptions`, `ContextCompactionHarnessResult`, `ContextCompactionHarnessRoundResult`, `ContextCompactionSummarizerRequest`, `ContextDefinition`, `ContextIR`, `ContextIRWire`, `ContextSegment`, `ContextSegmentWire`, `ContextSummary`, `ContextSummaryEvaluation`, `ContextSummaryEvaluationInput`, `ContextSummaryRound`, `ContextSummarySource`, `ContextSummaryStability`, `ContextSummaryValidation`, `CreateMemoryEngineOptions`, `CreateModelRouterOptions`, `DurableRunOptions`, `DurableStore`, `EvalDefinition`, `ExecuteCompiledPipelineInput`, `ExpectedContextAnchor`, `FileSource`, `HttpDurableStoreOptions`, `LoweredContext`, `MemoryAmbientOptions`, `MemoryCompletionRequest`, `MemoryConsolidationInput`, `MemoryDefinition`, `MemoryDraft`, `MemoryEdge`, `MemoryEmbeddingAdapter`, `MemoryExtractionInput`, `MemoryHit`, `MemoryRecall`, `MemoryRecord`, `MemoryRememberInput`, `MemoryReviewInput`, `MemoryReviewResult`, `MemoryRuntimeConfig`, `MemoryScope`, `MemorySearchOptions`, `MemorySessionHit`, `MemorySidecarAdapter`, `MemorySource`, `MemoryState`, `MemoryStorageAdapter`, `MemoryStoreConfig`, `MemoryTurn`, `MemoryTurnInput`, `MemoryVector`, `ModelBoundary`, `ModelBoundaryContext`, `ModelBoundaryFailed`, `ModelBoundaryMiddleware`, `ModelBoundaryPrepare`, `ModelBoundarySettled`, `ModelCallRouteDecision`, `ModelCallRouteInput`, `ModelRouter`, `ModelRouterContext`, `ModelRouterDefinition`, `ModelRouterSnapshot`, `ModelRouterTransition`, `ModelUsage`, `NativePiCandidatePlanningInput`, `NestedToolDispatchOptions`, `NormalizedAgentInput`, `NormalizedCompaction`, `NormalizedConnectAction`, `NormalizedConnectQualityPolicy`, `NormalizedConnectSource`, `NormalizedToolActivity`, `NormalizedTrajectory`, `NormalizeTrajectoryOptions`, `OpenAICompatibleMemoryEmbeddingOptions`, `OutputDefinition`, `PreparedModelBoundaryCall`, `ProfileToolEffect`, `ProgrammaticSpeculationActivation`, `ProgrammaticSpeculationLaunch`, `ProgrammaticToolInstructionOptions`, `ProgrammaticToolRuntime`, `ProgrammaticToolStats`, `ProjectedRuntimeModel`, `ReceiptCall`, `ReceiptCompaction`, `ReceiptLike`, `ReceiptPrintCall`, `ReceiptResume`, `ReceiptTool`, `ResolvedEgressPolicy`, `RoutineOutcomeCount`, `RunBreakers`, `RunBudget`, `RunOptions`, `RunReceipt`, `RunResult`, `RuntimeContextSegment`, `RuntimeModelFacts`, `RuntimeModelProjectionOptions`, `SandboxEgressPolicy`, `StandardInputOutputToolOptions`, `StandardJSONOutputToolOptions`, `StandardJSONToolOptions`, `StandardJSONTypeBoxOutputToolOptions`, `StandardOutputToolOptions`, `StandardToolOptions`, `StandardTypeBoxOutputToolOptions`, `SubagentRuntimeDefinition`, `ToolDefinition`, `ToolExecutionContext`, `ToolOptions`, `TypeBoxOutputToolOptions`, `WorkloadPartition`, `WorkloadProfile`
-- **Type alias**: `AgentDirContextValue`, `AgentInput`, `AgentInputPart`, `AgentInputSource`, `Auto`, `BudgetDenomination`, `BudgetExhaustionHandler`, `CacheRegion`, `CavemanRunEvent`, `ConnectActionBindValue`, `ConnectExecutor`, `ContextAnchorKind`, `ContextCompactionSummarizer`, `ContextKind`, `ContextPriority`, `ContextStability`, `ConversationState`, `DurableRunSummary`, `EvalGuardrail`, `EvalSplit`, `FiniteJSON`, `MemoryKind`, `MemoryRelation`, `ModelBoundaryRole`, `ModelCallRouter`, `ModelRouterJSON`, `ModelUsageAccountingStatus`, `ModelUsageCost`, `ModelUsageTokenCount`, `PrivacyClass`, `ProfiledCompileStatus`, `ProgrammaticSpeculationDispatch`, `QualityGrader`, `RecoveryKind`, `RoutineOutcome`, `RunStopReason`, `RuntimeModelCredentialReadiness`, `RuntimeModelExecution`, `RuntimeModelModality`, `RuntimeModelUSDAccounting`, `SafetyClass`, `SandboxEgress`, `StandardToolSchema`, `ToolEffect`, `ToolResultPolicy`, `ToolRuntimeDefinition`, `TrajectorySource`, `WorkloadSplit`
-- **Function**: `adaptStatelessModelCallRouter`, `agent`, `appendRuntimeContextSegment`, `applyAgentDefinitionTransforms`, `artifact`, `asModelCallRouter`, `assertProfiledBuildTarget`, `assertQualityGrader`, `auto`, `capabilityManifestFor`, `captureModelBoundary`, `compareConnectEfficiency`, `compileProfiled`, `compileProfiledNativePi`, `completionMemorySidecar`, `composeAgentDir`, `connectEnvironment`, `context`, `contextBill`, `contextIRFromWire`, `contextIRToWire`, `contextSummarySources`, `cosine`, `createBudgetController`, `createCompilerWorkloadProfile`, `createConnect`, `createConversation`, `createFileMemoryAdapter`, `createInMemoryMemoryStorage`, `createMemoryEngine`, `createMemoryWorkflow`, `createModelBoundary`, `createModelRouter`, `createProgrammaticToolErrorWrapper`, `createProgrammaticToolRuntime`, `createSparseEmbeddingAdapter`, `createWorkloadProfile`, `defineAgentInputEncoder`, `defineModelUsage`, `defineRunReceipt`, `durableInputIsReplayable`, `durableRunSummary`, `egressAllowed`, `emptyMemoryState`, `encodeAgentInput`, `eval`, `evalFixture`, `evaluateContextSummary`, `evaluateContextSummaryStability`, `executeCompiledPipeline`, `executeConnectTool`, `file`, `latestContextSummary`, `loadAgentDir`, `lowerContext`, `memory`, `memoryTTLMilliseconds`, `modelUsageAccountingStatus`, `nativePiCompilerTarget`, `normalizeAgentInput`, `normalizeCompaction`, `normalizeFiniteJSON`, `normalizeTrajectory`, `opaquePayload`, `openAICompatibleMemoryEmbedding`, `output`, `packVector`, `parseContextSummary`, `parseNormalizedTrajectory`, `parseWorkloadProfile`, `planNativePiCandidates`, `programmaticToolInstructions`, `programmaticToolMetadata`, `projectRuntimeModels`, `renderReceipt`, `renderSummary`, `requireCompleteModelUsage`, `resolveConnectBinary`, `resolveEgressPolicy`, `routine`, `routineOutcomes`, `run`, `runContextCompactionHarness`, `runLocked`, `sha256`, `stableStringify`, `stream`, `subagent`, `summarizationInstruction`, `tool`, `validateContextSummaryTransition`, `verifySandboxConformance`, `workloadSplitSHA256`
-- **Variable**: `AGENT_DIR_ENTRY`, `AGENT_INPUT_MAX_BASE64_BYTES_PER_PART`, `AGENT_INPUT_MAX_BASE64_BYTES_TOTAL`, `AGENT_INPUT_MAX_FILE_NAME_LENGTH`, `AGENT_INPUT_MAX_MIME_LENGTH`, `AGENT_INPUT_MAX_PARTS`, `AGENT_INPUT_MAX_TEXT_BYTES`, `AGENT_INPUT_MAX_URL_LENGTH`, `AGENT_RUN_RECEIPT_SCHEMA`, `AUTO`, `FINITE_JSON_MAX_BYTES`, `FINITE_JSON_MAX_DEPTH`, `FINITE_JSON_MAX_ENTRIES`, `MODEL_BOUNDARY_MAX_CONTEXT_STRING_LENGTH`, `MODEL_BOUNDARY_MAX_ID_LENGTH`, `MODEL_BOUNDARY_MAX_MIDDLEWARE`, `MODEL_ROUTER_MAX_SIGNALS`, `MODEL_ROUTER_STATE_MAX_BYTES`, `MODEL_ROUTER_STATE_MAX_DEPTH`, `MODEL_ROUTER_STATE_MAX_ENTRIES`, `OUTPUT_CLAMP_FLOOR_TOKENS`, `PROFILED_COMPILER_SHA256`, `PROFILED_COMPILER_VERSION`, `PROGRAMMATIC_TOOL_NAME`, `RUNTIME_MODEL_MAX_MODALITIES`, `RUNTIME_MODEL_MAX_MODALITY_LENGTH`, `RUNTIME_MODEL_MAX_MODEL_BYTES`, `RUNTIME_MODEL_MAX_MODELS`, `RUNTIME_MODEL_MAX_PROVIDER_LENGTH`, `RUNTIME_MODEL_PRICE_ATTESTATION_MAX_AGE_MS`, `schema`, `SUMMARY_SCHEMA_VERSION`, `TARGET_CAPABILITY_LATTICE`, `TRAJECTORY_IR_SCHEMA_VERSION`, `validateRunReceipt`, `WORKLOAD_PROFILE_SCHEMA_VERSION`
+- **Interface**: `AgentAudioInputPart`, `AgentDefinition`, `AgentDefinitionTransform`, `AgentDirConfig`, `AgentDirModules`, `AgentDirRunDefaults`, `AgentFileInputPart`, `AgentImageInputPart`, `AgentInputBase64Source`, `AgentInputEncoder`, `AgentInputURLSource`, `AgentOpaqueInputPart`, `AgentTextInputPart`, `ArtifactDefinition`, `BreakerEvent`, `BudgetExhaustionContext`, `BudgetTranche`, `CapturedModelBoundary`, `CapturedModelBoundaryCall`, `CompactionOptions`, `CompiledPipelineResult`, `CompileProfiledInput`, `CompileProfiledNativePiInput`, `CompileProfiledResult`, `CompilerTarget`, `CompleteModelUsage`, `CompletionMemorySidecarOptions`, `ConnectAction`, `ConnectConnection`, `ConnectEfficiencyComparison`, `ConnectEfficiencyRun`, `ConnectExecuteOptions`, `ConnectIntegration`, `ConnectMcpCallResult`, `ConnectMcpTool`, `ConnectMcpToolAnnotations`, `ConnectMcpToolExecution`, `ConnectMcpToolIcon`, `ConnectOptions`, `ConnectProcessResult`, `ConnectQualityPolicy`, `ConnectRuntimeOptions`, `ConnectSource`, `ConnectToolRuntimeDefinition`, `ContextAnchor`, `ContextCompactionFixture`, `ContextCompactionFixtureRound`, `ContextCompactionHarnessOptions`, `ContextCompactionHarnessResult`, `ContextCompactionHarnessRoundResult`, `ContextCompactionSummarizerRequest`, `ContextDefinition`, `ContextIR`, `ContextIRWire`, `ContextSegment`, `ContextSegmentWire`, `ContextSummary`, `ContextSummaryEvaluation`, `ContextSummaryEvaluationInput`, `ContextSummaryRound`, `ContextSummarySource`, `ContextSummaryStability`, `ContextSummaryValidation`, `CreateMemoryEngineOptions`, `DurableRunOptions`, `DurableStore`, `EvalDefinition`, `ExecuteCompiledPipelineInput`, `ExpectedContextAnchor`, `FileSource`, `HttpDurableStoreOptions`, `LoweredContext`, `MemoryAmbientOptions`, `MemoryCompletionRequest`, `MemoryConsolidationInput`, `MemoryDefinition`, `MemoryDraft`, `MemoryEdge`, `MemoryEmbeddingAdapter`, `MemoryExtractionInput`, `MemoryHit`, `MemoryRecall`, `MemoryRecord`, `MemoryRememberInput`, `MemoryReviewInput`, `MemoryReviewResult`, `MemoryRuntimeConfig`, `MemoryScope`, `MemorySearchOptions`, `MemorySessionHit`, `MemorySidecarAdapter`, `MemorySource`, `MemoryState`, `MemoryStorageAdapter`, `MemoryStoreConfig`, `MemoryTurn`, `MemoryTurnInput`, `MemoryVector`, `ModelBoundary`, `ModelBoundaryContext`, `ModelBoundaryFailed`, `ModelBoundaryMiddleware`, `ModelBoundaryPrepare`, `ModelBoundarySettled`, `ModelCallRouteDecision`, `ModelCallRouteInput`, `ModelUsage`, `NativePiCandidatePlanningInput`, `NestedToolDispatchOptions`, `NormalizedAgentInput`, `NormalizedCompaction`, `NormalizedConnectAction`, `NormalizedConnectQualityPolicy`, `NormalizedConnectSource`, `NormalizedToolActivity`, `NormalizedTrajectory`, `NormalizeTrajectoryOptions`, `OpenAICompatibleMemoryEmbeddingOptions`, `OutputDefinition`, `PreparedModelBoundaryCall`, `ProfileToolEffect`, `ProgrammaticSpeculationActivation`, `ProgrammaticSpeculationLaunch`, `ProgrammaticToolInstructionOptions`, `ProgrammaticToolRuntime`, `ProgrammaticToolStats`, `ReceiptCall`, `ReceiptCompaction`, `ReceiptLike`, `ReceiptPrintCall`, `ReceiptResume`, `ReceiptTool`, `ResolvedEgressPolicy`, `RoutineOutcomeCount`, `RunBreakers`, `RunBudget`, `RunOptions`, `RunReceipt`, `RunResult`, `RuntimeContextSegment`, `SandboxEgressPolicy`, `StandardInputOutputToolOptions`, `StandardJSONOutputToolOptions`, `StandardJSONToolOptions`, `StandardJSONTypeBoxOutputToolOptions`, `StandardOutputToolOptions`, `StandardToolOptions`, `StandardTypeBoxOutputToolOptions`, `SubagentRuntimeDefinition`, `ToolDefinition`, `ToolExecutionContext`, `ToolOptions`, `TypeBoxOutputToolOptions`, `WorkloadPartition`, `WorkloadProfile`
+- **Type alias**: `AgentDirContextValue`, `AgentInput`, `AgentInputPart`, `AgentInputSource`, `Auto`, `BudgetDenomination`, `BudgetExhaustionHandler`, `CacheRegion`, `CavemanRunEvent`, `ConnectActionBindValue`, `ConnectExecutor`, `ContextAnchorKind`, `ContextCompactionSummarizer`, `ContextKind`, `ContextPriority`, `ContextStability`, `ConversationState`, `DurableRunSummary`, `EvalGuardrail`, `EvalSplit`, `FiniteJSON`, `MemoryKind`, `MemoryRelation`, `ModelBoundaryRole`, `ModelCallRouter`, `ModelUsageAccountingStatus`, `ModelUsageCost`, `ModelUsageTokenCount`, `PrivacyClass`, `ProfiledCompileStatus`, `ProgrammaticSpeculationDispatch`, `QualityGrader`, `RecoveryKind`, `RoutineOutcome`, `RunStopReason`, `SafetyClass`, `SandboxEgress`, `StandardToolSchema`, `ToolEffect`, `ToolResultPolicy`, `ToolRuntimeDefinition`, `TrajectorySource`, `WorkloadSplit`
+- **Function**: `agent`, `appendRuntimeContextSegment`, `applyAgentDefinitionTransforms`, `artifact`, `assertProfiledBuildTarget`, `assertQualityGrader`, `auto`, `capabilityManifestFor`, `captureModelBoundary`, `compareConnectEfficiency`, `compileProfiled`, `compileProfiledNativePi`, `completionMemorySidecar`, `composeAgentDir`, `connectEnvironment`, `context`, `contextBill`, `contextIRFromWire`, `contextIRToWire`, `contextSummarySources`, `cosine`, `createBudgetController`, `createCompilerWorkloadProfile`, `createConnect`, `createConversation`, `createFileMemoryAdapter`, `createInMemoryMemoryStorage`, `createMemoryEngine`, `createMemoryWorkflow`, `createModelBoundary`, `createProgrammaticToolErrorWrapper`, `createProgrammaticToolRuntime`, `createSparseEmbeddingAdapter`, `createWorkloadProfile`, `defineAgentInputEncoder`, `defineModelUsage`, `defineRunReceipt`, `durableInputIsReplayable`, `durableRunSummary`, `egressAllowed`, `emptyMemoryState`, `encodeAgentInput`, `eval`, `evalFixture`, `evaluateContextSummary`, `evaluateContextSummaryStability`, `executeCompiledPipeline`, `executeConnectTool`, `file`, `latestContextSummary`, `loadAgentDir`, `lowerContext`, `memory`, `memoryTTLMilliseconds`, `modelUsageAccountingStatus`, `nativePiCompilerTarget`, `normalizeAgentInput`, `normalizeCompaction`, `normalizeTrajectory`, `opaquePayload`, `openAICompatibleMemoryEmbedding`, `output`, `packVector`, `parseContextSummary`, `parseNormalizedTrajectory`, `parseWorkloadProfile`, `planNativePiCandidates`, `programmaticToolInstructions`, `programmaticToolMetadata`, `renderReceipt`, `renderSummary`, `requireCompleteModelUsage`, `resolveConnectBinary`, `resolveEgressPolicy`, `routine`, `routineOutcomes`, `run`, `runContextCompactionHarness`, `runLocked`, `sha256`, `stableStringify`, `stream`, `subagent`, `summarizationInstruction`, `tool`, `validateContextSummaryTransition`, `verifySandboxConformance`, `workloadSplitSHA256`
+- **Variable**: `AGENT_DIR_ENTRY`, `AGENT_INPUT_MAX_BASE64_BYTES_PER_PART`, `AGENT_INPUT_MAX_BASE64_BYTES_TOTAL`, `AGENT_INPUT_MAX_FILE_NAME_LENGTH`, `AGENT_INPUT_MAX_MIME_LENGTH`, `AGENT_INPUT_MAX_PARTS`, `AGENT_INPUT_MAX_TEXT_BYTES`, `AGENT_INPUT_MAX_URL_LENGTH`, `AGENT_RUN_RECEIPT_SCHEMA`, `AUTO`, `MODEL_BOUNDARY_MAX_CONTEXT_STRING_LENGTH`, `MODEL_BOUNDARY_MAX_ID_LENGTH`, `MODEL_BOUNDARY_MAX_MIDDLEWARE`, `OUTPUT_CLAMP_FLOOR_TOKENS`, `PROFILED_COMPILER_SHA256`, `PROFILED_COMPILER_VERSION`, `PROGRAMMATIC_TOOL_NAME`, `schema`, `SUMMARY_SCHEMA_VERSION`, `TARGET_CAPABILITY_LATTICE`, `TRAJECTORY_IR_SCHEMA_VERSION`, `validateRunReceipt`, `WORKLOAD_PROFILE_SCHEMA_VERSION`
 
 </details>
 
@@ -386,8 +386,6 @@ export interface AgentDirModules {
     config: AgentDirConfig;
     /** Keyed by tool filename minus `.ts`; values must be `tool()` results. */
     tools: Record<string, unknown>;
-    /** Keyed by skill filename minus `.md`; raw file text (frontmatter + body). */
-    skills?: Record<string, string>;
     subagents?: Record<string, AgentDefinition>;
 }
 ```
@@ -649,6 +647,34 @@ export interface CompactionOptions {
      * history it has to read; below that it fails closed to the working model.
      */
     readonly summarizerModel?: Model<Api>;
+    /**
+     * What the compaction rung does once free eviction is not enough.
+     *
+     * `"summarize"` (default) pays one summarizer call and keeps a lossy capsule
+     * plus the recent tail. `"new-context"` skips the provider call entirely and
+     * installs a fresh context window: pinned user intent, then whatever
+     * `newContext` hands back as the seed. It is free, so it is strictly cheaper
+     * than a summary — but it only stays honest when the caller persists the
+     * outgoing window somewhere the model can search afterwards. `newContext` is
+     * the moment to do that, and the mode fails closed to the ordinary ladder
+     * when no `newContext` is supplied.
+     */
+    readonly mode?: "summarize" | "new-context";
+    /**
+     * Called once per `"new-context"` rollover, with the window about to be
+     * dropped. Returns the seed text for the fresh window — the small hint that
+     * carries plan, decisions, and unresolved work across the boundary.
+     *
+     * Persist `messages` here if they need to be recoverable: past this call the
+     * runtime no longer holds them. Throwing declines the rollover and falls back
+     * to the eviction/clamp rungs, so an unwritable archive never silently costs
+     * the run its history.
+     */
+    readonly newContext?: (input: {
+        readonly messages: readonly AgentMessage[];
+        /** 1-based rollover number within this run. */
+        readonly generation: number;
+    }) => string | Promise<string>;
 }
 ```
 
@@ -1356,16 +1382,6 @@ export interface CreateMemoryEngineOptions {
 
 Declared in `packages/agent/dist/memory.d.ts`.
 
-### `CreateModelRouterOptions`
-
-```ts
-export interface CreateModelRouterOptions {
-    readonly snapshot?: ModelRouterSnapshot;
-}
-```
-
-Declared in `packages/agent/dist/model-router.d.ts`.
-
 ### `DurableRunOptions`
 
 Caller-facing durable options on RunOptions.
@@ -2030,67 +2046,6 @@ export interface ModelCallRouteInput {
 
 Declared in `packages/agent/dist/runtime.d.ts`.
 
-### `ModelRouter`
-
-```ts
-export interface ModelRouter {
-    readonly id: string;
-    route(input: ModelCallRouteInput, signal?: AbortSignal): Promise<ModelCallRouteDecision>;
-    snapshot(): ModelRouterSnapshot;
-}
-```
-
-Declared in `packages/agent/dist/model-router.d.ts`.
-
-### `ModelRouterContext`
-
-```ts
-export interface ModelRouterContext {
-    readonly input: ModelCallRouteInput;
-    readonly state: ModelRouterJSON;
-    readonly revision: number;
-    readonly signal: AbortSignal;
-}
-```
-
-Declared in `packages/agent/dist/model-router.d.ts`.
-
-### `ModelRouterDefinition`
-
-```ts
-export interface ModelRouterDefinition {
-    readonly id: string;
-    readonly initialState?: ModelRouterJSON;
-    readonly route: (context: ModelRouterContext) => ModelRouterTransition | Promise<ModelRouterTransition>;
-}
-```
-
-Declared in `packages/agent/dist/model-router.d.ts`.
-
-### `ModelRouterSnapshot`
-
-```ts
-export interface ModelRouterSnapshot {
-    readonly schemaVersion: 1;
-    readonly routerId: string;
-    readonly revision: number;
-    readonly state: ModelRouterJSON;
-}
-```
-
-Declared in `packages/agent/dist/model-router.d.ts`.
-
-### `ModelRouterTransition`
-
-```ts
-export interface ModelRouterTransition {
-    readonly decision: ModelCallRouteDecision;
-    readonly state: ModelRouterJSON;
-}
-```
-
-Declared in `packages/agent/dist/model-router.d.ts`.
-
 ### `ModelUsage`
 
 One provider call's disjoint usage. `inputTokens` excludes cache read/write;
@@ -2175,6 +2130,8 @@ export interface NormalizedCompaction {
     readonly pinnedUserTokens: number;
     readonly preserveFirstUserMessage: boolean;
     readonly summarizerModel: Model<Api> | undefined;
+    readonly mode: "summarize" | "new-context";
+    readonly newContext: CompactionOptions["newContext"];
 }
 ```
 
@@ -2412,36 +2369,6 @@ export interface ProgrammaticToolStats {
 
 Declared in `packages/agent/dist/programmatic-tools.d.ts`.
 
-### `ProjectedRuntimeModel`
-
-Projection of runtime-owned execution facts plus catalog-owned accounting
-identity. Catalog data can annotate a runtime row, never create or modify it.
-
-```ts
-export interface ProjectedRuntimeModel {
-    readonly schemaVersion: 1;
-    readonly identity: {
-        readonly provider: string;
-        readonly model: string;
-    };
-    readonly runtime: {
-        readonly execution: RuntimeModelExecution;
-        readonly credentialReadiness: RuntimeModelCredentialReadiness;
-        readonly modalities: {
-            readonly input: readonly RuntimeModelModality[] | null;
-            readonly output: readonly RuntimeModelModality[] | null;
-        };
-        readonly limits: {
-            readonly contextTokens: number | null;
-            readonly outputTokens: number | null;
-        };
-    };
-    readonly usdAccounting: RuntimeModelUSDAccounting;
-}
-```
-
-Declared in `packages/agent/dist/runtime-model.d.ts`.
-
 ### `ReceiptCall`
 
 One provider call as the receipt records it.
@@ -2484,7 +2411,7 @@ forced. It is not a saving and is never called one.
 ```ts
 export interface ReceiptCompaction {
     readonly index: number;
-    readonly tier: "evicted" | "summarized";
+    readonly tier: "evicted" | "summarized" | "new-context";
     readonly preTokens: number;
     readonly postTokens: number;
     readonly pinnedSegmentIds: readonly string[];
@@ -3122,46 +3049,6 @@ export interface RuntimeContextSegment {
 
 Declared in `packages/agent/dist/context-ir.d.ts`.
 
-### `RuntimeModelFacts`
-
-Facts supplied by one runtime/provider registry. Price, display, tier, and
-default-model metadata deliberately do not belong here.
-
-```ts
-export interface RuntimeModelFacts {
-    readonly schemaVersion: 1;
-    readonly provider: string;
-    readonly model: string;
-    readonly execution: RuntimeModelExecution;
-    readonly credentialReadiness: RuntimeModelCredentialReadiness;
-    readonly modalities: {
-        /** `null` means the runtime cannot attest supported input modalities. */
-        readonly input: readonly RuntimeModelModality[] | null;
-        /** `null` means the runtime cannot attest supported output modalities. */
-        readonly output: readonly RuntimeModelModality[] | null;
-    };
-    readonly limits: {
-        /** `null` is unknown, never unlimited. */
-        readonly contextTokens: number | null;
-        /** `null` is unknown, never unlimited. */
-        readonly outputTokens: number | null;
-    };
-}
-```
-
-Declared in `packages/agent/dist/runtime-model.d.ts`.
-
-### `RuntimeModelProjectionOptions`
-
-```ts
-export interface RuntimeModelProjectionOptions {
-    /** Exact owned accounting instant. Must fall inside catalog attestation interval. */
-    readonly accountingAt?: string;
-}
-```
-
-Declared in `packages/agent/dist/runtime-model.d.ts`.
-
 ### `SandboxEgressPolicy`
 
 ```ts
@@ -3755,7 +3642,7 @@ export type FiniteJSON = null | boolean | number | string | readonly FiniteJSON[
 };
 ```
 
-Declared in `packages/agent/dist/model-router.d.ts`.
+Declared in `packages/agent/dist/input.d.ts`.
 
 ### `MemoryKind`
 
@@ -3788,14 +3675,6 @@ export type ModelCallRouter = (input: ModelCallRouteInput) => ModelCallRouteDeci
 ```
 
 Declared in `packages/agent/dist/runtime.d.ts`.
-
-### `ModelRouterJSON`
-
-```ts
-export type ModelRouterJSON = FiniteJSON;
-```
-
-Declared in `packages/agent/dist/model-router.d.ts`.
 
 ### `ModelUsageAccountingStatus`
 
@@ -3903,45 +3782,6 @@ export type RunStopReason = "complete" | "budget_exhausted" | "deadline" | "loop
 
 Declared in `packages/agent/dist/budget.d.ts`.
 
-### `RuntimeModelCredentialReadiness`
-
-```ts
-export type RuntimeModelCredentialReadiness = "ready" | "missing" | "unknown";
-```
-
-Declared in `packages/agent/dist/runtime-model.d.ts`.
-
-### `RuntimeModelExecution`
-
-```ts
-export type RuntimeModelExecution = "executable" | "unavailable" | "unknown";
-```
-
-Declared in `packages/agent/dist/runtime-model.d.ts`.
-
-### `RuntimeModelModality`
-
-```ts
-export type RuntimeModelModality = string;
-```
-
-Declared in `packages/agent/dist/runtime-model.d.ts`.
-
-### `RuntimeModelUSDAccounting`
-
-```ts
-export type RuntimeModelUSDAccounting = Readonly<{
-    status: "available";
-    basis: "public_catalog";
-    priceFingerprint: string;
-    provenanceSha256: string;
-}> | Readonly<{
-    status: "unknown";
-}>;
-```
-
-Declared in `packages/agent/dist/runtime-model.d.ts`.
-
 ### `SafetyClass`
 
 ```ts
@@ -4010,17 +3850,6 @@ Declared in `packages/agent/dist/trajectory-ir.d.ts`.
 
 ## Functions
 
-### `adaptStatelessModelCallRouter`
-
-Wraps existing `ModelCallRouter` code in a state-free router. Its snapshot is
-always revision zero with null state; adaptation cannot invent durability.
-
-```ts
-export declare function adaptStatelessModelCallRouter(id: string, router: ModelCallRouter): ModelRouter;
-```
-
-Declared in `packages/agent/dist/model-router.d.ts`.
-
 ### `agent`
 
 ```ts
@@ -4066,16 +3895,6 @@ export declare function artifact(options?: {
 ```
 
 Declared in `packages/agent/dist/primitives.d.ts`.
-
-### `asModelCallRouter`
-
-Adapts routing only; existing runtime remains sole owner of provider I/O.
-
-```ts
-export declare function asModelCallRouter(router: ModelRouter): ModelCallRouter;
-```
-
-Declared in `packages/agent/dist/model-router.d.ts`.
 
 ### `assertProfiledBuildTarget`
 
@@ -4349,14 +4168,6 @@ export declare function createModelBoundary<Request, Response>(middleware: reado
 ```
 
 Declared in `packages/agent/dist/model-boundary.d.ts`.
-
-### `createModelRouter`
-
-```ts
-export declare function createModelRouter(definition: ModelRouterDefinition, options?: CreateModelRouterOptions): ModelRouter;
-```
-
-Declared in `packages/agent/dist/model-router.d.ts`.
 
 ### `createProgrammaticToolErrorWrapper`
 
@@ -4675,16 +4486,6 @@ export declare function normalizeCompaction(options?: CompactionOptions): Normal
 
 Declared in `packages/agent/dist/compaction.d.ts`.
 
-### `normalizeFiniteJSON`
-
-Copies, deep-freezes, and bounds one JSON value for state or opaque input.
-
-```ts
-export declare function normalizeFiniteJSON(value: unknown): FiniteJSON;
-```
-
-Declared in `packages/agent/dist/model-router.d.ts`.
-
 ### `normalizeTrajectory`
 
 Project a Caveman result or a content-blind OTel/OpenInference span into the
@@ -4793,16 +4594,6 @@ export declare function programmaticToolMetadata(definition: ToolDefinition): Pr
 ```
 
 Declared in `packages/agent/dist/programmatic-tools.d.ts`.
-
-### `projectRuntimeModels`
-
-Validate, detach, freeze, and account runtime model facts without I/O.
-
-```ts
-export declare function projectRuntimeModels(models: readonly RuntimeModelFacts[], options?: RuntimeModelProjectionOptions): readonly ProjectedRuntimeModel[];
-```
-
-Declared in `packages/agent/dist/runtime-model.d.ts`.
 
 ### `renderReceipt`
 
@@ -5130,30 +4921,6 @@ export declare const AUTO: unique symbol;
 
 Declared in `packages/agent/dist/primitives.d.ts`.
 
-### `FINITE_JSON_MAX_BYTES`
-
-```ts
-export declare const FINITE_JSON_MAX_BYTES: number;
-```
-
-Declared in `packages/agent/dist/model-router.d.ts`.
-
-### `FINITE_JSON_MAX_DEPTH`
-
-```ts
-export declare const FINITE_JSON_MAX_DEPTH = 16;
-```
-
-Declared in `packages/agent/dist/model-router.d.ts`.
-
-### `FINITE_JSON_MAX_ENTRIES`
-
-```ts
-export declare const FINITE_JSON_MAX_ENTRIES = 1024;
-```
-
-Declared in `packages/agent/dist/model-router.d.ts`.
-
 ### `MODEL_BOUNDARY_MAX_CONTEXT_STRING_LENGTH`
 
 ```ts
@@ -5177,38 +4944,6 @@ export declare const MODEL_BOUNDARY_MAX_MIDDLEWARE = 64;
 ```
 
 Declared in `packages/agent/dist/model-boundary.d.ts`.
-
-### `MODEL_ROUTER_MAX_SIGNALS`
-
-```ts
-export declare const MODEL_ROUTER_MAX_SIGNALS = 64;
-```
-
-Declared in `packages/agent/dist/model-router.d.ts`.
-
-### `MODEL_ROUTER_STATE_MAX_BYTES`
-
-```ts
-export declare const MODEL_ROUTER_STATE_MAX_BYTES: number;
-```
-
-Declared in `packages/agent/dist/model-router.d.ts`.
-
-### `MODEL_ROUTER_STATE_MAX_DEPTH`
-
-```ts
-export declare const MODEL_ROUTER_STATE_MAX_DEPTH = 16;
-```
-
-Declared in `packages/agent/dist/model-router.d.ts`.
-
-### `MODEL_ROUTER_STATE_MAX_ENTRIES`
-
-```ts
-export declare const MODEL_ROUTER_STATE_MAX_ENTRIES = 1024;
-```
-
-Declared in `packages/agent/dist/model-router.d.ts`.
 
 ### `OUTPUT_CLAMP_FLOOR_TOKENS`
 
@@ -5247,56 +4982,6 @@ export declare const PROGRAMMATIC_TOOL_NAME = "caveman_code";
 ```
 
 Declared in `packages/agent/dist/programmatic-tools.d.ts`.
-
-### `RUNTIME_MODEL_MAX_MODALITIES`
-
-```ts
-export declare const RUNTIME_MODEL_MAX_MODALITIES = 8;
-```
-
-Declared in `packages/agent/dist/runtime-model.d.ts`.
-
-### `RUNTIME_MODEL_MAX_MODALITY_LENGTH`
-
-```ts
-export declare const RUNTIME_MODEL_MAX_MODALITY_LENGTH = 64;
-```
-
-Declared in `packages/agent/dist/runtime-model.d.ts`.
-
-### `RUNTIME_MODEL_MAX_MODEL_BYTES`
-
-```ts
-export declare const RUNTIME_MODEL_MAX_MODEL_BYTES = 1024;
-```
-
-Declared in `packages/agent/dist/runtime-model.d.ts`.
-
-### `RUNTIME_MODEL_MAX_MODELS`
-
-```ts
-export declare const RUNTIME_MODEL_MAX_MODELS = 8192;
-```
-
-Declared in `packages/agent/dist/runtime-model.d.ts`.
-
-### `RUNTIME_MODEL_MAX_PROVIDER_LENGTH`
-
-```ts
-export declare const RUNTIME_MODEL_MAX_PROVIDER_LENGTH = 128;
-```
-
-Declared in `packages/agent/dist/runtime-model.d.ts`.
-
-### `RUNTIME_MODEL_PRICE_ATTESTATION_MAX_AGE_MS`
-
-Maximum interval one reviewed catalog price can attest for exact accounting.
-
-```ts
-export declare const RUNTIME_MODEL_PRICE_ATTESTATION_MAX_AGE_MS: number;
-```
-
-Declared in `packages/agent/dist/runtime-model.d.ts`.
 
 ### `schema`
 

@@ -9,8 +9,8 @@ Declaration file: `packages/agent/dist/compaction-api.d.ts`.
 
 - **Interface**: `CompactionOptions`, `ContextAnchor`, `ContextCompactionFixture`, `ContextCompactionFixtureRound`, `ContextCompactionHarnessOptions`, `ContextCompactionHarnessResult`, `ContextCompactionHarnessRoundResult`, `ContextCompactionSummarizerRequest`, `ContextSummary`, `ContextSummaryEvaluation`, `ContextSummaryEvaluationInput`, `ContextSummaryRound`, `ContextSummarySource`, `ContextSummaryStability`, `ContextSummaryValidation`, `ExpectedContextAnchor`, `MessagePlan`, `NormalizedCompaction`
 - **Type alias**: `ContextAnchorKind`, `ContextCompactionSummarizer`, `ContextSummarySourceRole`
-- **Function**: `contextSummarySources`, `elidedDigest`, `evaluateContextSummary`, `evaluateContextSummaryStability`, `evictionCitation`, `evictMessage`, `latestContextSummary`, `messagesTokens`, `messageText`, `messageTokens`, `normalizeCompaction`, `parseContextSummary`, `pinnedContentSurvives`, `planCompaction`, `renderSummary`, `runContextCompactionHarness`, `summarizationInstruction`, `validateContextSummaryTransition`
-- **Variable**: `SUMMARY_SCHEMA_VERSION`
+- **Function**: `contextSummarySources`, `elidedDigest`, `evaluateContextSummary`, `evaluateContextSummaryStability`, `evictionCitation`, `evictMessage`, `latestContextSummary`, `messagesTokens`, `messageText`, `messageTokens`, `newContextMessages`, `normalizeCompaction`, `parseContextSummary`, `pinnedContentSurvives`, `planCompaction`, `renderSummary`, `runContextCompactionHarness`, `summarizationInstruction`, `validateContextSummaryTransition`
+- **Variable**: `CONTEXT_SEED_MAX_CHARS`, `SUMMARY_SCHEMA_VERSION`
 
 </details>
 
@@ -75,6 +75,34 @@ export interface CompactionOptions {
      * history it has to read; below that it fails closed to the working model.
      */
     readonly summarizerModel?: Model<Api>;
+    /**
+     * What the compaction rung does once free eviction is not enough.
+     *
+     * `"summarize"` (default) pays one summarizer call and keeps a lossy capsule
+     * plus the recent tail. `"new-context"` skips the provider call entirely and
+     * installs a fresh context window: pinned user intent, then whatever
+     * `newContext` hands back as the seed. It is free, so it is strictly cheaper
+     * than a summary — but it only stays honest when the caller persists the
+     * outgoing window somewhere the model can search afterwards. `newContext` is
+     * the moment to do that, and the mode fails closed to the ordinary ladder
+     * when no `newContext` is supplied.
+     */
+    readonly mode?: "summarize" | "new-context";
+    /**
+     * Called once per `"new-context"` rollover, with the window about to be
+     * dropped. Returns the seed text for the fresh window — the small hint that
+     * carries plan, decisions, and unresolved work across the boundary.
+     *
+     * Persist `messages` here if they need to be recoverable: past this call the
+     * runtime no longer holds them. Throwing declines the rollover and falls back
+     * to the eviction/clamp rungs, so an unwritable archive never silently costs
+     * the run its history.
+     */
+    readonly newContext?: (input: {
+        readonly messages: readonly AgentMessage[];
+        /** 1-based rollover number within this run. */
+        readonly generation: number;
+    }) => string | Promise<string>;
 }
 ```
 
@@ -352,6 +380,8 @@ export interface NormalizedCompaction {
     readonly pinnedUserTokens: number;
     readonly preserveFirstUserMessage: boolean;
     readonly summarizerModel: Model<Api> | undefined;
+    readonly mode: "summarize" | "new-context";
+    readonly newContext: CompactionOptions["newContext"];
 }
 ```
 
@@ -494,6 +524,24 @@ export declare function messageTokens(message: AgentMessage): number;
 
 Declared in `packages/agent/dist/compaction.d.ts`.
 
+### `newContextMessages`
+
+Everything a `"new-context"` rollover carries into the fresh window: pinned
+user intent verbatim, then one seed capsule.
+
+Nothing else survives, which is what makes the window clean — and why the
+result is self-contained by construction: no assistant tool call and no tool
+result crosses the boundary, so no orphaned tool result can.
+
+The seed is marked as a context capsule so the next rollover supersedes it
+instead of stacking a second hint on top of the first.
+
+```ts
+export declare function newContextMessages(messages: readonly AgentMessage[], plan: MessagePlan, seed: string): AgentMessage[];
+```
+
+Declared in `packages/agent/dist/compaction.d.ts`.
+
 ### `normalizeCompaction`
 
 ```ts
@@ -598,6 +646,17 @@ export declare function validateContextSummaryTransition(summary: ContextSummary
 Declared in `packages/agent/dist/compaction.d.ts`.
 
 ## Variables & constants
+
+### `CONTEXT_SEED_MAX_CHARS`
+
+Hard ceiling on the seed a rollover injects. The point of a fresh window is
+that it is small; an unbounded hint would rebuild the context it replaced.
+
+```ts
+export declare const CONTEXT_SEED_MAX_CHARS = 4096;
+```
+
+Declared in `packages/agent/dist/compaction.d.ts`.
 
 ### `SUMMARY_SCHEMA_VERSION`
 

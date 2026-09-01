@@ -28,7 +28,7 @@ at the project root, next to `caveman.config.ts`.
 |---|---|---|
 | `agent/instructions.md` | `instructions.md` | move as-is — a raw markdown system prompt on both sides |
 | `agent/tools/*.ts` | `tools/*.ts` | move; filename = tool name on both sides. Rewrite each file's export to this package's `tool()` (name, description, `effect`, `schema` input, `execute`) |
-| `agent/skills/*.md` | `skills/*.md` | move; keep `name` + one-line plain `description` frontmatter. Descriptions sit in the frozen prefix; bodies load on demand via the built-in `cave_skill` tool |
+| `agent/skills/*.md` | `.agents/skills/<name>/SKILL.md` | move each file into matching directory; canonical Agent Skills loader validates YAML frontmatter and serves bodies/resources through `load_skill` |
 | `agent/skills/*.ts` | — | no TypeScript skills here; a procedural skill becomes a tool in `tools/` |
 | `agent/subagents/<name>/` | `subagents/<name>/` | move; same nested-directory idea, each with its own `instructions.md` |
 | `agent/agent.ts` | `agent.ts` | rewrite, not move — both conventions have this file but the shapes differ. Here it exports an `AgentDirConfig`: `model` (`"provider/model"`), optional `budget` (`maxUsd` or `maxTokens`), optional `breakers`, optional `context` |

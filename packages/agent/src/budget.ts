@@ -535,7 +535,7 @@ export interface ReceiptCall {
  */
 export interface ReceiptCompaction {
   readonly index: number;
-  readonly tier: "evicted" | "summarized";
+  readonly tier: "evicted" | "summarized" | "new-context";
   readonly preTokens: number;
   readonly postTokens: number;
   readonly pinnedSegmentIds: readonly string[];
@@ -655,7 +655,7 @@ export interface ReceiptResume {
  */
 /** A compaction as it is recorded while the run is still going. */
 export interface PendingCompaction {
-  readonly tier: "evicted" | "summarized";
+  readonly tier: "evicted" | "summarized" | "new-context";
   readonly preTokens: number;
   readonly postTokens: number;
   readonly pinnedSegmentIds: readonly string[];

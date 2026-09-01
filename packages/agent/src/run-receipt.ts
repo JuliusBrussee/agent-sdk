@@ -516,7 +516,7 @@ function normalizeCompactions(
     );
     requireNonNegativeInteger(source["index"], "compaction_index");
     if (source["index"] !== expectedIndex) fail("compaction_index");
-    requireOneOf(source["tier"], ["evicted", "summarized"], "compaction_tier");
+    requireOneOf(source["tier"], ["evicted", "summarized", "new-context"], "compaction_tier");
     requireNonNegativeInteger(source["preTokens"], "compaction_pre_tokens");
     requireNonNegativeInteger(source["postTokens"], "compaction_post_tokens");
     const pinnedSegmentIds = normalizeStringArray(

@@ -280,7 +280,7 @@ function renderEveMigration(eve: EveLayout): string {
           ? ["tools/*.ts (each file must default-export this package's tool())"]
           : []),
         ...(eve.maps.includes("skills/")
-          ? ["skills/*.md (frontmatter: name + one-line plain description, filename = name)"]
+          ? ["skills/*.md → .agents/skills/<name>/SKILL.md (Agent Skills layout)"]
           : []),
       ];
       return rewrites.length > 0
@@ -489,7 +489,7 @@ async function doctor(args: string[]): Promise<void> {
         ...eveLayout.eve_only,
       ].join(", ")}) — ${
         eveLayout.maps.length > 0
-          ? `found ${eveLayout.maps.join(", ")}: names map, but tools/*.ts and skills/*.md need their exports/frontmatter rewritten to this package's shapes`
+          ? `found ${eveLayout.maps.join(", ")}: tools need this package's exports; skills move to canonical .agents/skills/<name>/SKILL.md layout`
           : "no mappable files found yet"
       }; ${
         eveLayout.eve_only.length > 0

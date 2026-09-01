@@ -209,8 +209,8 @@ test("perturbed-clock second pass catches toDateString, the documented sabotage"
 
   // A skills index is build-stable BY CONSTRUCTION (file bytes), so the
   // perturbed-clock second pass agrees on it with no special-case exemption.
-  await mkdir(join(dir, "skills"));
-  await writeFile(join(dir, "skills", "refunds.md"), [
+  await mkdir(join(dir, ".agents", "skills", "refunds"), { recursive: true });
+  await writeFile(join(dir, ".agents", "skills", "refunds", "SKILL.md"), [
     "---",
     "name: refunds",
     "description: Refund windows and eligibility rules.",

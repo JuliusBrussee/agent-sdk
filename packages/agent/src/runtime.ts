@@ -55,6 +55,7 @@ import {
   type BudgetExhaustionHandler,
   type BudgetReservation,
   type CallCeiling,
+  type ReceiptCompaction,
   type ReceiptResume,
   type RunBudget,
   type RunReceipt,
@@ -92,6 +93,7 @@ import {
   evictMessage,
   latestContextSummary,
   messagesTokens,
+  newContextMessages,
   parseContextSummary,
   planCompaction,
   renderSummary,
@@ -103,7 +105,6 @@ import {
   graphHasUnverifiedToolSchemaSemantics,
   validateAgentGraph,
 } from "./definition-graph.js";
-import { agentDirSkills } from "./dir-loader.js";
 import {
   lowerAgentContext,
   prepareLockedHarnessExecution,
@@ -2255,11 +2256,6 @@ async function* streamAgentInternal(
     const needsRecoveryTool = recoveryHandles.size > 0 || hasDynamicRecoveryRoute ||
       definition.tools.some((item) => item.result !== "inline");
     const needsToolSearch = appliedPlan.appliedTransformIDs.includes("caveman.engine.toolschema.v1");
-    // Directory-loaded agents with skills/*.md get the framework cave_skill
-    // tool: descriptions sit in the frozen prefix (the skills-index context
-    // segment), bodies arrive as ordinary tool results — live zone by
-    // construction, so loading one never moves the prefix.
-    const dirSkills = agentDirSkills(definition);
     const memoryTools = definition.memory === undefined
       ? []
       : localMemoryTools(definition.memory, memoryEngine!);
@@ -2360,9 +2356,6 @@ async function* streamAgentInternal(
         toolSchemaSearchTool(recoveryHandles, options.engineBin, appliedPlan.trace),
         "read", activeDurableTools, journalPath,
       )] : []),
-      ...(dirSkills === undefined ? [] : [durablePiTool(
-        skillLoadTool(dirSkills), "read", activeDurableTools, journalPath,
-      )]),
       ...memoryTools.map((tool) => durablePiTool(
         tool,
         tool.name === "cave_memory_remember" ? "write" : "read",
@@ -3493,6 +3486,7 @@ async function* streamAgentInternal(
           return undefined;
         }
         const compacted = await compactContext({
+          generation: compactionsUsed + 1,
           messages: turn.context.messages,
           systemPrompt: instructions,
           tools: turn.context.tools,
@@ -3616,6 +3610,10 @@ async function* streamAgentInternal(
         // from being retried every turn at a paid call each time.
         if (compactionsSpent > compactionsUsed) compactionsUsed = compactionsSpent;
         if (compacted === undefined) return undefined;
+        // A rollover makes no provider call, so it takes no reservation and
+        // `compactionsSpent` never sees it. Counting it here is what keeps
+        // `maxCompactions` binding on the free rung too.
+        if (compacted.tier === "new-context") compactionsUsed++;
         previousSummary = compacted.summary;
         // Deliberately NOT journaled as a snapshot: pi's state.messages is
         // append-only — the replacement context below lives only in the
@@ -3678,7 +3676,6 @@ async function* streamAgentInternal(
           if (decision.block) return { block: true, reason: decision.reason! };
         }
         if ((toolCall.name === "cave_retrieve" && needsRecoveryTool) ||
-            (toolCall.name === "cave_skill" && dirSkills !== undefined) ||
             (toolCall.name.startsWith("cave_memory_") && definition.memory !== undefined)) {
           if (args === null || typeof args !== "object" || Array.isArray(args)) {
             return { block: true, reason: "cave_tool_arguments_invalid" };
@@ -5055,46 +5052,6 @@ function recoveryTool(
       return {
         content: [{ type: "text", text: new TextDecoder().decode(value) }],
         details: { recovery: input.query ? "query" : "exact" },
-      };
-    },
-  };
-}
-
-/**
- * The framework skill loader (Agent SDK v2 phase 3, issue #219). Read-effect,
- * in-process, no ranking: the model chooses from the skills-index descriptions
- * in the frozen prefix and asks for a body by name. The body comes back as an
- * ordinary tool result — live zone by construction, compressible/recoverable
- * downstream like any other tool result — so the prefix never moves. The
- * `cave_` name is legitimate here: the reservation in `agent()` exists exactly
- * so user tools cannot claim framework names like this one.
- */
-function skillLoadTool(skills: ReadonlyMap<string, string>): AgentTool<TSchema> {
-  return {
-    name: "cave_skill",
-    label: "cave_skill",
-    description: "Load the full body of a skill listed in the skills index.",
-    parameters: Type.Object({ name: Type.String() }),
-    executionMode: "parallel",
-    async execute(_toolCallId, params) {
-      const name = (params as { name: string }).name;
-      const body = skills.get(name);
-      if (body === undefined) {
-        // Honest absence, not a throw: the model asked for a skill that does
-        // not exist, and the useful answer is the list of ones that do.
-        return {
-          content: [{
-            type: "text",
-            text: `Unknown skill ${JSON.stringify(name)}. Available skills: ${
-              [...skills.keys()].join(", ")
-            }`,
-          }],
-          details: { skill: name, found: false },
-        };
-      }
-      return {
-        content: [{ type: "text", text: body }],
-        details: { skill: name, found: true },
       };
     },
   };
@@ -6586,6 +6543,8 @@ async function compactContext(input: {
   baseStream: StreamFn;
   sessionId: string;
   signal: AbortSignal | undefined;
+  /** 1-based number of this compaction within the run, for the rollover sink. */
+  generation: number;
   previousSummary: ContextSummary | undefined;
   receipt: ReceiptRecorder;
   /**
@@ -6632,7 +6591,11 @@ async function compactContext(input: {
    * `unknown` models cold — under-claim, never blend.
    */
   cacheState: "warm" | "cold" | "unknown";
-}): Promise<{ messages: AgentMessage[]; summary: ContextSummary | undefined } | undefined> {
+}): Promise<{
+  messages: AgentMessage[];
+  summary: ContextSummary | undefined;
+  tier: ReceiptCompaction["tier"];
+} | undefined> {
   const config = input.meter.compaction;
   const accountingAt = new Date();
   const plan = planCompaction(input.messages, config);
@@ -6675,7 +6638,46 @@ async function compactContext(input: {
       cacheState: input.cacheState,
       meteredCost: 0,
       });
-    return { messages: evicted, summary: previousSummary };
+    return { messages: evicted, summary: previousSummary, tier: "evicted" };
+  }
+
+  // The rollover rung sits exactly where summarization would: free eviction has
+  // already been tried and was not enough. Unlike summarization it makes no
+  // provider call, so there is no reservation, no usage to accrue, and nothing
+  // to settle — the only cost it can impose is the cold prefix the rewrite
+  // forces, which `minYieldTokens` is already the guard for.
+  if (config.mode === "new-context") {
+    let seed: string;
+    try {
+      seed = await config.newContext!({
+        messages: input.messages,
+        generation: input.generation,
+      });
+    } catch {
+      // The window could not be persisted. Dropping it anyway would destroy
+      // context nothing can recover, so the rung declines.
+      return evictionHelped ? finishEviction() : undefined;
+    }
+    const fresh = newContextMessages(input.messages, plan, seed);
+    const freshTokens = messagesTokens(fresh);
+    if (preTokens - freshTokens < config.minYieldTokens) {
+      return evictionHelped ? finishEviction() : undefined;
+    }
+    input.receipt.recordCompaction({
+      tier: "new-context",
+      preTokens,
+      postTokens: freshTokens,
+      pinnedSegmentIds: pinnedIds,
+      // A rollover elides nothing to a citation: it drops the window whole and
+      // the sink owns what happens to it.
+      elidedSegmentDigests: [],
+      summarySchemaVersion: undefined,
+      cacheState: input.cacheState,
+      meteredCost: 0,
+    });
+    // No summary lineage crosses a rollover: the next window starts with no
+    // prior capsule to validate a transition against.
+    return { messages: fresh, summary: undefined, tier: "new-context" };
   }
 
   const recentSet = new Set(plan.recent);
@@ -6932,7 +6934,7 @@ async function compactContext(input: {
     cacheState: input.cacheState,
     meteredCost: metered,
   });
-  return { messages: compacted, summary };
+  return { messages: compacted, summary, tier: "summarized" };
 
   function finishEviction(meteredCost = 0) {
     input.receipt.recordCompaction({
@@ -6945,7 +6947,7 @@ async function compactContext(input: {
       cacheState: input.cacheState,
       meteredCost,
       });
-    return { messages: evicted, summary: previousSummary };
+    return { messages: evicted, summary: previousSummary, tier: "evicted" as const };
   }
 }
 

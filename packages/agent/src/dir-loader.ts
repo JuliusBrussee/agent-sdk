@@ -5,25 +5,19 @@ import { agent, subagent, type AgentDefinition } from "./index.js";
 import { context, type ContextDefinition, type ToolDefinition } from "./primitives.js";
 import type { RunBudget } from "./budget.js";
 import type { RunBreakers } from "./breakers.js";
+import { applyAgentEnvironment, loadAgentEnvironment } from "./agent-environment.js";
 
 /**
  * The agent-directory convention loader (Phase 1, issue #216).
  *
  * `loadAgentDir(rootDir)` lowers a convention directory —
- * `instructions.md` + `agent.ts` + `tools/*.ts` + `skills/*.md` +
+ * `instructions.md` + `agent.ts` + `tools/*.ts` +
  * `subagents/<name>/` — into one ordinary `agent()` call. One module, not a
  * framework: markdown is a plain string read, tools are dynamic imports whose
  * default export must be `tool()`, and everything downstream (definition
- * graph, Context IR, build, sandbox) sees a normal `AgentDefinition`.
- *
- * Skills (Phase 3, issue #219) are descriptions in the prefix, bodies on
- * demand: each `skills/<name>.md` carries ~10-line-parseable frontmatter
- * (`name` + one-line `description`) and a body. The descriptions lower into
- * ONE build-stability context segment (kind "skill" → frozen prefix, sorted
- * by name); the bodies stay out of the definition and are served by the
- * framework `cave_skill` tool as ordinary tool results (live zone by
- * construction — loading a body never moves the prefix). No embeddings, no
- * ranking: the model picks from the descriptions.
+ * graph, Context IR, build, sandbox) sees a normal `AgentDefinition`. Optional
+ * project skills use canonical `.agents/skills/<name>/SKILL.md` loading from
+ * `agent-environment.ts`; this loader adds only that explicit project root.
  */
 
 const TOOL_IMPLEMENTATION_SOURCE = Symbol.for(
@@ -80,23 +74,6 @@ export interface AgentDirContextOrigin {
 }
 
 const contextOriginsRegistry = new WeakMap<AgentDefinition, ReadonlyMap<string, AgentDirContextOrigin>>();
-
-/** Context id of the skills-index segment a skills-bearing directory lowers. */
-export const SKILLS_CONTEXT_ID = "agent.skills";
-
-const skillsRegistry = new WeakMap<AgentDefinition, ReadonlyMap<string, string>>();
-
-/**
- * Skill bodies for a directory-loaded definition, keyed by skill name in
- * sorted order. Present only when the directory carries `skills/*.md`; the
- * runtime serves them through the framework `cave_skill` tool. Absent means
- * the agent has no skills and gets no `cave_skill` tool.
- */
-export function agentDirSkills(
-  definition: AgentDefinition,
-): ReadonlyMap<string, string> | undefined {
-  return skillsRegistry.get(definition);
-}
 
 /**
  * Context-segment origins for a directory-loaded definition, keyed by context
@@ -175,8 +152,6 @@ export interface AgentDirModules {
   config: AgentDirConfig;
   /** Keyed by tool filename minus `.ts`; values must be `tool()` results. */
   tools: Record<string, unknown>;
-  /** Keyed by skill filename minus `.md`; raw file text (frontmatter + body). */
-  skills?: Record<string, string>;
   subagents?: Record<string, AgentDefinition>;
 }
 
@@ -208,22 +183,6 @@ export function composeAgentDir(input: AgentDirModules): AgentDefinition {
       );
     }
     tools.push(definition);
-  }
-  const skillFiles = input.skills ?? {};
-  // Insertion follows sorted stems, and the filename must equal the
-  // frontmatter name, so iteration order below IS sorted-by-name.
-  const skillDescriptions = new Map<string, string>();
-  const skillBodies = new Map<string, string>();
-  for (const stem of Object.keys(skillFiles).sort()) {
-    const parsed = parseSkillFile(`skills/${stem}.md`, skillFiles[stem]!);
-    if (parsed.name !== stem) {
-      throw new Error(
-        `caveman agent: skills/${stem}.md declares skill ` +
-          `${JSON.stringify(parsed.name)} — the filename (minus .md) must equal the skill name`,
-      );
-    }
-    skillDescriptions.set(parsed.name, parsed.description);
-    skillBodies.set(parsed.name, parsed.body);
   }
   const children = input.subagents ?? {};
   for (const name of Object.keys(children).sort()) {
@@ -272,25 +231,6 @@ export function composeAgentDir(input: AgentDirModules): AgentDefinition {
       stability,
     }));
   }
-  if (skillDescriptions.size > 0) {
-    if (Object.prototype.hasOwnProperty.call(config.context ?? {}, SKILLS_CONTEXT_ID)) {
-      throw new Error(
-        `caveman agent: context ${JSON.stringify(SKILLS_CONTEXT_ID)} in agent.ts ` +
-          "collides with the skills index segment — rename it",
-      );
-    }
-    // ONE build-stability segment: name + one-line description per skill,
-    // sorted by name. Its bytes derive from the skill files alone, so it is
-    // build-stable by construction and the volatile-prefix check passes over
-    // it without any exemption. This rendering is exactly what the model
-    // sees in the frozen prefix — no hidden rewriting.
-    contexts.push(context({
-      id: SKILLS_CONTEXT_ID,
-      kind: "skill",
-      source: renderSkillsIndex(skillDescriptions),
-      stability: "build",
-    }));
-  }
   const definition = agent({
     id: input.id,
     instructions: input.instructions,
@@ -298,7 +238,6 @@ export function composeAgentDir(input: AgentDirModules): AgentDefinition {
     tools,
     contexts,
   });
-  if (skillBodies.size > 0) skillsRegistry.set(definition, skillBodies);
   const defaults: AgentDirRunDefaults = {
     ...(config.budget === undefined ? {} : { budget: config.budget }),
     ...(config.breakers === undefined ? {} : { breakers: config.breakers }),
@@ -327,7 +266,29 @@ export async function loadAgentDir(
   }
   const root = resolve(rootDir);
   const manifest = await scanDirManifest(root, options?.id, 0);
-  const definition = await composeFromManifest(root, manifest);
+  const composed = await composeFromManifest(root, manifest);
+  const environment = await loadAgentEnvironment({
+    cwd: root,
+    skillRoots: [join(root, ".agents", "skills")],
+    includeDefaultRoots: false,
+    includeWorkspacePlugin: false,
+  });
+  if (environment.diagnostics.length > 0) {
+    throw new Error(
+      `caveman agent: invalid project skills: ${environment.diagnostics
+        .map((diagnostic) => `${diagnostic.path}: ${diagnostic.message}`)
+        .join("; ")}`,
+    );
+  }
+  const definition = environment.skills.length === 0
+    ? composed
+    : applyAgentEnvironment(composed, environment);
+  if (definition !== composed) {
+    const defaults = runDefaultsRegistry.get(composed);
+    if (defaults !== undefined) runDefaultsRegistry.set(definition, defaults);
+    const origins = contextOriginsRegistry.get(composed);
+    if (origins !== undefined) contextOriginsRegistry.set(definition, origins);
+  }
   if (options?.id === undefined) {
     await writeGeneratedEntry(root, manifest);
   }
@@ -351,64 +312,11 @@ export async function generateAgentDirEntry(rootDir: string): Promise<void> {
   await writeGeneratedEntry(root, await scanDirManifest(root, undefined, 0));
 }
 
-/**
- * The ~10-line frontmatter parser (AGENT_SDK_V2_SHAPE lazy shape, no
- * dependency): `name` + one-line `description` between `---` delimiters,
- * body = everything after the closing delimiter. Malformed frontmatter fails
- * closed naming the file.
- */
-function parseSkillFile(
-  file: string,
-  raw: string,
-): { name: string; description: string; body: string } {
-  if (typeof raw !== "string") {
-    throw new Error(`caveman agent: ${file} must be markdown text`);
-  }
-  const match = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)([\s\S]*)$/.exec(raw);
-  if (!match) {
-    throw new Error(
-      `caveman agent: ${file} needs a terminated frontmatter block ` +
-        "(--- with name and description lines, closed by ---)",
-    );
-  }
-  const field = (key: string): string | undefined =>
-    new RegExp(`^${key}:[ \\t]*(.+)$`, "m").exec(match[1]!)?.[1]?.trim();
-  const name = field("name");
-  const description = field("description");
-  if (!name) throw new Error(`caveman agent: ${file} frontmatter needs a name`);
-  if (!description) {
-    throw new Error(`caveman agent: ${file} frontmatter needs a one-line description`);
-  }
-  for (const [key, value] of [["name", name], ["description", description]] as const) {
-    // This parser is line-based, not YAML: a block scalar (>, |) or quoted
-    // scalar would silently reduce to punctuation and poison the skills
-    // index in the frozen prefix — the one place a bad value fails silently.
-    if (/^[>|"']/.test(value)) {
-      throw new Error(
-        `caveman agent: ${file} frontmatter ${key} must be single-line plain ` +
-          "text — not a YAML block scalar (>, |) or quoted string; this " +
-          "frontmatter is line-parsed, not YAML",
-      );
-    }
-  }
-  return { name, description, body: match[2]! };
-}
-
-/** Deterministic skills-index rendering: sorted `- name: description` lines. */
-function renderSkillsIndex(descriptions: ReadonlyMap<string, string>): string {
-  return [
-    "Skills available to this agent. Load a skill's full body with the",
-    'cave_skill tool ({"name": "<skill>"}) when its description matches the task.',
-    ...[...descriptions].map(([name, description]) => `- ${name}: ${description}`),
-  ].join("\n");
-}
-
 interface DirManifest {
   /** Posix-relative path from the loaded root; "" for the root itself. */
   readonly relDir: string;
   readonly id: string;
   readonly toolStems: readonly string[];
-  readonly skillStems: readonly string[];
   readonly subagents: readonly DirManifest[];
 }
 
@@ -442,7 +350,6 @@ async function scanDirManifest(
     );
   }
   const toolStems = await listToolStems(join(dir, "tools"));
-  const skillStems = await listSkillStems(join(dir, "skills"));
   const subagentNames = await listSubagentDirs(join(dir, "subagents"));
   const subagents: DirManifest[] = [];
   const slugSources = new Map<string, string>();
@@ -465,7 +372,7 @@ async function scanDirManifest(
     slugSources.set(child.id, name);
     subagents.push(child);
   }
-  return { relDir, id, toolStems, skillStems, subagents };
+  return { relDir, id, toolStems, subagents };
 }
 
 /** Import the manifest's modules and compose the definition (recursively). */
@@ -482,10 +389,6 @@ async function composeFromManifest(
       default?: unknown;
     }).default;
   }
-  const skills: Record<string, string> = {};
-  for (const stem of manifest.skillStems) {
-    skills[stem] = await readFile(join(dir, "skills", `${stem}.md`), "utf8");
-  }
   const subagents: Record<string, AgentDefinition> = {};
   for (const child of manifest.subagents) {
     subagents[child.id] = await composeFromManifest(root, child);
@@ -495,7 +398,6 @@ async function composeFromManifest(
     instructions,
     config: config as AgentDirConfig,
     tools,
-    ...(manifest.skillStems.length === 0 ? {} : { skills }),
     ...(manifest.subagents.length === 0 ? {} : { subagents }),
   });
 }
@@ -511,20 +413,6 @@ async function listToolStems(toolsDir: string): Promise<string[]> {
   return entries
     .filter((entry) => entry.isFile() && entry.name.endsWith(".ts") &&
       !entry.name.endsWith(".d.ts"))
-    .map((entry) => entry.name.slice(0, -3))
-    .sort();
-}
-
-async function listSkillStems(skillsDir: string): Promise<string[]> {
-  let entries;
-  try {
-    entries = await readdir(skillsDir, { withFileTypes: true });
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
-    throw error;
-  }
-  return entries
-    .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
     .map((entry) => entry.name.slice(0, -3))
     .sort();
 }
@@ -638,17 +526,6 @@ function generatedEntrySource(manifest: DirManifest): string {
       `${inner}config: config_${index},`,
       `${inner}tools: {${toolPairs.length === 0 ? "" : ` ${toolPairs.join(", ")} `}},`,
     ];
-    if (dir.skillStems.length > 0) {
-      lines.push(`${inner}skills: {`);
-      for (const stem of dir.skillStems) {
-        lines.push(
-          `${inner}  ${JSON.stringify(stem)}: readFileSync(new URL(${
-            JSON.stringify(`${prefix}/skills/${stem}.md`)
-          }, import.meta.url), "utf8"),`,
-        );
-      }
-      lines.push(`${inner}},`);
-    }
     if (dir.subagents.length > 0) {
       lines.push(`${inner}subagents: {`);
       for (const child of dir.subagents) {
@@ -666,9 +543,24 @@ function generatedEntrySource(manifest: DirManifest): string {
     "// source graph complete; the composition below is the exact lowering",
     "// loadAgentDir performs, with the root id pinned.",
     'import { readFileSync } from "node:fs";',
+    'import { fileURLToPath } from "node:url";',
     'import { composeAgentDir } from "@caveman-ai/agent";',
+    'import { applyAgentEnvironment, loadAgentEnvironment } from "@caveman-ai/agent/plugins";',
     ...imports,
-    `export default ${expression};`,
+    `const definition = ${expression};`,
+    'const root = fileURLToPath(new URL("..", import.meta.url));',
+    'const environment = await loadAgentEnvironment({',
+    '  cwd: root,',
+    '  skillRoots: [fileURLToPath(new URL("../.agents/skills", import.meta.url))],',
+    '  includeDefaultRoots: false,',
+    '  includeWorkspacePlugin: false,',
+    '});',
+    'if (environment.diagnostics.length > 0) {',
+    '  throw new Error(`caveman agent: invalid project skills: ${environment.diagnostics.map((diagnostic) => `${diagnostic.path}: ${diagnostic.message}`).join("; ")}`);',
+    '}',
+    'export default environment.skills.length === 0',
+    '  ? definition',
+    '  : applyAgentEnvironment(definition, environment);',
     "",
   ].join("\n");
 }

@@ -1,8 +1,8 @@
 import {
-  normalizeFiniteJSON,
-  type FiniteJSON,
-} from "./model-router.js";
-import { snapshotDataRecord, snapshotDenseArray } from "./strict-data.js";
+  snapshotDataDictionary,
+  snapshotDataRecord,
+  snapshotDenseArray,
+} from "./strict-data.js";
 import { abortable } from "./async-boundary.js";
 
 export const AGENT_INPUT_MAX_PARTS = 64;
@@ -12,6 +12,17 @@ export const AGENT_INPUT_MAX_BASE64_BYTES_TOTAL = 64 * 1024 * 1024;
 export const AGENT_INPUT_MAX_URL_LENGTH = 8_192;
 export const AGENT_INPUT_MAX_MIME_LENGTH = 127;
 export const AGENT_INPUT_MAX_FILE_NAME_LENGTH = 255;
+const FINITE_JSON_MAX_BYTES = 64 * 1024;
+const FINITE_JSON_MAX_DEPTH = 16;
+const FINITE_JSON_MAX_ENTRIES = 1_024;
+
+export type FiniteJSON =
+  | null
+  | boolean
+  | number
+  | string
+  | readonly FiniteJSON[]
+  | { readonly [key: string]: FiniteJSON };
 
 export interface AgentInputURLSource {
   readonly type: "url";
@@ -80,6 +91,93 @@ export interface AgentInputEncoder<Output> {
     input: NormalizedAgentInput,
     signal: AbortSignal,
   ) => Output | Promise<Output>;
+}
+
+function normalizeFiniteJSON(value: unknown): FiniteJSON {
+  const tracker = { entries: 0, rawCharacters: 0 };
+  const active = new Set<object>();
+  const copy = copyJSONValue(value, 0, tracker, active);
+  if (Buffer.byteLength(serializeFiniteJSON(copy), "utf8") > FINITE_JSON_MAX_BYTES) {
+    throw new Error("cave_finite_json_bytes_limit");
+  }
+  return copy;
+}
+
+function serializeFiniteJSON(value: FiniteJSON): string {
+  if (value === null) return "null";
+  if (typeof value === "boolean" || typeof value === "number") return String(value);
+  if (typeof value === "string") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(serializeFiniteJSON).join(",")}]`;
+  const record = value as Readonly<Record<string, FiniteJSON>>;
+  return `{${Object.keys(record)
+    .map((key) => `${JSON.stringify(key)}:${serializeFiniteJSON(record[key]!)}`)
+    .join(",")}}`;
+}
+
+function copyJSONValue(
+  value: unknown,
+  depth: number,
+  tracker: { entries: number; rawCharacters: number },
+  active: Set<object>,
+): FiniteJSON {
+  if (depth > FINITE_JSON_MAX_DEPTH) throw new Error("cave_finite_json_depth_limit");
+  tracker.entries++;
+  if (tracker.entries > FINITE_JSON_MAX_ENTRIES) {
+    throw new Error("cave_finite_json_entries_limit");
+  }
+  if (value === null || typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    addRawCharacters(tracker, value.length);
+    return value;
+  }
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) throw new Error("cave_finite_json_non_finite");
+    return Object.is(value, -0) ? 0 : value;
+  }
+  if (typeof value !== "object") throw new Error("cave_finite_json_non_json");
+  if (active.has(value)) throw new Error("cave_finite_json_cycle");
+  active.add(value);
+  try {
+    if (Array.isArray(value)) {
+      const items = snapshotDenseArray(
+        value,
+        FINITE_JSON_MAX_ENTRIES,
+        () => { throw new Error("cave_finite_json_non_json"); },
+      );
+      if (tracker.entries + items.length > FINITE_JSON_MAX_ENTRIES) {
+        throw new Error("cave_finite_json_entries_limit");
+      }
+      return Object.freeze(items.map((item) => copyJSONValue(item, depth + 1, tracker, active)));
+    }
+    const record = snapshotDataDictionary(
+      value,
+      FINITE_JSON_MAX_ENTRIES,
+      () => { throw new Error("cave_finite_json_non_json"); },
+    );
+    const copy: Record<string, FiniteJSON> = {};
+    for (const key of Object.keys(record)) {
+      addRawCharacters(tracker, key.length);
+      Object.defineProperty(copy, key, {
+        value: copyJSONValue(record[key], depth + 1, tracker, active),
+        enumerable: true,
+        configurable: false,
+        writable: false,
+      });
+    }
+    return Object.freeze(copy);
+  } finally {
+    active.delete(value);
+  }
+}
+
+function addRawCharacters(
+  tracker: { entries: number; rawCharacters: number },
+  count: number,
+): void {
+  tracker.rawCharacters += count;
+  if (tracker.rawCharacters > FINITE_JSON_MAX_BYTES) {
+    throw new Error("cave_finite_json_bytes_limit");
+  }
 }
 
 const TEXT_KEYS = Object.freeze(["type", "text"]);

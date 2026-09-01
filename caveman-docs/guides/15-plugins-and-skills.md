@@ -130,10 +130,11 @@ invocation. That rule is non-negotiable in this repository.
 | `renderAgentSkillInvocation` / `renderAgentPluginCommandInvocation` | Render an activation body |
 | `AGENT_PLUGINS_SCHEMA` | The manifest schema constant |
 
-## Related: the agent directory's own skills
+## Agent-directory projects
 
-`skills/*.md` inside an [agent directory](03-agent-directory.md) is a separate,
-core mechanism with the same shape of guarantee (descriptions in the prefix,
-bodies served by the `cave_skill` tool). It needs no plugin loader.
+Agent-directory projects use same canonical loader. Put project skills under
+`.agents/skills/<name>/SKILL.md`; `loadAgentDir()` adds that explicit project
+root while leaving user-home and plugin discovery disabled. No second parser,
+registry, or skill tool exists.
 
 Full API: [`@caveman-ai/agent/plugins`](../reference/api/agent/plugins.md).

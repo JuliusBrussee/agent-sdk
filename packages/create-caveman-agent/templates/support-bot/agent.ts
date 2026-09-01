@@ -1,6 +1,6 @@
 import type { AgentDirConfig } from "@caveman-ai/agent";
 
-// Behavior lives here; prose lives in instructions.md and skills/.
+// Behavior lives here; prose lives in instructions.md and .agents/skills/.
 // Everything in this file is static by construction — run-varying values
 // (dates, ticket ids, customer names) enter through the ticket input or a
 // tool result, never through config.

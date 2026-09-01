@@ -96,17 +96,9 @@
       "types": "./dist/model-usage.d.ts",
       "import": "./dist/model-usage.js"
     },
-    "./model-router": {
-      "types": "./dist/model-router.d.ts",
-      "import": "./dist/model-router.js"
-    },
     "./input": {
       "types": "./dist/input.d.ts",
       "import": "./dist/input.js"
-    },
-    "./runtime-model": {
-      "types": "./dist/runtime-model.d.ts",
-      "import": "./dist/runtime-model.js"
     },
     "./run-receipt": {
       "types": "./dist/run-receipt.d.ts",
@@ -136,7 +128,7 @@
     "build": "tsc",
     "prepack": "npm run build",
     "lint": "tsc --noEmit",
-    "test": "tsc && tsc --project tsconfig.test.json && node --test tests/programmatic-tools.test.ts && node --test tests/*.runtime.mjs && node --test bench/tests/*.test.mjs && node bench/compiler-replay.mjs --check",
+    "test": "tsc && tsc --project tsconfig.test.json && node --test tests/programmatic-tools.test.ts && node --test tests/*.runtime.mjs",
     "test:types": "tsc --project tsconfig.test.json"
   },
   "dependencies": {

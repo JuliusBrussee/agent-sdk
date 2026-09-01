@@ -71,6 +71,34 @@ export interface CompactionOptions {
    * history it has to read; below that it fails closed to the working model.
    */
   readonly summarizerModel?: Model<Api>;
+  /**
+   * What the compaction rung does once free eviction is not enough.
+   *
+   * `"summarize"` (default) pays one summarizer call and keeps a lossy capsule
+   * plus the recent tail. `"new-context"` skips the provider call entirely and
+   * installs a fresh context window: pinned user intent, then whatever
+   * `newContext` hands back as the seed. It is free, so it is strictly cheaper
+   * than a summary — but it only stays honest when the caller persists the
+   * outgoing window somewhere the model can search afterwards. `newContext` is
+   * the moment to do that, and the mode fails closed to the ordinary ladder
+   * when no `newContext` is supplied.
+   */
+  readonly mode?: "summarize" | "new-context";
+  /**
+   * Called once per `"new-context"` rollover, with the window about to be
+   * dropped. Returns the seed text for the fresh window — the small hint that
+   * carries plan, decisions, and unresolved work across the boundary.
+   *
+   * Persist `messages` here if they need to be recoverable: past this call the
+   * runtime no longer holds them. Throwing declines the rollover and falls back
+   * to the eviction/clamp rungs, so an unwritable archive never silently costs
+   * the run its history.
+   */
+  readonly newContext?: (input: {
+    readonly messages: readonly AgentMessage[];
+    /** 1-based rollover number within this run. */
+    readonly generation: number;
+  }) => string | Promise<string>;
 }
 
 export interface NormalizedCompaction {
@@ -82,6 +110,8 @@ export interface NormalizedCompaction {
   readonly pinnedUserTokens: number;
   readonly preserveFirstUserMessage: boolean;
   readonly summarizerModel: Model<Api> | undefined;
+  readonly mode: "summarize" | "new-context";
+  readonly newContext: CompactionOptions["newContext"];
 }
 
 const DEFAULTS = Object.freeze({
@@ -120,9 +150,24 @@ export function normalizeCompaction(options: CompactionOptions = {}): Normalized
   if (typeof merged.preserveFirstUserMessage !== "boolean") {
     throw new Error("cave_compaction_option_invalid");
   }
+  const mode = options.mode ?? "summarize";
+  if (mode !== "summarize" && mode !== "new-context") {
+    throw new Error("cave_compaction_option_invalid");
+  }
+  if (options.newContext !== undefined && typeof options.newContext !== "function") {
+    throw new Error("cave_compaction_option_invalid");
+  }
+  // A rollover that persists nothing is unrecoverable context loss, not a
+  // compaction. Without a `newContext` sink the mode is refused outright rather
+  // than degraded silently into one.
+  if (mode === "new-context" && options.newContext === undefined) {
+    throw new Error("cave_compaction_new_context_sink_required");
+  }
   return Object.freeze({
     ...merged,
     summarizerModel: options.summarizerModel,
+    mode,
+    newContext: options.newContext,
   });
 }
 
@@ -584,6 +629,44 @@ export function pinnedContentSurvives(
     const message = original[index];
     return message !== undefined && present.has(messageText(message));
   });
+}
+
+/**
+ * Hard ceiling on the seed a rollover injects. The point of a fresh window is
+ * that it is small; an unbounded hint would rebuild the context it replaced.
+ */
+export const CONTEXT_SEED_MAX_CHARS = 4_096;
+
+/**
+ * Everything a `"new-context"` rollover carries into the fresh window: pinned
+ * user intent verbatim, then one seed capsule.
+ *
+ * Nothing else survives, which is what makes the window clean — and why the
+ * result is self-contained by construction: no assistant tool call and no tool
+ * result crosses the boundary, so no orphaned tool result can.
+ *
+ * The seed is marked as a context capsule so the next rollover supersedes it
+ * instead of stacking a second hint on top of the first.
+ */
+export function newContextMessages(
+  messages: readonly AgentMessage[],
+  plan: MessagePlan,
+  seed: string,
+): AgentMessage[] {
+  const hint = seed.slice(0, CONTEXT_SEED_MAX_CHARS);
+  return [
+    ...plan.pinned.map((index) => messages[index]!),
+    {
+      role: "user",
+      content: `<cave-context-summary>\n${JSON.stringify({
+        schema_version: SUMMARY_SCHEMA_VERSION,
+        kind: "notes.thread_hint",
+        hint,
+      })}\n</cave-context-summary>`,
+      caveContextSummary: true,
+      timestamp: Date.now(),
+    } as AgentMessage,
+  ];
 }
 
 /** The citation a free eviction leaves behind, carrying enough to identify what left. */

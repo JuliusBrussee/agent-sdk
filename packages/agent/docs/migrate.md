@@ -159,8 +159,8 @@ caveman-agent doctor                                # names what is missing, spe
 caveman-agent dev                                   # first turn ends with the receipt
 ```
 
-Keep the scaffold next to your real agent while you move `instructions.md`,
-`tools/*.ts` and `skills/*.md` across. `doctor` makes zero provider calls, so
+Keep scaffold next to real agent while moving `instructions.md`, `tools/*.ts`,
+and skills into `.agents/skills/<name>/SKILL.md`. `doctor` makes zero provider calls, so
 run it as often as you like.
 
 ## Verify each stage

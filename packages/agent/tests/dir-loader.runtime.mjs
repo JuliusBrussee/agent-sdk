@@ -5,12 +5,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { AGENT_DIR_ENTRY, loadAgentDir } from "../dist/index.js";
-import {
-  SKILLS_CONTEXT_ID,
-  agentDirRunDefaults,
-  agentDirSkills,
-  slugifyAgentDirId,
-} from "../dist/dir-loader.js";
+import { agentDirRunDefaults, slugifyAgentDirId } from "../dist/dir-loader.js";
 import { agentDefinitionSHA256 } from "../dist/build.js";
 
 const TOOL_IMPLEMENTATION_SOURCE = Symbol.for(
@@ -75,20 +70,7 @@ test("loadAgentDir lowers a convention directory into one agent()", async () => 
     assert.equal(today.cacheRegion, "live_zone");
     assert.equal(today.source, "turn-scoped value");
 
-    // skills/ lowers ONE build-stability index segment: name + one-line
-    // description in the frozen prefix, body NOT on the definition.
-    assert.equal(definition.contexts.length, 3);
-    const skills = definition.contexts.find((entry) => entry.id === SKILLS_CONTEXT_ID);
-    assert.equal(skills.segmentKind, "skill");
-    assert.equal(skills.stability, "build");
-    assert.equal(skills.cacheRegion, "frozen_prefix");
-    assert.match(skills.source, /- notes: Working notes playbook for the support-mini fixture agent\./);
-    assert.match(skills.source, /cave_skill/);
-    assert.doesNotMatch(skills.source, /Full body of the notes skill/);
-    // Bodies live behind the definition for the framework cave_skill tool.
-    const bodies = agentDirSkills(definition);
-    assert.deepEqual([...bodies.keys()], ["notes"]);
-    assert.match(bodies.get("notes"), /Full body of the notes skill/);
+    assert.equal(definition.contexts.length, 2);
 
     // Run defaults from agent.ts, overridable by explicit RunOptions.
     const defaults = agentDirRunDefaults(definition);
@@ -104,7 +86,6 @@ test("loadAgentDir lowers a convention directory into one agent()", async () => 
     assert.match(entry, /composeAgentDir\(/);
     assert.match(entry, /id: "support-mini"/);
     assert.match(entry, /import tool_0_0 from "\.\.\/tools\/echo_word\.ts"/);
-    assert.match(entry, /readFileSync\(new URL\("\.\.\/skills\/notes\.md", import\.meta\.url\), "utf8"\)/);
     assert.match(entry, /"\.\.\/subagents\/helper\/agent\.ts"/);
     assert.equal(entry.includes("import("), false);
   } finally {
@@ -186,107 +167,28 @@ test("agent id is the directory basename slugified", async () => {
   }
 });
 
-test("skills index is deterministic and sorted across compositions", async () => {
+test("agent directories use canonical Agent Skills loading", async () => {
   const { base, root } = await fixtureCopy();
   try {
-    await writeFile(join(root, "skills", "alpha.md"), [
+    const skillRoot = join(root, ".agents", "skills", "notes");
+    await mkdir(skillRoot, { recursive: true });
+    await writeFile(join(skillRoot, "SKILL.md"), [
       "---",
-      "name: alpha",
-      "description: First skill by sort order.",
+      "name: notes",
+      "description: Working notes playbook.",
       "---",
       "",
-      "Alpha body.",
+      "Keep notes concise.",
       "",
     ].join("\n"));
-    const first = await loadAgentDir(root);
-    const second = await loadAgentDir(root);
-    const index = first.contexts.find((entry) => entry.id === SKILLS_CONTEXT_ID);
-    // Sorted by name, one line per skill, byte-identical across compositions.
-    assert.match(
-      index.source,
-      /- alpha: First skill by sort order\.\n- notes: Working notes playbook/,
-    );
-    assert.equal(
-      index.source,
-      second.contexts.find((entry) => entry.id === SKILLS_CONTEXT_ID).source,
-    );
-    assert.equal(agentDefinitionSHA256(first), agentDefinitionSHA256(second));
-  } finally {
-    await rm(base, { recursive: true, force: true });
-  }
-});
-
-test("malformed skill frontmatter fails closed naming the file", async () => {
-  const { base, root } = await fixtureCopy();
-  const skillPath = (name) => join(root, "skills", name);
-  try {
-    // Unterminated block.
-    await writeFile(skillPath("notes.md"), "---\nname: notes\ndescription: d\n");
-    await assert.rejects(loadAgentDir(root), /skills\/notes\.md needs a terminated frontmatter block/);
-    // No frontmatter at all.
-    await writeFile(skillPath("notes.md"), "# Notes\n\nJust a body.\n");
-    await assert.rejects(loadAgentDir(root), /skills\/notes\.md needs a terminated frontmatter block/);
-    // Missing name.
-    await writeFile(skillPath("notes.md"), "---\ndescription: d\n---\nbody\n");
-    await assert.rejects(loadAgentDir(root), /skills\/notes\.md frontmatter needs a name/);
-    // Missing description.
-    await writeFile(skillPath("notes.md"), "---\nname: notes\n---\nbody\n");
-    await assert.rejects(
-      loadAgentDir(root),
-      /skills\/notes\.md frontmatter needs a one-line description/,
-    );
-    // YAML block scalars and quoted values would silently reduce to
-    // punctuation in the frozen-prefix index — rejected loudly instead.
-    for (const bad of ["description: >\n  wrapped", "description: |\n  wrapped",
-                       'description: "quoted"', "description: 'quoted'"]) {
-      await writeFile(skillPath("notes.md"), `---\nname: notes\n${bad}\n---\nbody\n`);
-      await assert.rejects(
-        loadAgentDir(root),
-        /frontmatter description must be single-line plain text/,
-      );
-    }
-    await writeFile(skillPath("notes.md"), '---\nname: "notes"\ndescription: d\n---\nbody\n');
-    await assert.rejects(
-      loadAgentDir(root),
-      /frontmatter name must be single-line plain text/,
-    );
-  } finally {
-    await rm(base, { recursive: true, force: true });
-  }
-});
-
-test("skill filename must equal the frontmatter name, error names both", async () => {
-  const { base, root } = await fixtureCopy();
-  try {
-    await rename(
-      join(root, "skills", "notes.md"),
-      join(root, "skills", "wrong_name.md"),
-    );
-    await assert.rejects(
-      loadAgentDir(root),
-      /skills\/wrong_name\.md declares skill "notes"/,
-    );
-  } finally {
-    await rm(base, { recursive: true, force: true });
-  }
-});
-
-test("no skills/ means no index segment, no bodies, and a Phase-2 definition", async () => {
-  const { base, root } = await fixtureCopy();
-  try {
-    await rm(join(root, "skills"), { recursive: true, force: true });
     const definition = await loadAgentDir(root);
-    // No empty segment, no dead registry entry: the definition is exactly the
-    // Phase-2 shape (config contexts only), and the generated entry carries
-    // no skills key.
-    assert.equal(definition.contexts.length, 2);
-    assert.equal(
-      definition.contexts.find((entry) => entry.id === SKILLS_CONTEXT_ID),
-      undefined,
+    const skills = definition.contexts.find((entry) => entry.id === "agent.skills");
+    assert.match(skills.source, /- notes: Working notes playbook\./);
+    assert.equal(definition.tools.some((entry) => entry.name === "load_skill"), true);
+    const imported = await import(
+      `${pathToFileURL(join(root, AGENT_DIR_ENTRY)).href}?cave=${Date.now()}`
     );
-    assert.equal(agentDirSkills(definition), undefined);
-    const entry = await readFile(join(root, AGENT_DIR_ENTRY), "utf8");
-    assert.equal(entry.includes("skills"), false);
+    assert.equal(agentDefinitionSHA256(imported.default), agentDefinitionSHA256(definition));
   } finally {
     await rm(base, { recursive: true, force: true });
   }

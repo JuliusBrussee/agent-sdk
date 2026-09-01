@@ -1,4 +1,0 @@
-This directory vendors benchmark tasks from SkillsBench
-(https://github.com/benchflow-ai/skillsbench), pinned at commit
-9a1f4dd5f7659f75707435da3ce854b6e48321d1, under the Apache License 2.0.
-See manifest.json for the mechanical selection filter and per-file hashes.

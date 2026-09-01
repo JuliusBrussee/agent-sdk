@@ -8,7 +8,7 @@ Declaration file: `packages/agent/dist/input.d.ts`.
 <details><summary>Symbol index</summary>
 
 - **Interface**: `AgentAudioInputPart`, `AgentFileInputPart`, `AgentImageInputPart`, `AgentInputBase64Source`, `AgentInputEncoder`, `AgentInputURLSource`, `AgentOpaqueInputPart`, `AgentTextInputPart`, `NormalizedAgentInput`
-- **Type alias**: `AgentInput`, `AgentInputPart`, `AgentInputSource`
+- **Type alias**: `AgentInput`, `AgentInputPart`, `AgentInputSource`, `FiniteJSON`
 - **Function**: `defineAgentInputEncoder`, `encodeAgentInput`, `normalizeAgentInput`
 - **Variable**: `AGENT_INPUT_MAX_BASE64_BYTES_PER_PART`, `AGENT_INPUT_MAX_BASE64_BYTES_TOTAL`, `AGENT_INPUT_MAX_FILE_NAME_LENGTH`, `AGENT_INPUT_MAX_MIME_LENGTH`, `AGENT_INPUT_MAX_PARTS`, `AGENT_INPUT_MAX_TEXT_BYTES`, `AGENT_INPUT_MAX_URL_LENGTH`
 
@@ -147,6 +147,16 @@ Declared in `packages/agent/dist/input.d.ts`.
 
 ```ts
 export type AgentInputSource = AgentInputURLSource | AgentInputBase64Source;
+```
+
+Declared in `packages/agent/dist/input.d.ts`.
+
+### `FiniteJSON`
+
+```ts
+export type FiniteJSON = null | boolean | number | string | readonly FiniteJSON[] | {
+    readonly [key: string]: FiniteJSON;
+};
 ```
 
 Declared in `packages/agent/dist/input.d.ts`.

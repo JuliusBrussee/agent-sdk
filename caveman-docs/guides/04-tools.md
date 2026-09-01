@@ -127,7 +127,7 @@ refused. Details and the real kernel boundary:
 
 ## Reserved names
 
-`cave_*` is reserved for framework recovery, memory, and skill tools
+`cave_*` is reserved for framework recovery and memory tools
 (`cave_retrieve`, `cave_memory_remember`, `cave_memory_search`,
-`cave_memory_session_search`, `cave_skill`, …). The full list is in
+`cave_memory_session_search`, …). The full list is in
 [Reserved `cave_` identifiers](../reference/identifiers.md).

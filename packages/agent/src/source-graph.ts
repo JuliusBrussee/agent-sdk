@@ -11,8 +11,8 @@ export type SourceManifestEntry = { name: string; sha256: string };
 /**
  * Watched project inputs: the file patterns whose contents join the
  * source-graph hash, dev snapshot staging, and lock invalidation. Markdown is
- * a project input under the agent-directory convention (instructions.md,
- * skills/*.md), so an md edit invalidates the lock and reloads dev like any
+ * a project input under the agent-directory convention (instructions.md and
+ * Agent Skills), so an md edit invalidates the lock and reloads dev like any
  * source change.
  */
 export const PROJECT_SOURCE_PATTERNS = [

@@ -382,9 +382,6 @@ remain disabled.
   Proprietary Pebble implementation lives outside this repository.
 - `packages/shared` — pinned wire schemas and provider-catalog snapshot used to
   regenerate and verify Agent SDK artifacts.
-- `internal/agentbench/corpus` — pinned Apache-2.0 deterministic compiler
-  replay corpus.
-
 Full documentation — guides, concepts, and a generated API reference for every
 published entrypoint: [caveman-docs/](./caveman-docs/README.md).
 Detailed SDK API: [packages/agent/README.md](./packages/agent/README.md).

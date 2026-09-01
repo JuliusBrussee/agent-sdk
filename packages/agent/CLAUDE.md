@@ -317,22 +317,12 @@ Public entry points:
   whose bare entries default to build stability — load-bearing for the
   volatile-prefix check; values are evaluated once at composition, per-turn
   re-evaluation is issue #224) + `tools/*.ts` (filename = tool name, default
-  export must be `tool()`) + `skills/*.md` + `subagents/<name>/` (recursed;
-  sibling slug collisions fail closed) into one ordinary `agent()` call.
-  Skills (Phase 3, issue #219) are descriptions in prefix, bodies on demand:
-  each skill file carries dependency-free line-parsed frontmatter — NOT
-  YAML: block scalars (`>`, `|`) and quoted values are rejected loudly
-  (`name` + one-line plain-text `description`; malformed fails closed
-  naming the file; filename minus `.md` must equal the name). Descriptions lower into ONE
-  build-stability `agent.skills` context segment (kind "skill" → frozen
-  prefix, sorted by name — build-stable by construction, so the
-  volatile-prefix check needs no exemption); bodies stay off the definition
-  (`agentDirSkills` registry) and are served by the framework `cave_skill`
-  read tool the runtime adds only when skills exist — an unknown name returns
-  the available names, never a throw, and the body is an ordinary live-zone
-  tool result, so loading one never moves the prefix
-  (`tests/skills.runtime.mjs` fixture). No embeddings, no ranking:
-  model-invoked selection only. It also writes a generated static-import module
+  export must be `tool()`) + `subagents/<name>/` (recursed; sibling slug
+  collisions fail closed) into one ordinary `agent()` call. Optional project
+  skills live at `.agents/skills/<name>/SKILL.md` and route through canonical
+  `agent-environment.ts` parsing, containment, stable index, and `load_skill`
+  invocation. Directory loading adds only this explicit project root; user-home
+  skills and plugins remain disabled. It also writes a generated static-import module
   entry at `.caveman/agent-dir-entry.mjs` so required-sandbox staging reaches
   every convention file and the tool worker recomposes the identical
   definition digest. The CLI dev watch path regenerates that entry by pure

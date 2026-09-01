@@ -12,6 +12,7 @@ import {
   evictMessage,
   latestContextSummary,
   messagesTokens,
+  newContextMessages,
   normalizeCompaction,
   parseContextSummary,
   pinnedContentSurvives,
@@ -904,6 +905,120 @@ async function compactionRun(id, setup) {
   return { result, ...observed };
 }
 
+/**
+ * A rollover run: same bulky agent, same budget shape, but the rung installs a
+ * fresh window instead of buying a summary.
+ */
+async function rollingRun(overrides = {}) {
+  const observed = { working: 0, summarizerRequests: 0, windows: [], contexts: [] };
+  const result = await run(bulkyAgent("compaction-new-context"), "go", {
+    ensureRuntime: false,
+    model: pricedFauxModel({ id: EXPENSIVE_WORKING_MODEL }),
+    budget: {
+      maxUsd: 4,
+      onExhausted: "compact",
+      compaction: {
+        minYieldTokens: 1_000,
+        headroomCalls: 1,
+        keepRecentTokens: 2_000,
+        maxCompactions: 3,
+        mode: "new-context",
+        newContext: (input) => {
+          observed.windows.push(input);
+          return `plan: keep polling (window ${input.generation})`;
+        },
+        ...overrides,
+      },
+    },
+    streamFn: (selected, context) => {
+      if (isSummarizerRequest(context)) {
+        observed.summarizerRequests++;
+        return pushMessage(
+          selected,
+          [{ type: "text", text: validSummaryJSON() }],
+          "stop",
+          usage(5_000, 500),
+        );
+      }
+      observed.working++;
+      observed.contexts.push(context.messages.length);
+      if (observed.working > 55) {
+        return pushMessage(selected, [{ type: "text", text: "done" }], "stop", usage(100, 10));
+      }
+      return pushMessage(
+        selected,
+        [
+          { type: "text", text: `${BULK}-${observed.working}` },
+          {
+            type: "toolCall",
+            id: `poll-${observed.working}`,
+            name: "poll",
+            arguments: { key: `job-${observed.working}` },
+          },
+        ],
+        "toolUse",
+        warmUsage(500, 800, 8_000),
+      );
+    },
+  });
+  return { result, ...observed };
+}
+
+test("a rollover installs a fresh window without paying a summarizer", async () => {
+  const { result, summarizerRequests, windows, contexts } = await rollingRun();
+  const rollover = result.receipt.compactions.find((entry) => entry.tier === "new-context");
+  assert.notEqual(rollover, undefined);
+  // The whole point: no provider call, so nothing to meter and no summary.
+  assert.equal(summarizerRequests, 0);
+  assert.equal(rollover.meteredCost, 0);
+  assert.equal(rollover.summarySchemaVersion, undefined);
+  assert.equal(rollover.postTokens < rollover.preTokens, true);
+  assert.equal(rollover.pinnedSegmentIds.length > 0, true);
+  // The sink saw the outgoing window before it was dropped, which is the only
+  // moment anything can persist it.
+  assert.equal(windows.length > 0, true);
+  assert.equal(windows[0].generation, 1);
+  assert.equal(windows[0].messages.length > 1, true);
+  // The window that follows a rollover is genuinely small.
+  assert.equal(Math.min(...contexts.slice(1)) < Math.max(...contexts), true);
+  assert.equal(result.receipt.spent <= result.receipt.max, true);
+  // Free does not mean unbounded.
+  assert.equal(result.receipt.compactions.filter((e) => e.tier === "new-context").length <= 3, true);
+});
+
+test("a sink that cannot persist the window declines the rollover", async () => {
+  const { result } = await rollingRun({
+    newContext: () => {
+      throw new Error("archive unwritable");
+    },
+  });
+  // Dropping a window nothing recorded is unrecoverable loss, so the rung
+  // declines and the run falls through to the rest of the ladder.
+  assert.equal(result.receipt.compactions.some((entry) => entry.tier === "new-context"), false);
+});
+
+test("a fresh window carries pinned intent and one clamped seed", () => {
+  const messages = [
+    { role: "user", content: "fix the router" },
+    { role: "assistant", content: "x".repeat(50_000) },
+    { role: "user", content: "keep going" },
+  ];
+  const plan = planCompaction(messages, normalizeCompaction({
+    mode: "new-context",
+    newContext: () => "",
+  }));
+  const fresh = newContextMessages(messages, plan, "y".repeat(10_000));
+  assert.equal(pinnedContentSurvives(messages, plan.pinned, fresh), true);
+  // Nothing but pinned intent and the seed crosses, so no tool result can be
+  // orphaned by the cut.
+  assert.equal(fresh.length, plan.pinned.length + 1);
+  assert.equal(fresh.at(-1).caveContextSummary, true);
+  assert.equal(fresh.at(-1).content.includes("y".repeat(4_096)), true);
+  assert.equal(fresh.at(-1).content.includes("y".repeat(4_097)), false);
+  // Marked as a capsule, so the next rollover supersedes it instead of stacking.
+  assert.equal(planCompaction(fresh, normalizeCompaction()).pinned.includes(fresh.length - 1), false);
+});
+
 test("compaction options fail closed on nonsense", () => {
   assert.throws(() => normalizeCompaction({ maxCompactions: 0 }), /cave_compaction_option_invalid/);
   assert.throws(() => normalizeCompaction({ summaryMaxTokens: -1 }), /cave_compaction_option_invalid/);
@@ -921,5 +1036,17 @@ test("compaction options fail closed on nonsense", () => {
   assert.throws(
     () => normalizeCompaction({ maxCompactions: "one" }),
     /cave_compaction_option_invalid/,
+  );
+  assert.equal(defaults.mode, "summarize");
+  assert.throws(() => normalizeCompaction({ mode: "guess" }), /cave_compaction_option_invalid/);
+  assert.throws(
+    () => normalizeCompaction({ mode: "new-context", newContext: "sink" }),
+    /cave_compaction_option_invalid/,
+  );
+  // A rollover with nowhere to put the outgoing window is context loss, not
+  // compaction, so it is refused rather than degraded into one.
+  assert.throws(
+    () => normalizeCompaction({ mode: "new-context" }),
+    /cave_compaction_new_context_sink_required/,
   );
 });

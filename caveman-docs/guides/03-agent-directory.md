@@ -8,9 +8,9 @@ second runtime.
 support-bot/
 ├── instructions.md          required — the agent's standing prose
 ├── agent.ts                 required — default-exports an AgentDirConfig
-├── skills/
-│   ├── refund-policy.md
-│   └── shipping-claims.md
+├── .agents/skills/
+│   ├── refund-policy/SKILL.md
+│   └── shipping-claims/SKILL.md
 ├── tools/
 │   └── lookup_order.ts
 ├── subagents/
@@ -81,9 +81,9 @@ One tool per file, default-exported, and **the filename is the tool name**. A
 mismatch between the filename and the declared `name` fails closed. See
 [Tools](04-tools.md).
 
-## `skills/*.md`
+## `.agents/skills/<name>/SKILL.md`
 
-Each skill is markdown with a terminated frontmatter block:
+Project skills use Agent Skills layout and YAML frontmatter:
 
 ```markdown
 ---
@@ -91,14 +91,15 @@ name: refund-policy
 description: When and how refunds are issued.
 ---
 
-Full policy text, loaded only when the skill is invoked.
+Full policy text, loaded only when skill is invoked.
 ```
 
-`name` must equal the filename minus `.md`. Descriptions are lowered into one
-`agent.skills` index segment that enters stable context; bodies stay on disk
-until the framework `cave_skill` tool serves them. Adding a large skill
-therefore does not expand every request. A directory with no `skills/*.md` gets
-no `cave_skill` tool at all.
+`name` must equal parent directory name. `loadAgentDir()` routes parsing,
+containment, index rendering, and invocation through canonical
+`agent-environment.ts` implementation. Descriptions enter one stable
+`agent.skills` segment; `load_skill` reads full body or contained resource on
+demand. User-home skills and plugins remain disabled unless caller explicitly
+loads and applies them.
 
 ## `subagents/<name>/`
 
@@ -123,7 +124,6 @@ protocol channel that a receipt would corrupt.
 
 | Function | Returns |
 | --- | --- |
-| `agentDirSkills(definition)` | Skill bodies by name, sorted; `undefined` when the directory has none |
 | `agentDirContextOrigins(definition)` | Which `agent.ts` entry declared each context segment, so the volatile-prefix check can name the offending line |
 | `composeAgentDir(...)` | The composition step, for tooling that already holds the parts |
 | `AGENT_DIR_ENTRY` | The generated entry path constant |

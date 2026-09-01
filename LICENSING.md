@@ -18,7 +18,6 @@ classifications.
 | `packages/evals/` | Apache-2.0 | Canonical fail-closed grader taxonomy and implementations. |
 | `packages/react/` | Apache-2.0 | React client for the agent server's event stream. |
 | `packages/adapters/` | Apache-2.0 | Framework adapters and all subdirectories. |
-| `internal/agentbench/corpus/` | Apache-2.0 | Pinned SkillsBench subset; see local `NOTICE`. |
 
 Unlisted paths inherit the root Apache-2.0 license. Third-party dependencies
 remain under their own terms. Proprietary Pebble product implementation lives

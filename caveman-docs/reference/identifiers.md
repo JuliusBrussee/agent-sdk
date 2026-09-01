@@ -6,7 +6,7 @@ Every identifier the runtime, adapters, and tooling can emit under the reserved
 `cave_` namespace: failure codes, stop reasons, framework-owned tool names, and
 refusal reasons. The namespace is reserved; user tools may not declare names in it.
 
-Total: **747** identifiers.
+Total: **732** identifiers.
 
 ## Sandbox and containment
 
@@ -335,20 +335,6 @@ Total: **747** identifiers.
 | `cave_model_route_decision_invalid` | `packages/agent/src/runtime.ts` |
 | `cave_model_route_incompatible` | `packages/agent/src/runtime.ts` |
 | `cave_model_route_unknown` | `packages/agent/src/runtime.ts` |
-| `cave_model_router_aborted` | `packages/agent/src/model-router.ts` |
-| `cave_model_router_compat_invalid` | `packages/agent/src/model-router.ts` |
-| `cave_model_router_decision_invalid` | `packages/agent/src/model-router.ts` |
-| `cave_model_router_definition_invalid` | `packages/agent/src/model-router.ts` |
-| `cave_model_router_in_use` | `packages/agent/src/model-router.ts` |
-| `cave_model_router_input_invalid` | `packages/agent/src/model-router.ts` |
-| `cave_model_router_options_invalid` | `packages/agent/src/model-router.ts` |
-| `cave_model_router_previous_usage_invalid` | `packages/agent/src/model-router.ts` |
-| `cave_model_router_revision_exhausted` | `packages/agent/src/model-router.ts` |
-| `cave_model_router_signal_invalid` | `packages/agent/src/model-router.ts` |
-| `cave_model_router_snapshot_invalid` | `packages/agent/src/model-router.ts` |
-| `cave_model_router_stateless_snapshot_refused` | `packages/agent/src/model-router.ts` |
-| `cave_model_router_stateless_state_refused` | `packages/agent/src/model-router.ts` |
-| `cave_model_router_transition_invalid` | `packages/agent/src/model-router.ts` |
 | `cave_model_usage_incomplete` | `packages/agent/src/model-usage.ts` |
 | `cave_model_usage_invalid` | `packages/agent/src/model-usage.ts` |
 
@@ -369,6 +355,7 @@ Total: **747** identifiers.
 | `cave_compaction_eval_tokens_invalid` | `packages/agent/src/compaction-eval.ts` |
 | `cave_compaction_eval_weight_invalid` | `packages/agent/src/compaction-eval.ts` |
 | `cave_compaction_fixture_invalid` | `packages/agent/src/compaction-harness.ts` |
+| `cave_compaction_new_context_sink_required` | `packages/agent/src/compaction.ts` |
 | `cave_compaction_option_invalid` | `packages/agent/src/compaction.ts` |
 | `cave_compaction_repetitions_invalid` | `packages/agent/src/compaction-harness.ts` |
 | `cave_compaction_source_missing` | `packages/agent/src/compaction.ts` |
@@ -767,12 +754,12 @@ Total: **747** identifiers.
 | `cave_execution_mode_ambiguous` | `packages/agent/src/claude-runtime.ts` |
 | `cave_execution_plan_selection_mismatch` | `packages/agent/src/execution-kernel.ts` |
 | `cave_fan_out_cap_exceeded` | `packages/agent/src/breakers.ts` |
-| `cave_finite_json_bytes_limit` | `packages/agent/src/model-router.ts` |
-| `cave_finite_json_cycle` | `packages/agent/src/model-router.ts` |
-| `cave_finite_json_depth_limit` | `packages/agent/src/model-router.ts` |
-| `cave_finite_json_entries_limit` | `packages/agent/src/model-router.ts` |
-| `cave_finite_json_non_finite` | `packages/agent/src/model-router.ts` |
-| `cave_finite_json_non_json` | `packages/agent/src/model-router.ts` |
+| `cave_finite_json_bytes_limit` | `packages/agent/src/input.ts` |
+| `cave_finite_json_cycle` | `packages/agent/src/input.ts` |
+| `cave_finite_json_depth_limit` | `packages/agent/src/input.ts` |
+| `cave_finite_json_entries_limit` | `packages/agent/src/input.ts` |
+| `cave_finite_json_non_finite` | `packages/agent/src/input.ts` |
+| `cave_finite_json_non_json` | `packages/agent/src/input.ts` |
 | `cave_fixture_terminal_evidence_missing` | `packages/agent/src/compile-runner.ts` |
 | `cave_frozen_prefix_below_provider_minimum` | `packages/agent/src/cache-planner/static-checks.ts` |
 | `cave_frozen_prefix_volatile_segment` | `packages/agent/src/cache-planner/static-checks.ts` |
@@ -862,7 +849,6 @@ Total: **747** identifiers.
 | `cave_routine_subagent_unsupported` | `packages/agent/src/routine.ts` |
 | `cave_routine_v1` | `packages/agent/src/routine.ts` |
 | `cave_runner_failed` | `packages/agent/src/build.ts` |
-| `cave_runtime_model_invalid` | `packages/agent/src/runtime-model.ts` |
 | `cave_runtime_segment_id_collision` | `packages/agent/src/context-ir.ts` |
 | `cave_search_tools` | `packages/agent/src/runtime.ts` |
 | `cave_serve_body_invalid` | `packages/agent/src/serve.ts` |
@@ -883,7 +869,6 @@ Total: **747** identifiers.
 | `cave_serve_token_required` | `packages/agent/src/serve.ts` |
 | `cave_serve_unauthorized` | `packages/agent/src/serve.ts` |
 | `cave_side_effect_blocked` | `packages/agent/src/runtime.ts` |
-| `cave_skill` | `packages/agent/src/dir-loader.ts` |
 | `cave_stale_lock` | `packages/agent/src/cli.ts` |
 | `cave_stream_cancelled` | `packages/agent/src/runtime.ts` |
 | `cave_transform_registry_unavailable` | `packages/agent/src/cli.ts` |
