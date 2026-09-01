@@ -15,20 +15,13 @@ import {
   normalizeRunBudget,
 } from "../dist/budget.js";
 import { callCeilingFor, restorableRequestBytes } from "../dist/runtime.js";
-import { fauxProvider as upstreamFauxProvider } from "@earendil-works/pi-ai/providers/faux";
 import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
+import { fauxModel } from "../dist/testing.js";
 
 const PRICED_MODEL = "claude-haiku-4-5";
 
 function pricedFauxModel(overrides = {}) {
-  const handle = upstreamFauxProvider({ provider: "anthropic" });
-  return {
-    ...handle.getModel(),
-    id: PRICED_MODEL,
-    contextWindow: 200_000,
-    maxTokens: 4_000,
-    ...overrides,
-  };
+  return { ...fauxModel({ priced: true }), ...overrides };
 }
 
 function usage(fields) {

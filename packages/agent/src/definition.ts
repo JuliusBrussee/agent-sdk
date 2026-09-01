@@ -37,6 +37,14 @@ export interface AgentDefinition {
    *   escape its root's containment. Host execution is never isolation.
    */
   readonly sandbox: "required" | "fixture" | "host";
+  /**
+   * Whether the author named a sandbox posture. `false` means the `"required"`
+   * above is the type-level default rather than a stated intent, which is what
+   * lets `run()`/`stream()` execute on the host (loudly) when no `entryPath` is
+   * supplied. An explicit posture — including an explicit `"required"` — is
+   * never reinterpreted.
+   */
+  readonly sandboxDeclared: boolean;
 }
 
 /** Trusted, explicit definition transform applied by an embedding product. */
@@ -88,6 +96,7 @@ export function agent(options: {
     tools,
     contexts: Object.freeze([...(options.contexts ?? [])]),
     sandbox,
+    sandboxDeclared: options.sandbox !== undefined,
     ...(options.memory === undefined ? {} : { memory: options.memory }),
     ...(options.output === undefined ? {} : { output: options.output }),
   });

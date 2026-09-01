@@ -56,6 +56,10 @@
       "types": "./dist/command-session.d.ts",
       "import": "./dist/command-session.js"
     },
+    "./testing": {
+      "types": "./dist/testing.d.ts",
+      "import": "./dist/testing.js"
+    },
     "./catalog": {
       "types": "./dist/catalog.d.ts",
       "import": "./dist/catalog.js"

@@ -17,8 +17,8 @@ import {
   tool,
 } from "../dist/index.js";
 import sandboxAgent from "./fixtures/sandbox-agent.mjs";
-import { fauxProvider as upstreamFauxProvider } from "@earendil-works/pi-ai/providers/faux";
 import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
+import { fauxModel } from "../dist/testing.js";
 
 const receiptSchema = JSON.parse(readFileSync(
   new URL("../../shared/contracts/schemas/agent-run-receipt.schema.json", import.meta.url),
@@ -35,14 +35,7 @@ function assertSharedReceiptContract(receipt) {
   );
 }
 
-function fauxModel() {
-  const handle = upstreamFauxProvider({ provider: "anthropic" });
-  return { ...handle.getModel(), contextWindow: 200_000, maxTokens: 4_000 };
-}
-
-function pricedFauxModel() {
-  return { ...fauxModel(), id: "claude-haiku-4-5" };
-}
+const pricedFauxModel = () => fauxModel({ priced: true });
 
 function usage(fields = {}) {
   const input = fields.input ?? 100;

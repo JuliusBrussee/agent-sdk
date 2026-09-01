@@ -30,6 +30,12 @@ import {
   summarizeCodingTaskAttempts,
 } from "../dist/code.js";
 
+// `ensureRuntime: false` no longer means "assume the loopback runtime is up":
+// the route is only claimed after something answers /healthz.
+const healthzOnly = async (url) => String(url).endsWith("/healthz")
+  ? new Response("ok")
+  : new Response(null, { status: 404 });
+
 test("explicit provider base URL rewrites every model in one provider only", () => {
   const models = codingModelsAtProviderBaseURL(
     "openai/gpt-5.6-terra",
@@ -304,6 +310,7 @@ test("a provider the gateway does not proxy is third-party traffic, not optimize
       const session = await startCodingSession(codingAgent, {
         ensureRuntime: false,
         engineBin: FAKE_ENGINE,
+        fetch: healthzOnly,
       });
       assert.equal(session.mode, "optimized");
       const faux = fauxNamedProvider("xai");
@@ -345,6 +352,7 @@ test("a routed provider still reaches the gateway with its telemetry", async () 
       const session = await startCodingSession(codingAgent, {
         ensureRuntime: false,
         engineBin: FAKE_ENGINE,
+        fetch: healthzOnly,
         gatewayURL: "http://127.0.0.1:8787",
       });
       const faux = fauxAnthropic();
@@ -361,8 +369,10 @@ test("a routed provider still reaches the gateway with its telemetry", async () 
       assert.equal(sent[0].baseUrl, "http://127.0.0.1:8787/anthropic");
       assert.equal(sent[0].headers["x-cave-api-key"], "cave_live_testkey_for_the_gateway");
       assert.equal(sent[0].headers["x-cave-agent"], "caveman-code");
-      assert.equal(turn.bill.mode, "optimized");
-      assert.equal(session.mode, "optimized");
+      // Routed and metered by the gateway, but the turn itself came from the
+      // caller's streamFn, so the receipt does not claim it was optimized.
+      assert.equal(turn.bill.mode, "observe-only");
+      assert.equal(session.mode, "observe-only");
     });
   } finally {
     if (previousKey === undefined) delete process.env.CAVE_API_KEY;
@@ -589,6 +599,7 @@ test("optimized turn bills token counts from run telemetry and proves recovery",
     const session = await startCodingSession(codingAgent, {
       ensureRuntime: false,
       engineBin: FAKE_ENGINE,
+      fetch: healthzOnly,
     });
     assert.equal(session.mode, "optimized");
     const faux = fauxAnthropic();
@@ -600,6 +611,12 @@ test("optimized turn bills token counts from run telemetry and proves recovery",
       streamFn: payloadStreamFn(faux),
       providerPayloadContract: "pi-on-payload-v1",
     });
+    // A caller-supplied streamFn bills its turn observe-only, which degrades the
+    // session the same way an absent gateway does. This case is about transform
+    // accounting on an optimized turn, so the seam is re-armed rather than the
+    // assertions weakened.
+    assert.equal(session.mode, "observe-only");
+    session.mode = "optimized";
 
     const seen = [];
     faux.setResponses([
@@ -612,7 +629,7 @@ test("optimized turn bills token counts from run telemetry and proves recovery",
       providerPayloadContract: "pi-on-payload-v1",
     });
 
-    assert.equal(turn.bill.mode, "optimized");
+    assert.equal(turn.bill.mode, "observe-only");
     assert.deepEqual(turn.bill.transformFailures, []);
     assert.equal(turn.bill.recoveryResolved, true);
     assert.deepEqual(turn.bill.transformIDs, [

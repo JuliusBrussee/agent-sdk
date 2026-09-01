@@ -65,9 +65,35 @@ console.log(result.receipt);
 
 1. `CAVE_MODEL`
 2. `.caveman/provider.json`
-3. The baseline model for the sole supported provider credential present.
+3. The baseline model for a supported provider credential present, in the fixed
+   order anthropic → openai → google. With several credentials in the shell it
+   picks the first of those and prints one warning naming `CAVE_MODEL`, rather
+   than refusing to start. With none, it throws — an unknown model is not a
+   default.
 
 It never classifies a task and never routes between models on quality.
+
+## Where tools run
+
+The agent above declared no `sandbox`, so `run()` executes its tools on the
+host and says so, once:
+
+```text
+cave: host execution — tools are not isolated
+```
+
+That is the honest label, not a mode: host execution is not isolation. When you
+want containment, declare it and hand `run()` the entry module the sandbox
+stages from:
+
+```ts
+const support = agent({ id: "support", instructions, model: auto(), sandbox: "required" });
+await run(support, "Can I get a refund?", { entryPath: "./agent.ts" });
+```
+
+An explicit `sandbox: "required"` without `entryPath` fails closed with
+`cave_tool_sandbox_entry_required` — declaring containment and not getting it is
+never silent.
 
 ## What the first run tells you
 

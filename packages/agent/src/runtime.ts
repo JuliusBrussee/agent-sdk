@@ -15,6 +15,7 @@ import { homedir, tmpdir } from "node:os";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { Agent, type AgentEvent, type AgentMessage, type AgentTool, type StreamFn } from "@earendil-works/pi-agent-core";
+import { autoCredentialModel, hostByDefault } from "./defaults.js";
 import {
   Type,
   type Api,
@@ -1441,6 +1442,7 @@ export async function runAgent(
   options: RunOptions = {},
 ): Promise<RunResult> {
   rejectInternalRunOptions(options);
+  definition = hostByDefault(definition, options.entryPath);
   return runAgentWithOptions(
     definition,
     input,
@@ -1612,6 +1614,7 @@ export function streamAgent(
   options: RunOptions = {},
 ): AsyncGenerator<CavemanRunEvent> {
   rejectInternalRunOptions(options);
+  definition = hostByDefault(definition, options.entryPath);
   return streamAgentWithOptions(
     definition,
     input,
@@ -3988,7 +3991,11 @@ async function* streamAgentInternal(
           !(receiptResume?.priorUnpriced ?? false)
         ? "public_catalog"
         : "unpriced",
-      mode: gatewayActive && !nestedUsage.observeOnly ? "optimized" : "observe-only",
+      // A caller-supplied streamFn produced this turn in-process: whatever the
+      // gateway is doing, it did not optimize a request it never saw.
+      mode: gatewayActive && options.streamFn === undefined && !nestedUsage.observeOnly
+        ? "optimized"
+        : "observe-only",
       provider: finalMessage?.provider ?? routedModel.provider,
       model: finalMessage?.model ?? routedModel.id,
       latencyMs: Math.round(performance.now() - startedAt),
@@ -5300,18 +5307,7 @@ function resolveModel(definition: AgentDefinition, models: Models, rootDir: stri
     return model;
   }
 
-  const configured: Array<[string, string]> = [];
-  if (process.env.ANTHROPIC_API_KEY) configured.push(["anthropic", "claude-haiku-4-5"]);
-  if (process.env.OPENAI_API_KEY) configured.push(["openai", "gpt-5.4-mini"]);
-  if (process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY) configured.push(["google", "gemini-2.5-flash"]);
-  if (configured.length !== 1) {
-    throw new Error(
-      configured.length === 0
-        ? "caveman agent: no supported provider credential found"
-        : "caveman agent: multiple provider credentials found; set CAVE_MODEL once",
-    );
-  }
-  const [provider, id] = configured[0]!;
+  const [provider, id] = autoCredentialModel();
   const model = models.getModel(provider, id);
   if (!model) throw new Error(`caveman agent: baseline model unavailable: ${provider}/${id}`);
   return model;

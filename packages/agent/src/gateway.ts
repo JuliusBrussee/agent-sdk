@@ -112,6 +112,12 @@ export async function resolveCaveRoute(
     try {
       const url = new URL(gatewayURL);
       if (isLoopbackHostname(url.hostname)) {
+        // `ensureRuntime: false` means the caller owns the loopback runtime's
+        // lifecycle, not that a runtime is there. Claiming `useGateway: true`
+        // without asking would let a run report `optimized` against a port
+        // nothing is listening on, so the reachability is probed — cheaply,
+        // and bounded, because this sits in front of every run.
+        await probeHealthz(gatewayURL, options.fetch ?? globalThis.fetch);
         const providerBilling = options.billingProofRequired
           ? (await gatewayIdentity(gatewayURL, options.fetch ?? globalThis.fetch))?.providerBilling ??
             "unknown"
@@ -181,6 +187,33 @@ type GatewayProbe = {
 };
 const gatewayProbeCache = new Map<string, GatewayProbe & { at: number }>();
 const gatewayProbeInflight = new Map<string, Promise<GatewayProbe>>();
+
+/**
+ * Liveness only: is something answering at the gateway's `/healthz`? Identity
+ * — that the something is a Caveman proxy — is a separate, stricter check
+ * (`gatewayIdentity`) and is what a non-loopback gateway must pass. Throws so
+ * the caller's existing degrade path reports it as observe-only.
+ */
+async function probeHealthz(
+  gatewayURL: string,
+  fetchImpl: typeof globalThis.fetch,
+): Promise<void> {
+  let ok = false;
+  try {
+    const response = await fetchImpl(`${gatewayURL}/healthz`, {
+      signal: AbortSignal.timeout(250),
+      redirect: "error",
+    });
+    ok = response.ok;
+  } catch {
+    ok = false;
+  }
+  if (!ok) {
+    throw new Error(
+      `cave_gateway_unreachable: nothing answered ${gatewayURL}/healthz within 250ms`,
+    );
+  }
+}
 
 async function probeGateway(
   gatewayURL: string,

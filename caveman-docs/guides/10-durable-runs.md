@@ -105,7 +105,9 @@ export interface DurableStore {
 | --- | --- |
 | `DiskDurableStore` (default) | The instance has a volume that survives restarts. Journals live under `<rootDir>/.caveman/runs/durable/<runId>/`, `0700`/`0600`, because they necessarily hold message content |
 | `HttpDurableStore` | The instance does not — container platforms, autoscaled fleets |
-| Your own | Anything else: a database, an object store |
+| `SqlDurableStore` | You already have a database: Durable Object SQLite, better-sqlite3, Postgres |
+| `ObjectDurableStore` | You already have a bucket: S3, R2, GCS, Azure Blob |
+| Your own | Anything else |
 
 `list()` is optional. A store that cannot enumerate is still a valid journal
 store; it just cannot back crash recovery, and the recovery sweep reports
@@ -143,6 +145,74 @@ DELETE {base}/runs/{id}/lock        → 204
 
 `packages/agent/hosting/cloudflare/worker.ts` is a complete implementation
 (Durable Object journal).
+
+### `SqlDurableStore`
+
+The whole database dependency is one method, so there is no driver-specific
+code and no dependency to install:
+
+```ts
+import { SqlDurableStore } from "@caveman-ai/agent/durable";
+
+// Cloudflare Durable Object SQLite (synchronous SqlStorage)
+new SqlDurableStore({
+  sql: { exec: (q, p) => [...this.ctx.storage.sql.exec(q, ...p)] },
+  dialect: "sqlite",
+});
+
+// better-sqlite3
+new SqlDurableStore({
+  sql: { exec: (q, p) => db.prepare(q).all(...p) },
+  dialect: "sqlite",
+});
+
+// node-postgres
+new SqlDurableStore({
+  sql: { exec: async (q, p) => (await pool.query(q, [...p])).rows },
+  dialect: "postgres",
+});
+```
+
+`dialect` picks the placeholder grammar (`?` for sqlite, `$1…$n` for postgres).
+Run the DDL once yourself — this store never issues DDL, because a journal
+store that can create tables can also drop them:
+
+```ts
+await migrate(SqlDurableStore.schema("postgres"));   // or ("sqlite"), or (dialect, table)
+```
+
+One row per journal line in `<table>` (default `caveman_durable_journal`), and
+one lease row per in-flight run in `<table>_leases`. The lease carries an expiry
+and is renewed at a third of its TTL; a renewal this process cannot complete
+poisons the run's appends rather than risking two drivers.
+
+### `ObjectDurableStore`
+
+Object storage cannot append, so a journal is a sequence of immutable chunk
+objects concatenated in key order. The adapter is three methods:
+
+```ts
+import { ObjectDurableStore } from "@caveman-ai/agent/durable";
+
+new ObjectDurableStore({
+  storage: {
+    get: async (key) => (await bucket.get(key))?.bytes(),   // undefined when absent
+    put: async (key, data, opts) => bucket.put(key, data, opts),
+    list: async (prefix) => (await bucket.list({ prefix })).keys,
+  },
+  prefix: "caveman/durable/",
+  conditionalPut: true,
+});
+```
+
+`conditionalPut` is not optional and is not guessed. `acquire` needs a
+**create-if-absent** put — `put(key, data, { ifMatch: "" })`, which is S3/R2
+`If-None-Match: *`, GCS `ifGenerationMatch: 0`, Azure `If-None-Match: *` — and
+an adapter that silently ignored `opts` would produce a lock that looks taken
+and is not. Until you declare it, `acquire` fails closed with
+`cave_durable_object_conditional_put_required`. The lease is taken by creating
+the next generation of the lease key, so a takeover after an expiry is a create
+and stays single-winner.
 
 ## Inspecting a journal
 
