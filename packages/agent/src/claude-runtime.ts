@@ -400,7 +400,10 @@ async function runClaudeAgentWithOptions(
       reasoningTokens: 0,
       costUsd: usage.catalogCostUsd,
       priceBasis: usage.priced ? "public_catalog" : "unpriced",
-      mode: useGateway ? "optimized" : "observe-only",
+      // A caller-supplied queryFn produced this turn in-process, so nothing
+      // about it can be claimed as optimized — the same rule `run()` applies to
+      // a caller-supplied streamFn.
+      mode: useGateway && options.queryFn === undefined ? "optimized" : "observe-only",
       provider: "anthropic",
       model: selected,
       latencyMs: Math.round(performance.now() - startedAt),

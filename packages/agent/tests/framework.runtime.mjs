@@ -6593,3 +6593,50 @@ test("required sandbox permits explicitly opted-in write tools", async () => {
   assert.equal(result.text, "done");
   assert.match(observed, /live-write-ok/);
 });
+
+test("declaring the sandbox posture explicitly does not change the definition digest", async () => {
+  const { agentDefinitionSHA256 } = await import("../dist/build.js");
+  const build = (extra) => agent({
+    id: "sandbox-declared-digest",
+    instructions: "Answer.",
+    model: "anthropic/claude-haiku-4-5",
+    ...extra,
+  });
+  const declared = build({ sandbox: "required" });
+  const undeclared = build({});
+  // `sandboxDeclared` is authoring metadata, not behavior: the same posture has
+  // to hash the same either way, or every existing lock is invalidated by the
+  // field's mere existence.
+  assert.equal(declared.sandboxDeclared, true);
+  assert.equal(undeclared.sandboxDeclared, false);
+  assert.equal(undeclared.sandbox, declared.sandbox);
+  assert.equal(agentDefinitionSHA256(declared), agentDefinitionSHA256(undeclared));
+  // A different posture still hashes differently.
+  assert.notEqual(
+    agentDefinitionSHA256(build({ sandbox: "fixture" })),
+    agentDefinitionSHA256(declared),
+  );
+});
+
+test("the agent-environment rebuild keeps an undeclared sandbox undeclared", async () => {
+  const { applyAgentEnvironment } = await import("../dist/agent-environment.js");
+  const undeclared = agent({
+    id: "environment-undeclared",
+    instructions: "Answer.",
+    model: "anthropic/claude-haiku-4-5",
+  });
+  const rebuilt = applyAgentEnvironment(undeclared, { skills: [], commands: [] });
+  // Passing `sandbox` through unconditionally would declare it, and a declared
+  // posture no longer earns the host-by-default downgrade.
+  assert.equal(rebuilt.sandboxDeclared, false);
+  assert.equal(rebuilt.sandbox, undeclared.sandbox);
+  const declared = agent({
+    id: "environment-declared",
+    instructions: "Answer.",
+    model: "anthropic/claude-haiku-4-5",
+    sandbox: "fixture",
+  });
+  const rebuiltDeclared = applyAgentEnvironment(declared, { skills: [], commands: [] });
+  assert.equal(rebuiltDeclared.sandboxDeclared, true);
+  assert.equal(rebuiltDeclared.sandbox, "fixture");
+});

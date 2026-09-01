@@ -10,11 +10,19 @@
 
 import type { AgentDefinition } from "./definition.js";
 
-let hostExecutionAnnounced = false;
+const hostExecutionAnnounced = new Set<string>();
 
 /**
  * A definition that never declared a sandbox posture, run without an
- * `entryPath`, executes on the host — and says so, once, on stderr.
+ * `entryPath`, executes on the host — and says so on stderr, once per
+ * definition, because a server driving several definitions has to hear it for
+ * each of them, not only the first one it happened to load.
+ *
+ * The downgrade is invisible to `agentDefinitionSHA256`, which excludes
+ * `sandboxDeclared` so the field's existence cannot invalidate an existing lock.
+ * ponytail: `run()` hashes this downgraded (`host`) definition while
+ * `runLocked()` hashes the original, so one durable run id cannot be resumed
+ * across those two entry points.
  *
  * Only the root definition is downgraded. A subagent that declared
  * `sandbox: "required"` (or one that never declared it but carries its own
@@ -28,9 +36,9 @@ export function hostByDefault(
 ): AgentDefinition {
   if (entryPath !== undefined) return definition;
   if (definition.sandboxDeclared || definition.sandbox !== "required") return definition;
-  if (!hostExecutionAnnounced) {
-    hostExecutionAnnounced = true;
-    process.stderr.write("cave: host execution — tools are not isolated\n");
+  if (!hostExecutionAnnounced.has(definition.id)) {
+    hostExecutionAnnounced.add(definition.id);
+    process.stderr.write(`cave: ${definition.id} host execution — tools are not isolated\n`);
   }
   return Object.freeze({ ...definition, sandbox: "host" as const });
 }

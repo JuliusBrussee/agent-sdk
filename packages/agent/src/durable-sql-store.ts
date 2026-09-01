@@ -151,7 +151,7 @@ export class SqlDurableStore implements DurableStore {
     const lines = data.split("\n").filter((line) => line !== "");
     if (lines.length === 0) return;
     const [totals] = await this.query(
-      `SELECT COALESCE(MAX(seq), 0) AS max_seq, COALESCE(SUM(LENGTH(line)), 0) AS size FROM ${this.table} WHERE run_id = ?`,
+      `SELECT COALESCE(SUM(LENGTH(line)), 0) AS size FROM ${this.table} WHERE run_id = ?`,
       [runId],
     );
     // LENGTH() counts characters in both dialects, so this is a lower bound on
@@ -159,14 +159,42 @@ export class SqlDurableStore implements DurableStore {
     if (Number(totals?.size ?? 0) + utf8Bytes(data) > MAX_JOURNAL_BYTES) {
       throw new Error("cave_durable_journal_limit");
     }
-    let seq = Number(totals?.max_seq ?? 0);
+    await this.assertStillHeld(runId);
     for (const line of lines) {
-      seq += 1;
+      // The sequence is chosen inside the INSERT, so two concurrent writers
+      // cannot read the same MAX and then race to claim it.
+      // ponytail: atomic under SQLite and under any engine that serializes or
+      // row-locks this statement; a dedicated sequence table is the upgrade if a
+      // weaker isolation level ever produces a duplicate-key collision here.
       await this.query(
-        `INSERT INTO ${this.table} (run_id, seq, line) VALUES (?, ?, ?)`,
-        [runId, seq, line],
+        `INSERT INTO ${this.table} (run_id, seq, line) ` +
+        `SELECT ?, COALESCE(MAX(seq), 0) + 1, ? FROM ${this.table} WHERE run_id = ?`,
+        [runId, line, runId],
       );
     }
+  }
+
+  /**
+   * An append by a process that holds this run's lease must still be able to
+   * prove it holds it, at append time rather than only on the renewal tick. A
+   * store with no lease for this run is a deliberately lock-free writer
+   * (`requestDurableCancel`) and is not asked to prove anything.
+   */
+  private async assertStillHeld(runId: string): Promise<void> {
+    const held = this.leases.get(runId);
+    if (held === undefined) return;
+    const rows = await this.query(
+      `SELECT run_id FROM ${this.leaseTable} WHERE run_id = ? AND owner = ? AND expires_at > ?`,
+      [runId, held.owner, Date.now()],
+    );
+    if (rows.length > 0) return;
+    const failure = new Error(
+      `cave_durable_run_lock_lost: run "${runId}" is no longer held by this process`,
+    );
+    clearInterval(held.timer);
+    this.leases.delete(runId);
+    this.lost.set(runId, failure);
+    throw failure;
   }
 
   async acquire(runId: string): Promise<() => Promise<void>> {
@@ -230,6 +258,13 @@ export class SqlDurableStore implements DurableStore {
     if (held !== undefined) clearInterval(held.timer);
     this.leases.delete(runId);
     this.lost.delete(runId);
+    if (held === undefined) return;
+    // Closing without releasing would leave the row behind and lock the run out
+    // for the rest of its TTL, so the lease this store still holds is dropped.
+    await this.query(
+      `DELETE FROM ${this.leaseTable} WHERE run_id = ? AND owner = ?`,
+      [runId, held.owner],
+    ).catch(() => undefined);
   }
 
   async list(): Promise<readonly string[]> {

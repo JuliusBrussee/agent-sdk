@@ -797,7 +797,9 @@ export function applyAgentEnvironment(
     contexts: [...definition.contexts, ...additions],
     ...(definition.memory === undefined ? {} : { memory: definition.memory }),
     ...(definition.output === undefined ? {} : { output: definition.output }),
-    sandbox: definition.sandbox,
+    // Passing `sandbox` unconditionally would turn an undeclared posture into a
+    // declared one and cost the definition its host-by-default downgrade.
+    ...(definition.sandboxDeclared ? { sandbox: definition.sandbox } : {}),
   });
 }
 
