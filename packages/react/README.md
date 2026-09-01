@@ -17,6 +17,10 @@ in your own app, and your route forwards the request with the credential
 attached. If a client library ever offers to hold that token for you, it is
 offering to put it in your bundle.
 
+`useSession` supports direct SSE/WebSocket hosts and therefore accepts `token`.
+Use a short-lived, session-scoped token or pass requests through the same-origin
+proxy; never hard-code a server bearer in client source.
+
 ## Client
 
 ```tsx
@@ -123,10 +127,9 @@ up as a total. Token counts stay exact either way. Render the null case.
 
 ### `stopWatching()` does not cancel the run
 
-The server has no cancel endpoint. Stopping closes your connection; the agent
-keeps working and keeps spending. The run stays journaled, so `GET /runs/:id`
-still has the outcome afterwards, and `watch(runId)` reattaches while its events
-are still held.
+`DELETE /runs/:id` cancels. `stopWatching()` deliberately does not call it:
+stopping closes only this view, while the agent keeps working. The run stays
+journaled, and `watch(runId)` reattaches while events remain held.
 
 ### `gap` means the transcript has a hole
 
@@ -168,7 +171,28 @@ or one whose events died with the instance that produced them, has no stream
 left to attach to and surfaces as a closed stream. `GET /runs/:id` is always the
 authoritative outcome; this endpoint only reports events.
 
-## One run per `submit`, not a chat thread
+## Sessions
+
+`useSession` retains Pebble frames across consecutive durable runs and sends
+active-run messages through server-owned Pi queues:
+
+```tsx
+const { events, send, cancel, status } = useSession({
+  url: "https://agent.example.com",
+  sessionId: "case-42",
+  token: shortLivedToken,
+  transport: "ws", // or "sse"
+});
+
+await send("check again", { author: "Ada", mode: "followUp" });
+```
+
+WebSocket is bidirectional. SSE receives through `fetch` so it can send bearer
+headers; `send` uses `POST /sessions/:id/messages`. `cancel()` calls
+`DELETE /sessions/:id`. `reduceSessionEvent` and `SESSION_INITIAL_STATE` are
+exported for custom transports.
+
+## `useAgent`: one run per `submit`, not a chat thread
 
 There is no `messages` array here, because there is no thread on the server. The
 agent server runs one agent over one input per run, and a run is not a reply to

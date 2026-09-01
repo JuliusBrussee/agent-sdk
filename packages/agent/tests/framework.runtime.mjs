@@ -267,6 +267,7 @@ test("package lifecycle builds executable framework CLI before packing", async (
   // required peer in core would force the cost back onto every consumer.
   assert.deepEqual(Object.keys(pkg.peerDependencies), [
     "@anthropic-ai/claude-agent-sdk",
+    "ws",
     "zod",
   ]);
   for (const name of Object.keys(pkg.peerDependencies)) {

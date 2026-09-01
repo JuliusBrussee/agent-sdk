@@ -46,6 +46,21 @@ export interface AgentState {
 
 export declare const INITIAL_STATE: AgentState;
 
+export interface SessionState {
+  readonly events: readonly ({ kind: string } & Record<string, any>)[];
+  readonly status: SessionStatus;
+}
+
+export type SessionStatus = "connecting" | "streaming" | "complete" | "error" | "cancelled";
+
+export declare const SESSION_INITIAL_STATE: SessionState;
+
+/** Append one Pebble frame and derive multi-run session status. Pure. */
+export declare function reduceSessionEvent(
+  state: SessionState,
+  event: { kind: string } & Record<string, any>,
+): SessionState;
+
 /** Fold one Pebble v1 `TurnEvent` into agent state. Pure. */
 export declare function reduceAgentEvent(state: AgentState, event: { kind: string } & Record<string, any>): AgentState;
 
@@ -74,10 +89,34 @@ export interface UseAgentResult extends AgentState {
    */
   watch(runId: string): void;
   /**
-   * Stop watching. Does NOT cancel the run: the server has no cancel endpoint,
-   * so the agent keeps working and keeps spending. Reattach with `watch`.
+   * Stop watching without cancelling. `DELETE /runs/:id` exists; this method
+   * deliberately does not call it. Reattach with `watch`.
    */
   stopWatching(): void;
 }
 
 export declare function useAgent(options: UseAgentOptions): UseAgentResult;
+
+export interface UseSessionOptions {
+  readonly url: string;
+  readonly sessionId: string;
+  readonly token: string;
+  readonly transport?: "sse" | "ws";
+}
+
+export interface SessionSendOptions {
+  readonly author?: string;
+  readonly mode?: "followUp" | "steer";
+}
+
+export interface UseSessionResult {
+  readonly events: SessionState["events"];
+  send(
+    text: string,
+    options?: SessionSendOptions,
+  ): Promise<{ readonly runId: string; readonly queued: boolean } | undefined>;
+  cancel(): Promise<void>;
+  readonly status: SessionStatus;
+}
+
+export declare function useSession(options: UseSessionOptions): UseSessionResult;

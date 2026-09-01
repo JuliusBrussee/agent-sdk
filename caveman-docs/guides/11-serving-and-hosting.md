@@ -23,6 +23,8 @@ caveman-agent serve [dir] [--port N] [--host H] [--locked]
 ```text
 POST /runs          {"runId":"…","input":"…"}   → 202 accepted, 200 if already settled
 GET  /runs/{runId}                              → the run's journaled status
+GET  /runs/{runId}/events                       → Pebble v1 frames over SSE
+DELETE /runs/{runId}                            → request durable cancellation
 GET  /healthz                                   → liveness, no credential
 GET  /readyz                                    → 503 until the recovery sweep finishes
 ```
@@ -78,7 +80,8 @@ const server = createAgentServer({
   rootDir: process.cwd(),
   store,                    // optional; defaults to DiskDurableStore
   build,                    // optional AnyCaveBuildLock → runLocked for every run
-  runOptions: { budget },   // `durable` is owned by the server and refused here
+  // Factory form prevents controllers, signals, and other per-run state from sharing.
+  runOptions: ({ sessionId, runId }) => ({ budget, sessionId, workflow: runId }),
   maxConcurrentRuns: 2,     // model calls are the bottleneck, not CPU
   maxQueuedRuns: 64,        // accepted-but-not-started ceiling before shedding load
   maxBodyBytes: 1024 * 1024,
@@ -86,6 +89,83 @@ const server = createAgentServer({
 
 const port = await server.listen(8080, "0.0.0.0");
 ```
+
+The existing `runOptions: { ... }` object remains accepted for compatibility.
+New servers should use the factory. `durable` is always server-owned;
+`controller`, `signal`, and `conversation` are session-owned on session routes.
+
+## Sessions
+
+A session owns one durable conversation and one Pi-backed
+`AgentRunController`. Messages arriving during a run use Pi's existing
+follow-up queue by default; `mode: "steer"` uses Pi's steering queue. Idle
+messages start `${sessionId}.${n}` with the same conversation.
+
+```text
+POST   /sessions                       {"sessionId":"…"} → 201 {sessionId}
+POST   /sessions/{id}/messages         {"text":"…","author"?:"…","mode"?:"followUp"|"steer"}
+GET    /sessions/{id}                  → {sessionId,runs,active?,queued,messages}
+GET    /sessions/{id}/events           → Pebble v1 frames over one multi-run SSE stream
+DELETE /sessions/{id}                  → cancel active run and drop Pi queues
+WS     /sessions/{id}/ws               → bidirectional session transport
+```
+
+All session routes use the same bearer authentication as `/runs`. WebSocket
+clients that can set headers send `Authorization: Bearer …`. Browser clients
+use subprotocols `caveman-agent` and `cave-bearer.<base64url-token>`; server
+selects only `caveman-agent`, so token is never echoed.
+
+Client WebSocket messages are either
+`{"type":"message","text":"…","author"?:"…","mode"?:"followUp"|"steer"}`
+or `{"type":"cancel"}`. Server messages are unchanged Pebble frames. SSE and
+WebSocket replay use the same bounded process-local buffer and gap reporting.
+Run journals remain authority.
+
+Pebble v1 has no author metadata field and its frozen `turn.start` has no
+payload extension field. Author therefore appears in `GET /sessions/{id}`
+`messages`, not in Pebble frames. It is process-local metadata; durable
+conversation checkpoints preserve message content, not author.
+
+## Fetch handler
+
+Use the web-standard handler when the host owns HTTP and WebSocket upgrades:
+
+```ts
+import { createAgentHandler } from "@caveman-ai/agent/serve-handler";
+
+const handler = createAgentHandler({
+  definition,
+  token: env.CAVE_SERVE_TOKEN,
+  store,
+  runOptions: ({ sessionId, runId }) => ({
+    sessionId,
+    workflow: runId,
+    executionBackend,
+  }),
+  upgrade(request) {
+    const pair = new WebSocketPair();
+    const [client, server] = Object.values(pair);
+    server.accept();
+    return {
+      response: new Response(null, {
+        status: 101,
+        webSocket: client,
+        headers: { "sec-websocket-protocol": "caveman-agent" },
+      } as ResponseInit),
+      socket: server,
+    };
+  },
+});
+
+export class AgentSession extends DurableObject {
+  fetch(req: Request) { return handler.fetch(req); }
+}
+```
+
+Cloudflare code must supply a Durable Object-backed `DurableStore`; local disk
+is not durable there. `createAgentHandler` never imports `node:http`. Node's
+`createAgentServer` wrapper lazily loads optional peer `ws`; an upgrade fails
+closed with `cave_serve_websocket_unavailable` when it is absent.
 
 `AgentServer` exposes the underlying `server` for callers that own their own
 listen/upgrade wiring, plus the recovery entry point whose `RecoveryReport`
