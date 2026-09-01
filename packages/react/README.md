@@ -17,9 +17,10 @@ in your own app, and your route forwards the request with the credential
 attached. If a client library ever offers to hold that token for you, it is
 offering to put it in your bundle.
 
-`useSession` supports direct SSE/WebSocket hosts and therefore accepts `token`.
-Use a short-lived, session-scoped token or pass requests through the same-origin
-proxy; never hard-code a server bearer in client source.
+`useSession` works the same way: same-origin `api` path, no token, including on
+the WebSocket transport. The server does accept the bearer as a `cave-bearer.`
+subprotocol, but that exists for clients that can't set headers — in a browser a
+subprotocol is as public as the bundle it ships in.
 
 ## Client
 
@@ -177,20 +178,38 @@ authoritative outcome; this endpoint only reports events.
 active-run messages through server-owned Pi queues:
 
 ```tsx
-const { events, send, cancel, status } = useSession({
-  url: "https://agent.example.com",
+const { events, send, cancel, status, gap } = useSession({
+  api: "/api/agent",
   sessionId: "case-42",
-  token: shortLivedToken,
   transport: "ws", // or "sse"
 });
 
 await send("check again", { author: "Ada", mode: "followUp" });
 ```
 
-WebSocket is bidirectional. SSE receives through `fetch` so it can send bearer
-headers; `send` uses `POST /sessions/:id/messages`. `cancel()` calls
-`DELETE /sessions/:id`. `reduceSessionEvent` and `SESSION_INITIAL_STATE` are
-exported for custom transports.
+Same rule as `useAgent`: `api` is a same-origin base path, and your routes proxy
+`GET /sessions/:id/events` (or the `/ws` upgrade), `POST /sessions/:id/messages`
+and `DELETE /sessions/:id` with the bearer attached. For WebSocket the proxy
+either adds `Authorization` on the upgrade or terminates the socket itself.
+
+On `sse`, `EventSource` reconnects and resumes from `Last-Event-ID`. On `ws` the
+hook reconnects instead — a browser socket does neither on its own — reopening
+after 250ms with `?lastEventId=<seq>`, which the server answers with exactly the
+span that was missed. A `cancel()` or an unmount stops that for good.
+
+`send` goes over the socket on `ws` and `POST /sessions/:id/messages` on `sse`.
+`cancel()` calls `DELETE /sessions/:id`, so it cancels the active run and drops
+the queue. `reduceSessionEvent` and `SESSION_INITIAL_STATE` are exported for
+custom transports.
+
+### A session `gap` is a hole, not a failure
+
+Resume from a sequence the server's bounded window no longer holds and it says
+so before it streams. `gap` becomes `true` and `lastGap` carries
+`{ requestedSeq, earliestSeq }`. It means **history before this point was
+evicted; the transcript is complete from here** — the server then sends the
+whole retained window and keeps streaming, so `status` stays live rather than
+going to `error`. Run journals remain the authority for what actually happened.
 
 ## `useAgent`: one run per `submit`, not a chat thread
 

@@ -136,3 +136,26 @@ test("session reducer reports terminal protocol errors without dropping evidence
   assert.equal(state.status, "error");
   assert.deepEqual(state.events, frames);
 });
+
+test("a gap marks the hole and keeps the session streaming", () => {
+  const opened = reduceSessionEvent(SESSION_INITIAL_STATE, { kind: "turn.start", seq: 40 });
+  const gapped = reduceSessionEvent(opened, {
+    error: "cave_serve_events_gap",
+    requestedSeq: 12,
+    earliestSeq: 40,
+  });
+
+  assert.equal(gapped.status, "streaming", "a gap is a hole above, not a dead session");
+  assert.equal(gapped.gap, true);
+  assert.deepEqual(gapped.lastGap, { requestedSeq: 12, earliestSeq: 40 });
+  assert.deepEqual(gapped.events, opened.events, "the notice is not a Pebble frame");
+
+  const after = reduceSessionEvent(gapped, { kind: "delta.text", text: "still here", seq: 41 });
+  assert.equal(after.events.length, 2, "the retained window keeps arriving");
+  assert.equal(after.gap, true, "the hole stays reported once it happened");
+  assert.equal(
+    reduceSessionEvent(after, { kind: "turn.end", stopReason: "end_turn", seq: 42 }).gap,
+    true,
+    "a terminal frame does not erase the hole above it",
+  );
+});

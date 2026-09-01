@@ -44,9 +44,11 @@ path.
 
 `react` owns one browser client for the event stream `@caveman-ai/agent/serve`
 emits, and nothing else: it holds no credential, opens no provider connection,
-and interprets the frozen Pebble event shapes rather than defining them. It
-depends on `react` as a peer and on no Caveman package at runtime, so installing
-core never installs React.
+and interprets the frozen Pebble event shapes rather than defining them. Both
+`useAgent` and `useSession` are token-free by construction — neither accepts a
+token or an absolute origin, so both can only reach a same-origin path the host
+app proxies with the bearer attached. It depends on `react` as a peer and on no
+Caveman package at runtime, so installing core never installs React.
 
 `pebble-protocol` owns only frozen public wire, event, and session contracts.
 Pebble runtime, policy, sessions, TUI, distribution, and conformance code live

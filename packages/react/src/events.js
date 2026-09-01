@@ -24,14 +24,28 @@ export const INITIAL_STATE = Object.freeze({
 export const SESSION_INITIAL_STATE = Object.freeze({
   events: [],
   status: "connecting",
+  /** True once the server reported history before this point was evicted. */
+  gap: false,
+  lastGap: null,
 });
 
 /** Append one Pebble frame while deriving only transport-level session status. */
 export function reduceSessionEvent(state, event) {
+  // Not a Pebble frame: the server saying the span this client asked to resume
+  // from had already fallen out of its bounded window. It then sends the whole
+  // retained window and keeps streaming, so the transcript is complete from
+  // here — a marked hole above, not a dead session. Never appended to `events`.
+  if (event.error === "cave_serve_events_gap") {
+    return {
+      ...state,
+      gap: true,
+      lastGap: { requestedSeq: event.requestedSeq, earliestSeq: event.earliestSeq },
+    };
+  }
   const events = [...state.events, event];
-  if (event.kind === "turn.start") return { events, status: "streaming" };
+  if (event.kind === "turn.start") return { ...state, events, status: "streaming" };
   if (event.kind === "turn.end") {
-    return { events, status: event.stopReason === "error" ? "error" : "complete" };
+    return { ...state, events, status: event.stopReason === "error" ? "error" : "complete" };
   }
   return { ...state, events };
 }

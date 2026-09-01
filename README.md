@@ -82,8 +82,8 @@ WS     /sessions/{id}/ws          → the same frames, bidirectional
 
 `createAgentHandler` from `@caveman-ai/agent/serve-handler` is the same server
 as a web-standard `fetch(Request)`, for Cloudflare Durable Objects, Deno, and
-Bun. In the browser, `useSession` from `@caveman-ai/react` speaks to it and
-never holds the token.
+Bun. In the browser, `useSession` from `@caveman-ai/react` speaks to it through
+a same-origin path your app proxies, and never holds the token.
 
 ## Keep the session (durable store)
 
