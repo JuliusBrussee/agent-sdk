@@ -2,13 +2,8 @@
   <img src="docs/assets/caveman-logo-banner.png" alt="Caveman" width="720">
 </p>
 
-<p align="center"><strong>Build agents that can work, remember, recover, and prove what they spent.</strong></p>
+<p align="center"><strong>The session kernel for agents.</strong></p>
 <p align="center"><strong>IN BETA</strong></p>
-<p align="center">
-  A TypeScript runtime and profile-guided compiler for tool-using agents.<br>
-  One SDK for programmatic tools, durable memory, typed compaction,<br>
-  budgets, receipts, crash recovery, eval-gated builds, and framework adapters.
-</p>
 
 <p align="center">
   <a href="#license"><img src="https://img.shields.io/badge/license-Apache--2.0-green?style=flat" alt="Apache-2.0"></a>
@@ -16,52 +11,159 @@
   <img src="https://img.shields.io/badge/savings-always_inferred-orange?style=flat" alt="local savings stay inferred">
 </p>
 
-<p align="center">
-  <a href="#quick-start">Quick start</a> ·
-  <a href="#one-tool-instead-of-a-wall-of-tools">Programmatic tools</a> ·
-  <a href="#memory-that-does-not-block-the-current-turn">Memory</a> ·
-  <a href="#compaction-that-preserves-commitments">Compaction</a> ·
-  <a href="#compile-against-evals-not-vibes">Compiler</a> ·
-  <a href="#receipts-budgets-and-durable-runs">Operations</a>
-</p>
-
 ---
 
-Most agent SDKs stop at model calls and tool loops. Caveman also owns context
-lifecycle and runtime evidence:
-
-- **Programmatic tools** collapse a large JSON tool surface into one bounded
-  `caveman_code` cell while every nested call still passes through canonical
-  validation, budgets, breakers, timeouts, aborts, and receipts.
-- **Durable memory** provides async next-turn recall, session search, explicit
-  remember/search tools, optional embeddings and graph traversal, reversible
-  consolidation, TTL, and tenant/agent/namespace isolation.
-- **Caveman Connect** exposes allowed provider data through one stable tool;
-  OAuth and credentials remain in `cave-connectd`, while exact paginated reads
-  fail closed instead of silently omitting context.
-- **Typed compaction** preserves current intent, exact critical commitments,
-  recent self-contained tool turns, and exact-recovery references under a
-  declared token or USD budget.
-- **Profile-guided builds** search candidate plans on development evals, freeze
-  a winner, and open untouched holdouts. Failed evals never produce a lock.
-- **Production controls** meter root and subagent calls into one receipt,
-  reserve priced calls before spend, retain partial receipts on failure, and
-  resume durable runs from journaled boundaries.
-
-All of this works without a Caveman account. In observe-only mode the SDK calls
-your provider directly. Optional local Caveman Engine integration can add
-recoverable transforms, but local execution never mints verified savings.
+Put your agent in it and it becomes durable, budgeted, resumable, multi-client,
+and able to run its tools anywhere. Your key, your provider, any sandbox. There
+is no account, no proxy, and no hosted service in the path: `@caveman-ai/agent`
+is a TypeScript runtime you install, and the first sample below runs on one API
+key and zero configuration.
 
 > **Development status:** this README documents current `main`, including
 > `@caveman-ai/agent` v0.2 source. That release is not yet published to npm;
 > registry installs may expose an older surface. Use this checkout when testing
 > capabilities described below.
 
-## Quick start
+```bash
+npm install @caveman-ai/agent      # Node 22.19+, one provider key
+```
 
-Requires Node.js 22.19+ and one supported provider credential.
+## Define
 
-### Try current repository source
+```ts
+import { agent, auto } from "@caveman-ai/agent";
+
+export const reviewer = agent({
+  id: "reviewer",
+  instructions: "Review the change. Name the root cause, not the symptom.",
+  model: auto(),
+});
+```
+
+`auto()` reads `CAVE_MODEL`, then `.caveman/provider.json`, then the credential
+in your environment. It never classifies a task and never routes on quality.
+
+## Run
+
+```ts
+import { run } from "@caveman-ai/agent";
+
+const result = await run(reviewer, "Why does the parser drop trailing commas?");
+console.log(result.text);
+console.log(result.receipt);      // per-call, per-tool, per-subagent spend
+```
+
+That is the whole zero-config path: one key, direct to your provider.
+
+## Serve sessions
+
+A session owns one conversation and one run controller. Messages that arrive
+while a run is active queue onto it instead of starting a second one, and every
+client attached to the session sees the same event stream.
+
+```ts
+import { createAgentServer } from "@caveman-ai/agent/serve";
+
+const server = createAgentServer({
+  definition: reviewer,
+  token: process.env.CAVE_SERVE_TOKEN!,   // ≥16 chars; this endpoint spends money
+});
+await server.listen(8080);
+```
+
+```text
+POST   /sessions                  → {sessionId}
+POST   /sessions/{id}/messages    → {runId, queued}   follow-up while a run is active
+GET    /sessions/{id}             → runs, active run, queue depth
+GET    /sessions/{id}/events      → Server-Sent Events, across every run
+DELETE /sessions/{id}             → cancel the active run, drop the queue
+WS     /sessions/{id}/ws          → the same frames, bidirectional
+```
+
+`createAgentHandler` from `@caveman-ai/agent/serve-handler` is the same server
+as a web-standard `fetch(Request)`, for Cloudflare Durable Objects, Deno, and
+Bun. In the browser, `useSession` from `@caveman-ai/react` speaks to it and
+never holds the token.
+
+## Keep the session (durable store)
+
+```ts
+import { SqlDurableStore } from "@caveman-ai/agent/durable";
+
+const store = new SqlDurableStore({
+  sql: { exec: (query, params) => db.prepare(query).all(...params) },
+  dialect: "sqlite",
+});
+```
+
+The whole database dependency is one method, so Durable Object SQLite,
+better-sqlite3, `node:sqlite`, and Postgres are all the same three lines.
+`ObjectDurableStore` does the same over S3/R2/GCS. Runs journal their call
+intent before network work, so a resumed run restores known spend and its
+execution boundary; a request in flight during a crash stays `unknown`, because
+the SDK cannot know whether the provider billed it.
+
+## Run the tools somewhere else (execution backend)
+
+```ts
+import { httpExecutionBackend } from "@caveman-ai/agent";
+import { createCodingAgent } from "@caveman-ai/agent/code";
+
+const coding = createCodingAgent({
+  workspace: process.cwd(),
+  executionBackend: httpExecutionBackend({ url: process.env.CAVE_EXEC_URL!, token }),
+});
+```
+
+Every tool that shells out or touches the workspace goes through the backend.
+The default is the local host, which is uncontained host execution and not
+isolation. The remote contract is a bearer token and three JSON endpoints
+(`/exec`, `/read`, `/write`), so any container, microVM, or sandbox provider
+satisfies it in about forty lines:
+[execution backends](./packages/agent/docs/execution-backend.md).
+
+## Budget
+
+```ts
+const result = await run(reviewer, input, {
+  budget: { maxUsd: 1.0, onExhausted: "compact" },
+});
+```
+
+Every priced call reserves its worst case before it leaves and settles measured
+public-catalog cost after. A model the catalog cannot price cannot be capped:
+under a USD budget such a call fails closed rather than consuming an imaginary
+`$0`. Token budgets use the same ledger. These are local controls, not provider
+invoices or platform quotas.
+
+## Modes
+
+The default is **direct**: your key, your provider, no proxy. The receipt value
+for that is `observe-only` — no transforms, no gateway telemetry, and no
+efficiency claim. `optimized` is optional and needs the local Caveman gateway;
+see [execution modes](./caveman-docs/concepts/execution-modes.md).
+
+## Going further
+
+- [Build against evals and lock a plan](#compile-against-evals-not-vibes) —
+  profile evals, candidate search, frozen holdouts, `.caveman/agent.lock.json`.
+- [Execution modes and the gateway](./caveman-docs/concepts/execution-modes.md) —
+  what `optimized` adds, and what it does not claim.
+- [Caveman Connect](./packages/agent/docs/connect.md) — provider data through
+  one stable tool, with pagination that refuses instead of omitting.
+- [Memory](#memory-that-does-not-block-current-turn) — next-turn recall, session
+  search, TTL, tenant isolation.
+- [Compaction](#compaction-that-preserves-commitments) — typed capsules that
+  preserve exact commitments under a declared budget.
+- [Programmatic tools](#one-tool-instead-of-a-wall-of-tools) — one bounded code
+  cell instead of a wall of JSON tools.
+- [Framework adapters](#framework-adapters) — observability for a native Pi,
+  Claude, Vercel AI SDK, Mastra, Eve, LangGraph, OpenAI Agents, Strands, or
+  Cloudflare Agents loop.
+- [Full documentation](./caveman-docs/README.md) — guides, concepts, and the
+  generated API reference for every published entrypoint.
+
+## Try this repository
 
 ```bash
 git clone https://github.com/JuliusBrussee/agent-sdk.git
@@ -72,52 +174,18 @@ npm ci --prefix examples/coding-agent --ignore-scripts
 npm test
 ```
 
-### Smallest agent
+Or scaffold a project — `--template background-agent` is the server-first
+session agent from this front door:
 
-```ts
-import { agent, auto, run } from "@caveman-ai/agent";
-
-const support = agent({
-  id: "support",
-  instructions: "Answer from policy. Never invent policy.",
-  model: auto(),
-});
-
-const result = await run(support, "Can I get a refund?");
-console.log(result.text);
-console.log(result.receipt);
+```bash
+npm create @caveman-ai/agent@latest my-agent -- --template background-agent
 ```
 
-`auto()` resolves explicit configuration; it does not silently classify tasks
-or invent a dynamic routing policy. A machine with Node and a provider key can
-run direct to the provider in `observe-only` mode: no transforms, no gateway
-telemetry, and no efficiency claim.
-
-Prefer filesystem-first authoring:
-
-```text
-support-bot/
-├── instructions.md
-├── agent.ts
-├── skills/
-│   ├── refund-policy.md
-│   └── shipping-claims.md
-├── tools/
-│   └── lookup_order.ts
-├── subagents/
-└── evals/
-    └── support.eval.ts
-```
-
-```ts
-import { loadAgentDir, run } from "@caveman-ai/agent";
-
-const support = await loadAgentDir("./support-bot");
-const result = await run(support, "Where is order A-123?");
-```
-
-Descriptions for filesystem skills enter stable context. Skill bodies stay on
-disk until invoked, so adding a large skill does not expand every request.
+Filesystem-first authoring works too: `instructions.md`, `agent.ts`, `tools/`,
+`skills/`, `subagents/`, and `evals/` in a directory, composed by
+`loadAgentDir()` into one ordinary `agent()` call. Skill descriptions enter
+stable context; skill bodies stay on disk until invoked, so adding a large
+skill does not expand every request.
 
 ## One tool instead of a wall of tools
 
@@ -314,8 +382,10 @@ npm install @caveman-ai/agent @caveman-ai/adapter-mastra @mastra/core@1.55.0
 npm install @caveman-ai/agent @caveman-ai/adapter-eve eve@0.29.2
 ```
 
-Repository includes lanes for Pi, Claude Agent SDK, Vercel AI SDK, Eve, and
-Mastra. Shared manifest validates exact capability and lifecycle metadata;
+Each one is an **observability adapter**: it records lifecycle and usage from a
+native framework loop and does not run a Caveman agent. Repository includes
+lanes for Pi, Claude Agent SDK, Vercel AI SDK, Eve, Mastra, LangGraph, OpenAI
+Agents, Strands, and Cloudflare Agents. Shared manifest validates exact capability and lifecycle metadata;
 registry performs discovery only. Candidate conformance never grants execution
 or mints release certification. Adapter presence never implies behavioral
 compiler support or live provider certification.
@@ -376,8 +446,9 @@ remain disabled.
 - `packages/adapters/*` — exact-pinned framework integrations.
 - `packages/coding-agent` — `@caveman-ai/coding-agent` and `caveman-code` CLI.
 - `packages/create-caveman-agent` — zero-runtime-dependency initializer.
-- `packages/react` — `@caveman-ai/react`, a `useAgent` hook over the server's
-  Server-Sent Events stream. Holds no token; talks to a route your app proxies.
+- `packages/react` — `@caveman-ai/react`, the `useAgent` and `useSession` hooks
+  over the server's event stream. Holds no token; talks to a route your app
+  proxies.
 - `packages/pebble-protocol` — frozen Apache-2.0 wire and session contract.
   Proprietary Pebble implementation lives outside this repository.
 - `packages/shared` — pinned wire schemas and provider-catalog snapshot used to

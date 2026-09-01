@@ -306,3 +306,56 @@ test("initializer rejects unknown options without writing target", async () => {
     await rm(root, { recursive: true, force: true });
   }
 });
+
+// The background-agent template is scaffolded non-interactively and then
+// typechecked against the repository's built @caveman-ai/agent declarations,
+// so a drifted export in server.ts/tools/ fails here instead of on a user's
+// first `npm run dev`.
+test("the background-agent template scaffolds and typechecks", async () => {
+  const repoRoot = resolve(packageRoot, "../..");
+  const agentPackage = resolve(repoRoot, "packages/agent");
+  const tsc = resolve(repoRoot, "node_modules/.bin/tsc");
+  if (!(await stat(resolve(agentPackage, "dist/index.d.ts")).catch(() => null))) {
+    return; // needs `npm run build:agent` first; the full suite builds before this
+  }
+  const root = await mkdtemp(`${tmpdir()}/create-caveman-agent-`);
+  const target = resolve(root, "background-agent");
+  try {
+    const result = await invoke(
+      [target, "--template", "background-agent", "--provider", "anthropic", "--no-install"],
+    );
+    assert.equal(result.code, 0, result.stderr);
+    assert.deepEqual(
+      await walkFiles(target),
+      [
+        ...await walkFiles(resolve(packageRoot, "templates/background-agent")),
+        ".caveman/provider.json",
+        ".gitignore",
+      ].sort(),
+    );
+    assert.match(await readFile(resolve(target, "package.json"), "utf8"), /"dev":|"doctor":/);
+
+    const { mkdir, symlink } = await import("node:fs/promises");
+    await mkdir(resolve(target, "node_modules/@caveman-ai"), { recursive: true });
+    await symlink(agentPackage, resolve(target, "node_modules/@caveman-ai/agent"), "dir");
+    await symlink(
+      resolve(repoRoot, "node_modules/@types"),
+      resolve(target, "node_modules/@types"),
+      "dir",
+    );
+    const typecheck = await new Promise((done) => {
+      const child = spawn(tsc, ["--noEmit", "--project", "tsconfig.json"], {
+        cwd: target,
+        env: { PATH: process.env.PATH },
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      const out = [];
+      child.stdout.on("data", (chunk) => out.push(chunk));
+      child.stderr.on("data", (chunk) => out.push(chunk));
+      child.once("close", (code) => done({ code, out: Buffer.concat(out).toString("utf8") }));
+    });
+    assert.equal(typecheck.code, 0, typecheck.out);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

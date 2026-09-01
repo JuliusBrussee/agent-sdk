@@ -24,15 +24,38 @@ const MODELS: Record<Provider, string> = {
   google: "google/gemini-2.5-flash",
 };
 
-// The exact model line templates/support-bot/agent.ts ships with; the
+// The exact model line every template's agent.ts ships with; the
 // single-point mutation below (like the package.json name field) swaps it
 // for the chosen provider's model. Rewriting fails closed if the template
 // line ever drifts from this constant.
 const TEMPLATE_MODEL_LINE = `  model: "${MODELS.anthropic}",`;
 
-const USAGE = "usage: npm create @caveman-ai/agent@latest <project> [--provider anthropic|openai|google] [--no-install]";
+const USAGE = "usage: npm create @caveman-ai/agent@latest <project> [--provider anthropic|openai|google] [--template support-bot|background-agent] [--no-install]";
 
-const TEMPLATE_DIR = fileURLToPath(new URL("../templates/support-bot", import.meta.url));
+type Template = "support-bot" | "background-agent";
+
+// Each template's agent.ts carries TEMPLATE_MODEL_LINE, so the model rewrite
+// below is one code path for both.
+const TEMPLATES: Record<Template, { nextSteps: readonly string[]; ignore?: string }> = {
+  "support-bot": {
+    nextSteps: [
+      "npm run ticket -- tickets/refund-request.md",
+      "review evals/support.eval.ts, then npm run build (all declared evals run within budget)",
+    ],
+  },
+  "background-agent": {
+    // The session journal holds conversation content; it is never committed.
+    ignore: ".caveman/sessions.db*\n",
+    nextSteps: [
+      "export CAVE_SERVE_TOKEN=$(openssl rand -hex 24)",
+      "npm run dev",
+      "read README.md for the session curl flow and the sandbox shim",
+    ],
+  },
+};
+
+const templateDir = (template: Template): string =>
+  fileURLToPath(new URL(`../templates/${template}`, import.meta.url));
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
@@ -46,9 +69,10 @@ async function main(): Promise<void> {
   const name = safeName(basename(target));
   await assertAbsent(target);
   const provider = await chooseProvider(parsed.provider);
+  const template = parsed.template;
   const temporary = resolve(dirname(target), `.${basename(target)}.${process.pid}.${crypto.randomUUID()}.tmp`);
   try {
-    await cp(TEMPLATE_DIR, temporary, { recursive: true });
+    await cp(templateDir(template), temporary, { recursive: true });
     const manifestPath = resolve(temporary, "package.json");
     const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as Record<string, unknown>;
     manifest.name = name;
@@ -57,7 +81,7 @@ async function main(): Promise<void> {
     await mkdir(resolve(temporary, ".caveman"), { recursive: true });
     const generated: Record<string, string> = {
       ".caveman/provider.json": `${JSON.stringify({ provider, model: MODELS[provider] }, null, 2)}\n`,
-      ".gitignore": "node_modules/\n.caveman/traces/\n.caveman/agent-dir-entry.mjs\n.caveman/workload-profile.json\n.env*\n",
+      ".gitignore": `node_modules/\n.caveman/traces/\n.caveman/agent-dir-entry.mjs\n.caveman/workload-profile.json\n.env*\n${TEMPLATES[template].ignore ?? ""}`,
     };
     for (const [path, content] of Object.entries(generated)) {
       await writeFile(resolve(temporary, path), content, { flag: "wx", mode: 0o600 });
@@ -69,12 +93,11 @@ async function main(): Promise<void> {
     throw error;
   }
   process.stdout.write([
-    `created ${name}`,
+    `created ${name} (${template})`,
     `provider ${provider} (${MODELS[provider]})`,
     `cd ${targetArg}`,
     ...(parsed.install ? [] : ["npm install"]),
-    "npm run ticket -- tickets/refund-request.md",
-    "review evals/support.eval.ts, then npm run build (all declared evals run within budget)",
+    ...TEMPLATES[template].nextSteps,
     "",
   ].join("\n"));
 }
@@ -82,9 +105,11 @@ async function main(): Promise<void> {
 function parseArgs(args: string[]): {
   target: string;
   provider?: string;
+  template: Template;
   install: boolean;
 } {
   let provider: string | undefined;
+  let template: Template = "support-bot";
   let install = true;
   const positional: string[] = [];
   for (let index = 0; index < args.length; index++) {
@@ -93,6 +118,14 @@ function parseArgs(args: string[]): {
       const candidate = args[++index];
       if (!candidate || candidate.startsWith("--")) throw new Error("--provider requires a value");
       provider = candidate;
+      continue;
+    }
+    if (value === "--template") {
+      const candidate = args[++index];
+      if (candidate !== "support-bot" && candidate !== "background-agent") {
+        throw new Error("--template requires support-bot or background-agent");
+      }
+      template = candidate;
       continue;
     }
     if (value === "--no-install") {
@@ -110,6 +143,7 @@ function parseArgs(args: string[]): {
   return {
     target: positional[0]!,
     ...(provider === undefined ? {} : { provider }),
+    template,
     install,
   };
 }

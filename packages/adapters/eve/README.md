@@ -1,5 +1,8 @@
 # `@caveman-ai/adapter-eve`
 
+**Observability adapter.** Records lifecycle and usage from a native Eve loop;
+it does not run a Caveman agent.
+
 Exact-pinned Caveman adapter for `eve@0.29.2` `ClientSession`. Requires Node 24+.
 
 ```bash

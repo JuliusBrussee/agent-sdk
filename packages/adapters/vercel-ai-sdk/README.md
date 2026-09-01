@@ -1,5 +1,8 @@
 # `@caveman-ai/adapter-vercel-ai-sdk`
 
+**Observability adapter.** Records lifecycle and usage from a native Vercel AI
+SDK loop; it does not run a Caveman agent.
+
 Native, exact-pinned adapter for `ai@7.0.84`. Vercel keeps its model, agent
 loop, retries, tools, aborts, and streams. Adapter adds no proxy or replacement
 runner.

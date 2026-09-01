@@ -1,5 +1,8 @@
 # `@caveman-ai/adapter-strands-agents`
 
+**Observability adapter.** Records lifecycle and usage from a native Strands
+loop; it does not run a Caveman agent.
+
 Native Caveman adapter for `@strands-agents/sdk@1.15.0`. It installs one
 structural Strands plugin with one `InvokeModelStage.Wrap` middleware. Strands
 keeps ownership of its model router, provider call, retry loop, tools, stream,

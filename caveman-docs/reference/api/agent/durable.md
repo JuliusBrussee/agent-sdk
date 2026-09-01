@@ -7,8 +7,8 @@ Declaration file: `packages/agent/dist/durable.d.ts`.
 
 <details><summary>Symbol index</summary>
 
-- **Class**: `DiskDurableStore`, `DurableJournal`, `DurableToolCoordinator`, `HttpDurableStore`
-- **Interface**: `CallAbandonedEvent`, `CallSettledEvent`, `CallStartedEvent`, `CancelRequestedEvent`, `DurableConversationCheckpoint`, `DurableEncodedToolValue`, `DurablePriorTotals`, `DurableReplayTool`, `DurableResumeState`, `DurableRunOptions`, `DurableStore`, `DurableToolError`, `DurableToolInvocation`, `HttpDurableStoreOptions`, `JournaledCallUsage`, `MeterCallEvent`, `ResumedEvent`, `RunCompletedEvent`, `RunFailedEvent`, `RunStartedEvent`, `SleepScheduledEvent`, `SnapshotEvent`, `ToolIntentEvent`, `ToolSettledEvent`, `TrancheEvent`, `TurnEvent`
+- **Class**: `DiskDurableStore`, `DurableJournal`, `DurableToolCoordinator`, `HttpDurableStore`, `ObjectDurableStore`, `SqlDurableStore`
+- **Interface**: `CallAbandonedEvent`, `CallSettledEvent`, `CallStartedEvent`, `CancelRequestedEvent`, `DurableConversationCheckpoint`, `DurableEncodedToolValue`, `DurablePriorTotals`, `DurableReplayTool`, `DurableResumeState`, `DurableRunOptions`, `DurableStore`, `DurableToolError`, `DurableToolInvocation`, `HttpDurableStoreOptions`, `JournaledCallUsage`, `MeterCallEvent`, `ObjectDurableStoreOptions`, `ObjectStorage`, `ResumedEvent`, `RunCompletedEvent`, `RunFailedEvent`, `RunStartedEvent`, `SleepScheduledEvent`, `SnapshotEvent`, `SqlDurableStoreOptions`, `SqlExecutor`, `ToolIntentEvent`, `ToolSettledEvent`, `TrancheEvent`, `TurnEvent`
 - **Type alias**: `DurableCancelOutcome`, `DurableJournalEvent`, `DurableJournalState`, `DurableRunSummary`, `DurableSleepOutcome`, `DurableToolEffect`
 - **Function**: `analyzeJournal`, `durableCancelRequest`, `durableConversationCheckpoint`, `durableConversationMessagesSHA256`, `durableInputIsReplayable`, `durableRunIsDue`, `durableRunSummary`, `durableToolArgsSHA256`, `durableToolIdempotencyKey`, `nextDurableWake`, `requestDurableCancel`, `scheduleDurableWake`, `settleCancelledRun`, `validateDurableRunId`, `validateReplayReceipt`, `validateReplayResult`
 - **Variable**: `DURABLE_CANCELLED_CODE`, `DURABLE_JOURNAL_VERSION`, `MAX_DURABLE_SLEEP_MS`, `MULTIMODAL_DURABLE_INPUT_PREFIX`
@@ -138,6 +138,67 @@ export declare class HttpDurableStore implements DurableStore {
 ```
 
 Declared in `packages/agent/dist/durable-stores.d.ts`.
+
+### `ObjectDurableStore`
+
+```ts
+export declare class ObjectDurableStore implements DurableStore {
+    private readonly storage;
+    private readonly prefix;
+    private readonly conditionalPut;
+    private readonly leaseTtlMs;
+    private readonly nextChunk;
+    private readonly leases;
+    private readonly lost;
+    constructor(options: ObjectDurableStoreOptions);
+    private journalPrefix;
+    private leasePrefix;
+    load(runId: string): Promise<readonly string[]>;
+    append(runId: string, data: string): Promise<void>;
+    acquire(runId: string): Promise<() => Promise<void>>;
+    private readLease;
+    private putLease;
+    /** Losing the lease poisons the run rather than risking two drivers. */
+    private renew;
+    close(runId: string): Promise<void>;
+    list(): Promise<readonly string[]>;
+}
+```
+
+Declared in `packages/agent/dist/durable-object-store.d.ts`.
+
+### `SqlDurableStore`
+
+```ts
+export declare class SqlDurableStore implements DurableStore {
+    private readonly sql;
+    private readonly dialect;
+    private readonly table;
+    private readonly leaseTable;
+    private readonly leaseTtlMs;
+    private readonly leases;
+    private readonly lost;
+    constructor(options: SqlDurableStoreOptions);
+    /** DDL for the two tables this store reads and writes. Run it once. */
+    static schema(dialect: "sqlite" | "postgres", table?: string): string;
+    /** `?` is the written grammar; postgres gets `$1…$n` on the way out. */
+    private query;
+    load(runId: string): Promise<readonly string[]>;
+    /**
+     * One row per journal line. A row is the atomic unit here, which is the SQL
+     * equivalent of the disk store's torn-tail rule: a crash mid-append leaves
+     * whole lines, never half of one.
+     */
+    append(runId: string, data: string): Promise<void>;
+    acquire(runId: string): Promise<() => Promise<void>>;
+    /** Losing the lease poisons the run rather than risking two drivers. */
+    private renew;
+    close(runId: string): Promise<void>;
+    list(): Promise<readonly string[]>;
+}
+```
+
+Declared in `packages/agent/dist/durable-sql-store.d.ts`.
 
 ## Interfaces
 
@@ -452,6 +513,40 @@ export interface MeterCallEvent extends JournalEventBase {
 
 Declared in `packages/agent/dist/durable.d.ts`.
 
+### `ObjectDurableStoreOptions`
+
+```ts
+export interface ObjectDurableStoreOptions {
+    readonly storage: ObjectStorage;
+    /** Key namespace. Default `caveman/durable/`. */
+    readonly prefix?: string;
+    /** Declare that `storage.put` honors `ifMatch: ""` as create-if-absent. */
+    readonly conditionalPut?: boolean;
+    /** Lease length; the holder renews at a third of it. Default 30s. */
+    readonly leaseTtlMs?: number;
+}
+```
+
+Declared in `packages/agent/dist/durable-object-store.d.ts`.
+
+### `ObjectStorage`
+
+```ts
+export interface ObjectStorage {
+    get(key: string): Promise<Uint8Array | undefined>;
+    /**
+     * `opts.ifMatch === ""` must create the object only if the key is absent and
+     * reject (throw) otherwise. Any other value is never passed by this store.
+     */
+    put(key: string, data: Uint8Array, opts?: {
+        ifMatch?: string;
+    }): Promise<void>;
+    list(prefix: string): Promise<readonly string[]>;
+}
+```
+
+Declared in `packages/agent/dist/durable-object-store.d.ts`.
+
 ### `ResumedEvent`
 
 ```ts
@@ -554,6 +649,34 @@ export interface SnapshotEvent extends JournalEventBase {
 ```
 
 Declared in `packages/agent/dist/durable.d.ts`.
+
+### `SqlDurableStoreOptions`
+
+```ts
+export interface SqlDurableStoreOptions {
+    readonly sql: SqlExecutor;
+    /** Placeholder grammar: `?` for sqlite, `$1…$n` for postgres. */
+    readonly dialect: "sqlite" | "postgres";
+    /** Journal table. The lease table is `<table>_leases`. */
+    readonly table?: string;
+    /** Lease length; the holder renews at a third of it. Default 30s. */
+    readonly leaseTtlMs?: number;
+}
+```
+
+Declared in `packages/agent/dist/durable-sql-store.d.ts`.
+
+### `SqlExecutor`
+
+One method, because that is all every SQL driver already agrees on.
+
+```ts
+export interface SqlExecutor {
+    exec(sql: string, params: readonly unknown[]): Promise<ReadonlyArray<Record<string, unknown>>> | ReadonlyArray<Record<string, unknown>>;
+}
+```
+
+Declared in `packages/agent/dist/durable-sql-store.d.ts`.
 
 ### `ToolIntentEvent`
 
