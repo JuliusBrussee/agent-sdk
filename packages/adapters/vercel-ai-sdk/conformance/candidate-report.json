@@ -26,7 +26,7 @@
       "role": "adapter",
       "name": "@caveman-ai/adapter-vercel-ai-sdk",
       "version": "0.1.0",
-      "sha256": "a71aeb657cec4ef8bf2e56afb60706329fcf38443346be2eaf1c5e04d114d160"
+      "sha256": "1b3c84429af184535fc0679f0d462ad4524fee29430d6615082d8a7621b85dde"
     },
     {
       "role": "upstream",
@@ -309,7 +309,7 @@
         "value": 100
       },
       "sampleCount": 2000,
-      "observed": 15.792,
+      "observed": 12.75,
       "status": "passed",
       "code": null
     },
@@ -363,7 +363,7 @@
         "value": 100
       },
       "sampleCount": 2000,
-      "observed": 12.708,
+      "observed": 10.917,
       "status": "passed",
       "code": null
     },
@@ -381,7 +381,7 @@
         "value": 100
       },
       "sampleCount": 2000,
-      "observed": 6.959,
+      "observed": 5.625,
       "status": "passed",
       "code": null
     },
@@ -423,5 +423,5 @@
       "total": 6
     }
   },
-  "reportDigest": "sha256:8efd7e85d26ded3ada768050d24596990dc3cfb25adf5770cda080be22bdff96"
+  "reportDigest": "sha256:0922971bcb3e0f3dffffa3cd20de2b43b25f68c59397eaef77ff7c40b4e685db"
 }

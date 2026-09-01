@@ -26,7 +26,7 @@
       "role": "adapter",
       "name": "@caveman-ai/adapter-cloudflare-agents",
       "version": "0.1.0",
-      "sha256": "db1f2222383196d0fb1473c0d843aa1e68698bd6119238568ef5c9fb59f21320"
+      "sha256": "be5285333aa8e1650b7adb7f3b8dc73dcccf9c29e77ce33c6fb6a6f36d81cb2d"
     },
     {
       "role": "upstream",
@@ -91,7 +91,7 @@
         "value": 100
       },
       "sampleCount": 2000,
-      "observed": 8.166,
+      "observed": 14.709,
       "status": "passed",
       "code": null
     }
@@ -115,5 +115,5 @@
       "total": 1
     }
   },
-  "reportDigest": "sha256:c271c9ba06ed36affebe2c2029f9baefef6cfd2d6a3f94c480734767ed19c780"
+  "reportDigest": "sha256:aa24d26d840a634062074efdfcbf349dcc76ebb5d4ece134d6ff27bc1209529a"
 }
