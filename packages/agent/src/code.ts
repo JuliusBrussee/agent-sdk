@@ -14,12 +14,10 @@
  * - Live coding sessions are never lock-eligible; `compile` refuses host mode
  *   so nothing a session does can become a Cave Build.
  */
-import { spawn } from "node:child_process";
 import { isUtf8 } from "node:buffer";
 import { randomUUID } from "node:crypto";
-import { readFile, realpath, stat, writeFile } from "node:fs/promises";
 import { createInterface } from "node:readline/promises";
-import { basename, dirname, isAbsolute, relative, resolve } from "node:path";
+import { isAbsolute, relative, resolve } from "node:path";
 import type { Readable, Writable } from "node:stream";
 import type { TurnEvent } from "@pebble-agent/protocol";
 import type { Api, CacheRetention, Model, Models } from "@earendil-works/pi-ai";
@@ -62,7 +60,12 @@ import {
   type CommandSessionSpillOptions,
   type CommandSessionSummary,
 } from "./command-session.js";
-import { hostShellInvocation, killProcessTree, portableInvocation } from "./portable-process.js";
+import {
+  localExecutionBackend,
+  type ExecResult,
+  type ExecutionBackend,
+} from "./execution-backend.js";
+import { hostShellInvocation } from "./portable-process.js";
 import {
   createConversation,
   AgentRunController,
@@ -243,6 +246,10 @@ export interface CodingAgentOptions {
   speculativeToolCalls?: boolean;
   /** Optional bounded disk retention for command output evicted from memory. */
   commandSessionSpill?: CommandSessionSpillOptions;
+  /** Interactive bash sessions. Defaults on locally and off for non-local backends. */
+  commandSessions?: boolean;
+  /** Workspace and process execution. Defaults to the local host backend. */
+  executionBackend?: ExecutionBackend;
   /** Trusted product adapters applied before direct/programmatic tool finalization. */
   definitionTransforms?: readonly AgentDefinitionTransform[];
   /** Provider-visible composite tool name. Product wrappers may brand it; default `caveman_code`. */
@@ -346,6 +353,7 @@ export function defaultCodingPlan(modelID: string, namespace: string): CavePlan 
 
 export function createCodingAgent(options: CodingAgentOptions = {}): CodingAgent {
   const workspace = resolve(options.workspace ?? process.cwd());
+  const executionBackend = options.executionBackend ?? localExecutionBackend();
   const id = options.id ?? "caveman-code";
   const modelID = resolveCodingModelID(options.model);
   const toolSet = options.toolSet ?? "full";
@@ -361,17 +369,27 @@ export function createCodingAgent(options: CodingAgentOptions = {}): CodingAgent
     samples.sort((left, right) => right.text.length - left.text.length);
     samples.length = Math.min(samples.length, MAX_SAMPLES);
   };
-  const commandSessions = createCommandSessionRuntime({
-    maxSessions: BASH_SESSION_MAX_SESSIONS,
-    maxOutputBytes: PROCESS_CAPTURE_MAX_BYTES,
-    maxReadBytes: BASH_SESSION_READ_CHUNK_BYTES,
-    maxInputBytes: BASH_SESSION_MAX_INPUT_BYTES,
-    maxTimeoutMs: BASH_TIMEOUT_MS,
-    maxWaitMs: BASH_SESSION_MAX_WAIT_MS,
-    ...(options.commandSessionSpill === undefined
-      ? {}
-      : { spill: options.commandSessionSpill }),
-  });
+  const localBackend = localBackendInternals(executionBackend) !== undefined;
+  const commandSessionsEnabled = options.commandSessions ?? localBackend;
+  if (!localBackend &&
+      (commandSessionsEnabled || options.commandSessionSpill !== undefined)) {
+    throw new Error("cave_execution_backend_command_sessions_local_only");
+  }
+  if (!commandSessionsEnabled && options.commandSessionSpill !== undefined)
+    throw new Error("cave_execution_backend_command_sessions_disabled");
+  const commandSessions = commandSessionsEnabled
+    ? createCommandSessionRuntime({
+      maxSessions: BASH_SESSION_MAX_SESSIONS,
+      maxOutputBytes: PROCESS_CAPTURE_MAX_BYTES,
+      maxReadBytes: BASH_SESSION_READ_CHUNK_BYTES,
+      maxInputBytes: BASH_SESSION_MAX_INPUT_BYTES,
+      maxTimeoutMs: BASH_TIMEOUT_MS,
+      maxWaitMs: BASH_SESSION_MAX_WAIT_MS,
+      ...(options.commandSessionSpill === undefined
+        ? {}
+        : { spill: options.commandSessionSpill }),
+    })
+    : undefined;
   const baseDefinition = agent({
     id,
     instructions: options.instructions === undefined
@@ -388,7 +406,7 @@ export function createCodingAgent(options: CodingAgentOptions = {}): CodingAgent
             ? defineMemory({ namespace: id })
             : options.memory,
         }),
-    tools: codingTools(workspace, caps, record, toolSet, commandSessions),
+    tools: codingTools(workspace, caps, record, toolSet, executionBackend, commandSessions),
   });
   const directDefinition = applyAgentDefinitionTransforms(
     baseDefinition,
@@ -407,7 +425,7 @@ export function createCodingAgent(options: CodingAgentOptions = {}): CodingAgent
     try {
       await programmaticTools?.close();
     } finally {
-      await commandSessions.close();
+      await commandSessions?.close();
     }
   })());
   return Object.freeze({
@@ -432,7 +450,8 @@ function codingTools(
   caps: typeof CODING_TOOL_OUTPUT_CAPS,
   record: (label: string, text: string) => void,
   toolSet: CodingToolSet,
-  commandSessions: CommandSessionRuntime,
+  executionBackend: ExecutionBackend,
+  commandSessions: CommandSessionRuntime | undefined,
 ): ToolDefinition[] {
   const storedOutputs = new ToolOutputStore();
   // The workspace is canonicalized once, then every candidate path is
@@ -440,9 +459,12 @@ function codingTools(
   // than strings. Resolved lazily because the directory need not exist yet when
   // the agent is built.
   let canonicalWorkspace: Promise<string> | undefined;
-  const workspaceRoot = () => (canonicalWorkspace ??= realpath(workspace));
+  const workspaceRoot = () => (canonicalWorkspace ??= backendWorkspaceRoot(
+    executionBackend,
+    workspace,
+  ));
   const contained = async (candidate: string) =>
-    containedPath(await workspaceRoot(), candidate);
+    backendContainedPath(executionBackend, await workspaceRoot(), candidate);
 
   const readFileTool = tool({
     name: "read_file",
@@ -463,9 +485,10 @@ function codingTools(
     timeoutMs: READ_TIMEOUT_MS,
     async execute(input) {
       const target = await contained(input.path);
-      const info = await stat(target);
-      if (!info.isFile()) throw new Error(`caveman-code: not a file: ${input.path}`);
-      const content = await readFile(target, "utf8");
+      if (!await backendIsFile(executionBackend, target)) {
+        throw new Error(`caveman-code: not a file: ${input.path}`);
+      }
+      const content = Buffer.from(await executionBackend.readFile(target)).toString("utf8");
       const lines = content.split("\n");
       const offset = Math.max(1, input.offset ?? 1);
       const limit = input.limit === undefined ? lines.length : Math.max(1, input.limit);
@@ -510,9 +533,11 @@ function codingTools(
         ...(input.glob === undefined ? [] : ["--glob", input.glob]),
         "--regexp", input.pattern, "--", relativeScope,
       ];
-      let run = await runProcess("rg", ripgrep, root, READ_TIMEOUT_MS, signal);
+      let run = await runBackendProcess(
+        executionBackend, "rg", ripgrep, root, READ_TIMEOUT_MS, signal,
+      );
       if (run.spawnFailed) {
-        run = await runProcess("grep", [
+        run = await runBackendProcess(executionBackend, "grep", [
           "-rnI", "-m", String(GREP_MAX_MATCHES), "-E", "-e", input.pattern, "--", relativeScope,
         ], root, READ_TIMEOUT_MS, signal);
       }
@@ -531,63 +556,91 @@ function codingTools(
     },
   });
 
+  const bashInput = commandSessions === undefined
+    ? schema.object({ command: schema.string(), timeoutMs: schema.optional(schema.integer()) })
+    : schema.union([
+      schema.object({
+        command: schema.string(), timeoutMs: schema.optional(schema.integer()),
+        yieldTimeMs: schema.optional(schema.integer()),
+      }),
+      schema.object({ action: schema.literal("list") }),
+      schema.object({
+        sessionId: schema.string(), action: schema.literal("read"),
+        cursor: schema.optional(schema.integer()), query: schema.optional(schema.string()),
+        limit: schema.optional(schema.integer()), waitMs: schema.optional(schema.integer()),
+      }),
+      schema.object({
+        sessionId: schema.string(), action: schema.literal("write"), input: schema.string(),
+        closeStdin: schema.optional(schema.boolean()),
+        cursor: schema.optional(schema.integer()), limit: schema.optional(schema.integer()),
+        waitMs: schema.optional(schema.integer()),
+      }),
+      schema.object({
+        sessionId: schema.string(), action: schema.literal("kill"),
+        cursor: schema.optional(schema.integer()), limit: schema.optional(schema.integer()),
+      }),
+    ]);
   const bashTool = tool({
     name: "bash",
-    description:
-      "Run shell command in the workspace and return combined stdout/stderr. " +
+    description: commandSessions === undefined
+      ? `Run one shell command in the workspace; hard timeout ${BASH_TIMEOUT_MS} ms; ` +
+        `output capped at ${caps.bash} bytes. Interactive sessions are unavailable.`
+      : "Run shell command in the workspace and return combined stdout/stderr. " +
       "Set yieldTimeMs to keep a still-running command as an inspectable session. " +
       "List sessions; read pages or use query + waitMs for literal output, write resumes " +
       "stdin or closes it for EOF, and kill stops one. Cursors never rerun commands. " +
       `Hard timeout is ${BASH_TIMEOUT_MS} ms; output is capped at ${caps.bash} bytes.`,
-    input: schema.union([
-      schema.object({
-        command: schema.string(),
-        timeoutMs: schema.optional(schema.integer()),
-        yieldTimeMs: schema.optional(schema.integer()),
-      }),
-      schema.object({
-        action: schema.literal("list"),
-      }),
-      schema.object({
-        sessionId: schema.string(),
-        action: schema.literal("read"),
-        cursor: schema.optional(schema.integer()),
-        query: schema.optional(schema.string()),
-        limit: schema.optional(schema.integer()),
-        waitMs: schema.optional(schema.integer()),
-      }),
-      schema.object({
-        sessionId: schema.string(),
-        action: schema.literal("write"),
-        input: schema.string(),
-        closeStdin: schema.optional(schema.boolean()),
-        cursor: schema.optional(schema.integer()),
-        limit: schema.optional(schema.integer()),
-        waitMs: schema.optional(schema.integer()),
-      }),
-      schema.object({
-        sessionId: schema.string(),
-        action: schema.literal("kill"),
-        cursor: schema.optional(schema.integer()),
-        limit: schema.optional(schema.integer()),
-      }),
-    ]),
+    input: bashInput,
     effect: "external",
     result: "inline",
     timeoutMs: BASH_TIMEOUT_MS,
     async execute(input, signal) {
       if ("command" in input) {
         const timeoutMs = Math.min(input.timeoutMs ?? BASH_TIMEOUT_MS, BASH_TIMEOUT_MS);
-        const yieldTimeMs = input.yieldTimeMs;
+        const yieldTimeMs = "yieldTimeMs" in input ? input.yieldTimeMs : undefined;
         validateBashWait(yieldTimeMs, "yieldTimeMs");
-        const shell = hostShellInvocation(input.command, process.platform, buildCodingProcessEnv());
+        const env = buildCodingProcessEnv();
+        const shell = localBackendInternals(executionBackend) !== undefined
+          ? hostShellInvocation(input.command, process.platform, env)
+          : { command: "sh", args: ["-lc", input.command] as readonly string[] };
+        if (commandSessions === undefined) {
+          if (yieldTimeMs !== undefined) {
+            throw new Error("cave_execution_backend_command_sessions_local_only");
+          }
+          const run = await executionBackend.exec({
+            command: shell.command,
+            args: shell.args,
+            cwd: await workspaceRoot(),
+            env,
+            timeoutMs,
+            maxOutputBytes: PROCESS_CAPTURE_MAX_BYTES,
+            ...(signal === undefined ? {} : { signal }),
+          });
+          if (run.code === null && run.stderr.startsWith("cave_execution_backend_spawn_failed:")) {
+            throw new Error("caveman-code: host command shell is not available");
+          }
+          const status = run.timedOut ? `exit timeout after ${timeoutMs}ms` : `exit ${run.code}`;
+          const output = `${run.stdout}${run.stderr}`.trim() === ""
+            ? "(no output)"
+            : `${run.stdout}${run.stderr}`;
+          const text = `${status}\n${capToolOutput({
+            text: output,
+            maxBytes: Math.max(1, caps.bash - Buffer.byteLength(`${status}\n`, "utf8")),
+            direction: "tail",
+            ...(toolSet === "full" ? { store: storedOutputs } : {}),
+            label: `bash:${input.command.slice(0, 60)}`,
+            complete: !run.truncated,
+          })}`;
+          record(`bash:${input.command.slice(0, 60)}`, text);
+          return text;
+        }
         let started;
         try {
           started = await commandSessions.start({
             command: shell.command,
             args: shell.args,
             cwd: await workspaceRoot(),
-            env: buildCodingProcessEnv(),
+            env,
             stdin: yieldTimeMs === undefined ? "closed" : "pipe",
             timeoutMs,
             ...(signal === undefined ? {} : { signal }),
@@ -672,6 +725,9 @@ function codingTools(
         return text;
       }
 
+      if (commandSessions === undefined) {
+        throw new Error("cave_execution_backend_command_sessions_local_only");
+      }
       if (input.action === "list") {
         const text = formatCommandSessionList(commandSessions.list(), caps.bash);
         record("bash:list", text);
@@ -731,10 +787,12 @@ function codingTools(
     timeoutMs: READ_TIMEOUT_MS,
     async execute(input) {
       const target = await contained(input.path);
-      await writeFile(target, input.content, {
-        encoding: "utf8",
-        flag: input.overwrite === true ? "w" : "wx",
-      });
+      await backendWriteFile(
+        executionBackend,
+        target,
+        Buffer.from(input.content, "utf8"),
+        input.overwrite !== true,
+      );
       return capOutput(
         `wrote ${input.path}: ${Buffer.byteLength(input.content, "utf8")} bytes`,
         caps.write_file,
@@ -761,7 +819,7 @@ function codingTools(
         throw new Error("caveman-code: old_string and new_string are identical");
       }
       const target = await contained(input.path);
-      const content = await readFile(target, "utf8");
+      const content = Buffer.from(await executionBackend.readFile(target)).toString("utf8");
       const occurrences = content.split(input.old_string).length - 1;
       if (occurrences === 0) {
         throw new Error(`caveman-code: old_string not found in ${input.path}`);
@@ -778,7 +836,7 @@ function codingTools(
       // corrupt the file. The non-replace_all branch is guaranteed exactly one
       // occurrence above, so joining replaces precisely that one.
       const updated = content.split(input.old_string).join(input.new_string);
-      await writeFile(target, updated, "utf8");
+      await executionBackend.writeFile(target, Buffer.from(updated, "utf8"));
       const replaced = input.replace_all === true ? occurrences : 1;
       return capOutput(
         `edited ${input.path}: ${replaced} replacement${replaced === 1 ? "" : "s"}`,
@@ -1035,48 +1093,64 @@ function formatCommandSessionList(
   ].join("\n"), outputCap);
 }
 
-/**
- * Resolve a caller path against the canonical workspace and refuse anything
- * that lands outside it.
- *
- * A lexical prefix check is not containment: a symlink inside the workspace
- * pointing anywhere on the filesystem passes it. Both sides are canonicalized
- * first, matching how `stageSandboxSourceGraph` decides the same question.
- */
-async function containedPath(canonicalWorkspace: string, candidate: string): Promise<string> {
-  const full = await canonicalizePath(resolve(canonicalWorkspace, candidate));
-  if (escapesRoot(relative(canonicalWorkspace, full))) {
+const LOCAL_BACKEND_INTERNALS = Symbol.for("@caveman-ai/agent/execution-backend-local-internals");
+type LocalBackendInternals = {
+  resolvePath(workspace: string, candidate: string): Promise<string>;
+  isFile(path: string): Promise<boolean>;
+  writeFile(path: string, data: Uint8Array, exclusive: boolean): Promise<void>;
+};
+function localBackendInternals(backend: ExecutionBackend): LocalBackendInternals | undefined {
+  return (backend as ExecutionBackend & {
+    [LOCAL_BACKEND_INTERNALS]?: LocalBackendInternals;
+  })[LOCAL_BACKEND_INTERNALS];
+}
+function backendWorkspaceRoot(backend: ExecutionBackend, workspace: string): Promise<string> {
+  const internals = localBackendInternals(backend);
+  return internals === undefined
+    ? Promise.resolve(resolve(workspace))
+    : internals.resolvePath(workspace, ".");
+}
+async function backendContainedPath(
+  backend: ExecutionBackend,
+  workspace: string,
+  candidate: string,
+): Promise<string> {
+  const internals = localBackendInternals(backend);
+  if (internals !== undefined) return internals.resolvePath(workspace, candidate);
+  const target = resolve(workspace, candidate);
+  const path = relative(workspace, target);
+  if (path === ".." || path.startsWith("../") || path.startsWith("..\\") || isAbsolute(path)) {
     throw new Error(`caveman-code: path escapes the workspace: ${candidate}`);
   }
-  return full;
+  return target;
 }
-
-function escapesRoot(path: string): boolean {
-  return path === ".." || path.startsWith("../") || path.startsWith("..\\") || isAbsolute(path);
+async function backendIsFile(backend: ExecutionBackend, path: string): Promise<boolean> {
+  return await localBackendInternals(backend)?.isFile(path) ?? true;
 }
-
-/**
- * `realpath` for a path whose leaf may not exist yet (a file `edit_file` is
- * about to create): canonicalize the deepest existing ancestor and re-attach
- * the missing tail, so every symlink on the existing part is still resolved.
- */
-async function canonicalizePath(target: string): Promise<string> {
-  const missing: string[] = [];
-  let current = target;
-  for (;;) {
+async function backendWriteFile(
+  backend: ExecutionBackend,
+  path: string,
+  data: Uint8Array,
+  exclusive: boolean,
+): Promise<void> {
+  const internals = localBackendInternals(backend);
+  if (internals !== undefined) return internals.writeFile(path, data, exclusive);
+  if (exclusive) {
     try {
-      const canonical = await realpath(current);
-      return missing.length === 0 ? canonical : resolve(canonical, ...missing);
+      await backend.readFile(path, { maxBytes: 1 });
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-      const parent = dirname(current);
-      if (parent === current) throw error;
-      missing.unshift(basename(current));
-      current = parent;
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        await backend.writeFile(path, data);
+        return;
+      }
+      throw error;
     }
+    const error = new Error(`EEXIST: file already exists, open '${path}'`) as NodeJS.ErrnoException;
+    error.code = "EEXIST";
+    throw error;
   }
+  await backend.writeFile(path, data);
 }
-
 export function capOutput(text: string, maxBytes: number): string {
   const encoded = new TextEncoder().encode(text);
   if (encoded.byteLength <= maxBytes) return text;
@@ -1130,14 +1204,6 @@ type ProcessRun = {
 };
 
 /**
- * How long the run waits after the command itself exits for its pipes to close.
- * `close` normally follows `exit` immediately; the wait only matters when a
- * background descendant still holds the inherited stdout, and it bounds that
- * case instead of hanging on it.
- */
-const EXIT_FLUSH_GRACE_MS = 100;
-
-/**
  * Baseline environment for the coding agent's host subprocesses.
  *
  * NOT a spread of `process.env`: a model-driven `bash`/`grep`/`rg` must not
@@ -1150,13 +1216,13 @@ const EXIT_FLUSH_GRACE_MS = 100;
  * The env allow-list only removes the framework-managed secrets from what those
  * commands can read; it does not, and is not meant to, contain what they do.
  */
-function buildCodingProcessEnv(): NodeJS.ProcessEnv {
+function buildCodingProcessEnv(): Record<string, string> {
   const allow = [
     "PATH", "HOME", "USER", "LOGNAME", "SHELL", "LANG", "LC_ALL", "LC_CTYPE",
     "TZ", "TERM", "TMPDIR", "PWD", "ComSpec", "PATHEXT", "SystemRoot", "TEMP",
     "TMP", "USERPROFILE", "APPDATA", "LOCALAPPDATA",
   ];
-  const env: NodeJS.ProcessEnv = {};
+  const env: Record<string, string> = {};
   for (const key of allow) {
     const value = process.env[key];
     if (value !== undefined) env[key] = value;
@@ -1164,98 +1230,31 @@ function buildCodingProcessEnv(): NodeJS.ProcessEnv {
   return env;
 }
 
-function runProcess(
+async function runBackendProcess(
+  backend: ExecutionBackend,
   command: string,
   args: readonly string[],
   cwd: string,
   timeoutMs: number,
   signal?: AbortSignal,
 ): Promise<ProcessRun> {
-  return new Promise((accept) => {
-    // Its own process group: `cmd &` puts children there too, so the timeout can
-    // kill the whole tree rather than just the shell that spawned it.
-    const env = buildCodingProcessEnv();
-    let invocation;
-    try {
-      invocation = portableInvocation(command, args, { env });
-    } catch {
-      accept({ output: "", code: null, timedOut: false, spawnFailed: true, captureComplete: true });
-      return;
-    }
-    const child = spawn(invocation.command, [...invocation.args], {
-      cwd,
-      env,
-      stdio: ["ignore", "pipe", "pipe"],
-      detached: process.platform !== "win32",
-    });
-    const chunks: Buffer[] = [];
-    let bytes = 0;
-    let captureComplete = true;
-    let timedOut = false;
-    let settled = false;
-    let exitCode: number | null = null;
-    const collect = (chunk: Buffer) => {
-      // Hard ceiling well above every tool cap so a runaway process cannot grow
-      // this process's memory before capOutput ever sees the text.
-      const remaining = PROCESS_CAPTURE_MAX_BYTES - bytes;
-      if (remaining <= 0) {
-        captureComplete = false;
-        return;
-      }
-      if (chunk.byteLength > remaining) captureComplete = false;
-      const kept = chunk.subarray(0, remaining);
-      bytes += kept.byteLength;
-      chunks.push(kept);
-    };
-    child.stdout.on("data", collect);
-    child.stderr.on("data", collect);
-    const killTree = () => killProcessTree(child);
-    const timer = setTimeout(() => {
-      timedOut = true;
-      killTree();
-    }, timeoutMs);
-    const abort = () => killTree();
-    signal?.addEventListener("abort", abort, { once: true });
-    const settle = (run: ProcessRun) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      signal?.removeEventListener("abort", abort);
-      accept(run);
-    };
-    const finish = () => {
-      // Whatever still holds these pipes is not this run's business: reading is
-      // over, and a live handle would keep the whole process alive waiting on a
-      // background command the user deliberately detached.
-      child.stdout.destroy();
-      child.stderr.destroy();
-      settle({
-        output: Buffer.concat(chunks).toString("utf8"),
-        code: exitCode,
-        timedOut,
-        spawnFailed: false,
-        captureComplete,
-      });
-    };
-    child.once("error", () => settle({
-      output: "",
-      code: null,
-      timedOut,
-      spawnFailed: true,
-      captureComplete: true,
-    }));
-    child.once("close", (code) => {
-      exitCode = code;
-      finish();
-    });
-    // `close` waits for stdio EOF, which a surviving background descendant never
-    // gives. `exit` is the command's own answer, so the run settles on it with
-    // whatever output arrived rather than waiting on a process it does not own.
-    child.once("exit", (code) => {
-      exitCode = code;
-      setTimeout(finish, EXIT_FLUSH_GRACE_MS).unref();
-    });
+  const result: ExecResult = await backend.exec({
+    command,
+    args,
+    cwd,
+    env: buildCodingProcessEnv(),
+    timeoutMs,
+    maxOutputBytes: PROCESS_CAPTURE_MAX_BYTES,
+    ...(signal === undefined ? {} : { signal }),
   });
+  return {
+    output: `${result.stdout}${result.stderr}`,
+    code: result.code,
+    timedOut: result.timedOut,
+    spawnFailed: result.code === null &&
+      result.stderr.startsWith("cave_execution_backend_spawn_failed:"),
+    captureComplete: !result.truncated,
+  };
 }
 
 function resolveCodingModelID(explicit: string | undefined): string {

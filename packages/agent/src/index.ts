@@ -22,6 +22,7 @@ export * from "./model-boundary.js";
 export * from "./model-usage.js";
 export * from "./input.js";
 export * from "./run-receipt.js";
+export * from "./execution-backend.js";
 export * from "./memory.js";
 export * from "./memory-adapters.js";
 export {

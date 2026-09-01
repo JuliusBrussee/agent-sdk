@@ -56,6 +56,10 @@
       "types": "./dist/command-session.d.ts",
       "import": "./dist/command-session.js"
     },
+    "./execution-backend": {
+      "types": "./dist/execution-backend.d.ts",
+      "import": "./dist/execution-backend.js"
+    },
     "./catalog": {
       "types": "./dist/catalog.d.ts",
       "import": "./dist/catalog.js"
