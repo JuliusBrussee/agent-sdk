@@ -10,10 +10,21 @@ import {
 import type { AgentRunController, Conversation } from "./runtime.js";
 import { PebbleEventEncoder } from "./pebble-stream.js";
 
-/** Buffered Pebble frames retained per live run/session stream. */
+// ponytail: 2048 process-local frames bound replay memory; move replay to a
+// durable indexed event store before widening this window.
 const MAX_BUFFERED_EVENTS = 2048;
 const SSE_HEARTBEAT_MS = 15_000;
 const SSE_MAX_BUFFERED_BYTES = 4 * 1024 * 1024;
+const SETTLED_RETENTION_MS = 5 * 60_000;
+// ponytail: 1024 process-local sessions is enough for the built-in host; move
+// session ownership to a durable indexed coordinator before raising this.
+const MAX_SESSION_STATES = 1024;
+// ponytail: status history is diagnostic, not durable authority; paginate a
+// separate durable message index before raising this 256-message window.
+const MAX_SESSION_MESSAGES = 256;
+// ponytail: deleted ids suppress same-process resurrection only; replace this
+// 4096-entry tombstone window with durable deletion when deletion must persist.
+const MAX_DELETED_SESSIONS = 4096;
 
 export interface WebSocketPeer {
   send(data: string): void;
@@ -32,6 +43,10 @@ export class EventBroadcast {
   private floor = 0;
   settled = false;
   settledAt = 0;
+
+  get subscriberCount(): number {
+    return this.listeners.size;
+  }
 
   push(event: TurnEvent): void {
     this.buffered.push(event);
@@ -167,6 +182,8 @@ export interface SessionRun {
   readonly controller: AgentRunController;
   readonly encoder: PebbleEventEncoder;
   readonly broadcast: EventBroadcast;
+  readonly onAdmitted: () => void;
+  readonly onRejected: (error: unknown) => void;
   readonly onSettled: () => void;
 }
 
@@ -196,8 +213,22 @@ interface SessionState {
   controller?: AgentRunController;
   nextRun: number;
   active?: string;
+  admitting?: string;
+  busyElsewhere?: boolean;
+  settling?: Promise<void>;
+  lastUsedAt: number;
+  settledAt: number;
   error?: string;
 }
+
+interface SessionRecovery {
+  readonly claimed: ReadonlySet<string>;
+  readonly resumed: readonly string[];
+  readonly skipped: ReadonlyArray<{ readonly runId: string; readonly reason: string }>;
+  readonly declined: ReadonlySet<string>;
+}
+
+type JournalCache = Map<string, readonly string[]>;
 
 function json(status: number, body: unknown): Response {
   const rendered = JSON.stringify(body);
@@ -236,6 +267,13 @@ function sessionRunNumber(sessionId: string, runId: string): number | undefined 
   if (!runId.startsWith(prefix)) return undefined;
   const value = Number(runId.slice(prefix.length));
   return Number.isSafeInteger(value) && value > 0 ? value : undefined;
+}
+
+function sessionRunIdentity(runId: string): { readonly sessionId: string; readonly n: number } | undefined {
+  const match = /^(.*)\.([1-9]\d*)$/u.exec(runId);
+  if (match?.[1] === undefined || match[2] === undefined) return undefined;
+  const n = Number(match[2]);
+  return Number.isSafeInteger(n) ? { sessionId: match[1], n } : undefined;
 }
 
 function validateSessionId(value: unknown): string {
@@ -290,8 +328,35 @@ function runCheckpoints(lines: readonly string[], sessionId: string): {
   };
 }
 
+function checkpointForRun(
+  summary: DurableRunSummary,
+  checkpoints: ReturnType<typeof runCheckpoints>,
+): DurableConversationCheckpoint | undefined {
+  if (summary.status === "pending") return checkpoints.base;
+  if (summary.status === "failed") return checkpoints.terminal ?? checkpoints.base;
+  return checkpoints.terminal;
+}
+
+async function cachedLoad(
+  store: DurableStore,
+  cache: JournalCache,
+  runId: string,
+): Promise<readonly string[]> {
+  const existing = cache.get(runId);
+  if (existing !== undefined) return existing;
+  const lines = await store.load(runId);
+  cache.set(runId, lines);
+  return lines;
+}
+
+function lockReason(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.startsWith("cave_durable_run_locked") ? "cave_durable_run_locked" : message;
+}
+
 function initialSession(sessionId: string, checkpoint?: DurableConversationCheckpoint): SessionState {
   const base = checkpoint ?? durableConversationCheckpoint(sessionId, []);
+  const now = Date.now();
   return {
     sessionId,
     checkpoint: base,
@@ -300,6 +365,8 @@ function initialSession(sessionId: string, checkpoint?: DurableConversationCheck
     runs: [],
     messages: [],
     nextRun: 1,
+    lastUsedAt: now,
+    settledAt: now,
   };
 }
 
@@ -314,53 +381,117 @@ export class AgentSessions {
     private readonly maxBodyBytes: number,
   ) {}
 
-  async recover(): Promise<{ readonly claimed: ReadonlySet<string>; readonly resumed: readonly string[] }> {
+  async recover(runIds: readonly string[], journals: JournalCache): Promise<SessionRecovery> {
     const claimed = new Set<string>();
     const resumed: string[] = [];
-    if (this.store.list === undefined) return { claimed, resumed };
-    const groups = new Map<string, Array<{ runId: string; n: number }>>();
-    for (const runId of await this.store.list()) {
-      const lines = await this.store.load(runId);
+    const skipped: Array<{ runId: string; reason: string }> = [];
+    const declined = new Set<string>();
+    const groups = new Map<string, Array<{
+      runId: string;
+      n: number;
+      lines: readonly string[];
+      summary: DurableRunSummary;
+      checkpoints: ReturnType<typeof runCheckpoints>;
+    }>>();
+    const namespaceMax = new Map<string, number>();
+    for (const runId of runIds) {
+      const identity = sessionRunIdentity(runId);
+      if (identity === undefined) continue;
+      namespaceMax.set(identity.sessionId, Math.max(namespaceMax.get(identity.sessionId) ?? 0, identity.n));
+      const lines = await cachedLoad(this.store, journals, runId);
       const started = parseEvent(lines[0] ?? "");
-      if (started?.type !== "run_started" || typeof started.sessionId !== "string") continue;
-      const n = sessionRunNumber(started.sessionId, runId);
-      if (n === undefined) continue;
-      const rows = groups.get(started.sessionId) ?? [];
-      rows.push({ runId, n });
-      groups.set(started.sessionId, rows);
-      claimed.add(runId);
+      if (started?.type !== "run_started" || started.sessionId !== identity.sessionId) continue;
+      let summary: DurableRunSummary;
+      try { summary = durableRunSummary(lines); }
+      catch { continue; }
+      const checkpoints = runCheckpoints(lines, identity.sessionId);
+      if (checkpoints.base === undefined) {
+        if (summary.status === "pending") {
+          skipped.push({ runId, reason: "cave_session_conversation_unrecoverable" });
+          declined.add(runId);
+        }
+        continue;
+      }
+      const rows = groups.get(identity.sessionId) ?? [];
+      rows.push({ runId, n: identity.n, lines, summary, checkpoints });
+      groups.set(identity.sessionId, rows);
     }
     for (const [sessionId, rows] of groups) {
       rows.sort((a, b) => a.n - b.n);
-      if (this.sessions.has(sessionId)) continue;
+      for (const row of rows.slice(0, -1)) {
+        if (row.summary.status !== "pending") continue;
+        skipped.push({ runId: row.runId, reason: "cave_session_not_last_run" });
+        declined.add(row.runId);
+      }
+      if (this.deleted.has(sessionId)) {
+        const lastDeleted = rows.at(-1)!;
+        if (lastDeleted.summary.status === "pending") declined.add(lastDeleted.runId);
+        continue;
+      }
+      const existing = this.sessions.get(sessionId);
+      if (existing !== undefined && !existing.busyElsewhere) {
+        if (existing.active !== undefined) claimed.add(existing.active);
+        continue;
+      }
       const last = rows.at(-1)!;
-      const lines = await this.store.load(last.runId);
-      const summary = durableRunSummary(lines);
-      const checkpoints = runCheckpoints(lines, sessionId);
-      const checkpoint = summary.status === "pending" ? checkpoints.base : checkpoints.terminal;
+      const checkpoint = checkpointForRun(last.summary, last.checkpoints);
       const state = checkpoint === undefined
         ? { ...initialSession(sessionId), error: "cave_session_conversation_unrecoverable" }
         : initialSession(sessionId, checkpoint);
       state.runs.push(...rows.map((row) => row.runId));
-      state.nextRun = last.n + 1;
+      state.nextRun = (namespaceMax.get(sessionId) ?? last.n) + 1;
       this.sessions.set(sessionId, state);
-      if (summary.status === "pending" && checkpoint !== undefined) {
+      if (last.summary.status === "pending" && checkpoint !== undefined) {
+        const input = last.summary.input;
         await this.ensureKernel(state);
-        state.active = last.runId;
-        resumed.push(last.runId);
-        this.driver.start({
+        state.admitting = last.runId;
+        const admission = new Promise<{ admitted: boolean; reason?: string }>((resolveAdmission) => {
+          let admitted = false;
+          let rejectedReason: string | undefined;
+          this.driver.start({
           runId: last.runId,
-          input: summary.input,
+          input,
           sessionId,
           conversation: state.conversation!,
           controller: state.controller!,
           encoder: state.encoder,
           broadcast: state.broadcast,
-          onSettled: () => { delete state.active; },
+            onAdmitted: () => {
+              admitted = true;
+              delete state.admitting;
+              delete state.busyElsewhere;
+              state.active = last.runId;
+              resolveAdmission({ admitted: true });
+            },
+            onRejected: (error) => {
+              delete state.admitting;
+              if (state.active === last.runId) delete state.active;
+              const reason = lockReason(error);
+              rejectedReason = reason;
+              state.busyElsewhere = reason === "cave_durable_run_locked";
+            },
+            onSettled: () => {
+              this.runSettled(state, last.runId, admitted);
+              if (!admitted) resolveAdmission({
+                admitted: false,
+                reason: rejectedReason ?? "cave_session_conversation_unrecoverable",
+              });
+            },
+          });
         });
+        const result = await admission;
+        if (result.admitted) {
+          claimed.add(last.runId);
+          resumed.push(last.runId);
+        } else {
+          const reason = result.reason ?? "cave_session_conversation_unrecoverable";
+          skipped.push({ runId: last.runId, reason });
+          declined.add(last.runId);
+        }
       }
     }
-    return { claimed, resumed };
+    this.evictSessions();
+    return { claimed, resumed, skipped, declined };
   }
 
   async route(request: Request, path: string): Promise<Response | undefined> {
@@ -439,7 +570,12 @@ export class AgentSessions {
     }
     this.deleted.delete(sessionId);
     const existing = await this.load(sessionId);
-    if (existing === undefined) this.sessions.set(sessionId, initialSession(sessionId));
+    if (existing === undefined) {
+      const state = initialSession(sessionId);
+      state.nextRun = await this.nextRunNumber(sessionId);
+      this.sessions.set(sessionId, state);
+    }
+    this.evictSessions();
     return json(201, { sessionId });
   }
 
@@ -458,6 +594,8 @@ export class AgentSessions {
   }
 
   private async acceptMessage(state: SessionState, payload: unknown): Promise<Response> {
+    await state.settling;
+    this.touch(state);
     if (state.error !== undefined) return json(409, { error: state.error });
     if (payload === null || typeof payload !== "object" || Array.isArray(payload)) {
       return json(400, { error: "cave_serve_body_invalid" });
@@ -476,8 +614,35 @@ export class AgentSessions {
     }
     await this.ensureKernel(state);
     const queued = state.active !== undefined;
+    if (!queued) {
+      const stored = await this.sessionStoreState(state.sessionId);
+      state.nextRun = Math.max(state.nextRun, stored.nextRun);
+      const pending = stored.pending;
+      if (pending !== undefined) {
+        state.admitting = pending.runId;
+        const admission = await this.launchRun(state, pending.runId, pending.input, false);
+        if (!admission.admitted) {
+          return json(409, {
+            error: admission.reason === "cave_durable_run_locked"
+              ? "cave_session_busy_elsewhere"
+              : admission.reason,
+          });
+        }
+        const message = this.recordMessage(state, {
+          runId: pending.runId,
+          text,
+          ...(author === undefined ? {} : { author }),
+          mode,
+          queued: true,
+          at: new Date().toISOString(),
+        });
+        if (message.mode === "steer") state.controller!.steer(message.text);
+        else state.controller!.followUp(message.text);
+        return json(202, { runId: pending.runId, queued: true });
+      }
+    }
     const runId = state.active ?? `${state.sessionId}.${state.nextRun++}`;
-    state.messages.push({
+    this.recordMessage(state, {
       runId,
       text,
       ...(author === undefined ? {} : { author }),
@@ -491,16 +656,7 @@ export class AgentSessions {
     } else {
       state.active = runId;
       state.runs.push(runId);
-      this.driver.start({
-        runId,
-        input: text,
-        sessionId: state.sessionId,
-        conversation: state.conversation!,
-        controller: state.controller!,
-        encoder: state.encoder,
-        broadcast: state.broadcast,
-        onSettled: () => { delete state.active; },
-      });
+      void this.launchRun(state, runId, text, true);
     }
     return json(202, { runId, queued });
   }
@@ -526,7 +682,7 @@ export class AgentSessions {
     if (loaded.active !== undefined) await this.driver.cancel(loaded.active);
     loaded.broadcast.close();
     this.sessions.delete(loaded.sessionId);
-    this.deleted.add(loaded.sessionId);
+    this.rememberDeleted(loaded.sessionId);
     return json(202, { sessionId: loaded.sessionId, status: "deleted" });
   }
 
@@ -567,25 +723,216 @@ export class AgentSessions {
   private async load(sessionId: string): Promise<SessionState | undefined> {
     if (this.deleted.has(sessionId)) return undefined;
     const existing = this.sessions.get(sessionId);
-    if (existing !== undefined) return existing;
+    if (existing !== undefined) {
+      this.touch(existing);
+      return existing;
+    }
     if (this.store.list === undefined) return undefined;
-    const rows = (await this.store.list()).flatMap((runId) => {
-      const n = sessionRunNumber(sessionId, runId);
-      return n === undefined ? [] : [{ runId, n }];
-    }).sort((a, b) => a.n - b.n);
+    const inspected = await this.inspectSession(sessionId);
+    const rows = inspected.adopted;
     const last = rows.at(-1);
     if (last === undefined) return undefined;
-    const lines = await this.store.load(last.runId);
-    const summary = durableRunSummary(lines);
-    const checkpoints = runCheckpoints(lines, sessionId);
-    const checkpoint = summary.status === "pending" ? checkpoints.base : checkpoints.terminal;
+    const checkpoint = checkpointForRun(last.summary, last.checkpoints);
     const state = checkpoint === undefined
       ? { ...initialSession(sessionId), error: "cave_session_conversation_unrecoverable" }
       : initialSession(sessionId, checkpoint);
     state.runs.push(...rows.map((row) => row.runId));
-    state.nextRun = last.n + 1;
+    state.nextRun = inspected.nextRun;
     this.sessions.set(sessionId, state);
+    this.evictSessions();
     return state;
+  }
+
+  private async inspectSession(sessionId: string): Promise<{
+    readonly nextRun: number;
+    readonly adopted: Array<{
+      readonly runId: string;
+      readonly n: number;
+      readonly summary: DurableRunSummary;
+      readonly checkpoints: ReturnType<typeof runCheckpoints>;
+    }>;
+  }> {
+    if (this.store.list === undefined) return { nextRun: 1, adopted: [] };
+    // ponytail: this is one O(journals) scan per unknown/idle session; add a
+    // store-level session-prefix index before installations reach thousands.
+    const runIds = await this.store.list();
+    let max = 0;
+    const adopted: Array<{
+      runId: string;
+      n: number;
+      summary: DurableRunSummary;
+      checkpoints: ReturnType<typeof runCheckpoints>;
+    }> = [];
+    for (const runId of runIds) {
+      const n = sessionRunNumber(sessionId, runId);
+      if (n === undefined) continue;
+      max = Math.max(max, n);
+      const lines = await this.store.load(runId);
+      const started = parseEvent(lines[0] ?? "");
+      if (started?.type !== "run_started" || started.sessionId !== sessionId) continue;
+      const checkpoints = runCheckpoints(lines, sessionId);
+      if (checkpoints.base === undefined) continue;
+      try {
+        adopted.push({ runId, n, summary: durableRunSummary(lines), checkpoints });
+      } catch {
+        // Corrupt journals are not session authority.
+      }
+    }
+    adopted.sort((left, right) => left.n - right.n);
+    return { nextRun: max + 1, adopted };
+  }
+
+  private async sessionStoreState(sessionId: string): Promise<{
+    readonly nextRun: number;
+    readonly pending?: { readonly runId: string; readonly input: string };
+  }> {
+    const inspected = await this.inspectSession(sessionId);
+    const last = inspected.adopted.at(-1);
+    return {
+      nextRun: inspected.nextRun,
+      ...(last?.summary.status === "pending"
+        ? { pending: { runId: last.runId, input: last.summary.input } }
+        : {}),
+    };
+  }
+
+  private async nextRunNumber(sessionId: string): Promise<number> {
+    if (this.store.list === undefined) return 1;
+    let max = 0;
+    for (const runId of await this.store.list()) {
+      const n = sessionRunNumber(sessionId, runId);
+      if (n !== undefined) max = Math.max(max, n);
+    }
+    return max + 1;
+  }
+
+  private launchRun(
+    state: SessionState,
+    runId: string,
+    input: string,
+    activeBeforeAdmission: boolean,
+  ): Promise<{ readonly admitted: boolean; readonly reason?: string }> {
+    return new Promise((resolveAdmission) => {
+      let admitted = false;
+      let resolved = false;
+      let rejectedReason: string | undefined;
+      const resolve = (value: { admitted: boolean; reason?: string }): void => {
+        if (resolved) return;
+        resolved = true;
+        resolveAdmission(value);
+      };
+      this.driver.start({
+        runId,
+        input,
+        sessionId: state.sessionId,
+        conversation: state.conversation!,
+        controller: state.controller!,
+        encoder: state.encoder,
+        broadcast: state.broadcast,
+        onAdmitted: () => {
+          admitted = true;
+          delete state.admitting;
+          delete state.busyElsewhere;
+          state.active = runId;
+          resolve({ admitted: true });
+        },
+        onRejected: (error) => {
+          delete state.admitting;
+          if (state.active === runId) delete state.active;
+          const reason = lockReason(error);
+          rejectedReason = reason;
+          state.busyElsewhere = reason === "cave_durable_run_locked";
+        },
+        onSettled: () => {
+          this.runSettled(state, runId, admitted);
+          if (!admitted) resolve({
+            admitted: false,
+            reason: rejectedReason ?? "cave_session_conversation_unrecoverable",
+          });
+        },
+      });
+      if (activeBeforeAdmission) state.active = runId;
+    });
+  }
+
+  private runSettled(state: SessionState, runId: string, admitted: boolean): void {
+    if (state.active === runId) delete state.active;
+    if (state.admitting === runId) delete state.admitting;
+    state.settledAt = Date.now();
+    state.lastUsedAt = state.settledAt;
+    if (!admitted || state.controller === undefined || state.controller.state.queued === 0) {
+      this.evictSessions();
+      return;
+    }
+    const count = state.controller.state.queued;
+    const queued = state.messages
+      .filter((message) => message.runId === runId && message.queued)
+      .slice(-count);
+    state.controller.clear();
+    state.settling = this.restartQueued(state, queued)
+      .catch((error: unknown) => {
+        state.error = error instanceof Error ? error.message : String(error);
+      })
+      .finally(() => {
+        delete state.settling;
+        this.evictSessions();
+      });
+  }
+
+  private async restartQueued(state: SessionState, queued: readonly SessionMessage[]): Promise<void> {
+    if (queued.length === 0) return;
+    const stored = await this.sessionStoreState(state.sessionId);
+    state.nextRun = Math.max(state.nextRun, stored.nextRun);
+    const runId = `${state.sessionId}.${state.nextRun++}`;
+    const firstIndex = state.messages.length - queued.length;
+    for (let index = 0; index < queued.length; index++) {
+      const message = queued[index]!;
+      state.messages[firstIndex + index] = {
+        ...message,
+        runId,
+        mode: index === 0 ? message.mode : "followUp",
+        queued: index !== 0,
+      };
+    }
+    state.active = runId;
+    state.runs.push(runId);
+    for (const message of queued.slice(1)) state.controller!.followUp(message.text);
+    void this.launchRun(state, runId, queued[0]!.text, true);
+  }
+
+  private recordMessage(state: SessionState, message: SessionMessage): SessionMessage {
+    state.messages.push(message);
+    while (state.messages.length > MAX_SESSION_MESSAGES) state.messages.shift();
+    return message;
+  }
+
+  private touch(state: SessionState): void {
+    state.lastUsedAt = Date.now();
+  }
+
+  private rememberDeleted(sessionId: string): void {
+    this.deleted.delete(sessionId);
+    this.deleted.add(sessionId);
+    while (this.deleted.size > MAX_DELETED_SESSIONS) {
+      const oldest = this.deleted.values().next().value as string | undefined;
+      if (oldest === undefined) break;
+      this.deleted.delete(oldest);
+    }
+  }
+
+  private evictSessions(): void {
+    if (this.sessions.size <= MAX_SESSION_STATES) return;
+    const now = Date.now();
+    const idle = [...this.sessions.values()]
+      .filter((state) => state.active === undefined && state.admitting === undefined &&
+        state.broadcast.subscriberCount === 0 && now - state.settledAt >= SETTLED_RETENTION_MS)
+      .sort((left, right) => left.lastUsedAt - right.lastUsedAt);
+    while (this.sessions.size > MAX_SESSION_STATES) {
+      const state = idle.shift();
+      if (state === undefined) break;
+      state.broadcast.close();
+      this.sessions.delete(state.sessionId);
+    }
   }
 
   private async ensureKernel(state: SessionState): Promise<void> {

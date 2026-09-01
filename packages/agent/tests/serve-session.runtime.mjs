@@ -2,7 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { createConnection } from "node:net";
 import { dirname, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -13,6 +14,9 @@ import {
 } from "../dist/index.js";
 import { createAgentHandler } from "../dist/serve-handler.js";
 import { createAgentServer } from "../dist/serve.js";
+import { AgentSessions } from "../dist/serve-session.js";
+import { agentDefinitionSHA256 } from "../dist/build.js";
+import { durableConversationCheckpoint } from "../dist/durable.js";
 import { fauxProvider as upstreamFauxProvider } from "@earendil-works/pi-ai/providers/faux";
 import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
 import WebSocket from "ws";
@@ -60,6 +64,23 @@ function pushMessage(selected, text, wait) {
 
 function definition(id) {
   return agent({ id, instructions: "Remember every user message.", model: auto(), sandbox: "fixture" });
+}
+
+function startedLine(runId, selected, checkpoint, input = "pending") {
+  return JSON.stringify({
+    v: 2,
+    at: new Date().toISOString(),
+    type: "run_started",
+    runId,
+    agentId: selected.id,
+    definitionSha256: agentDefinitionSHA256(selected),
+    input,
+    sessionId: checkpoint.sessionId,
+    denomination: "none",
+    budgetSha256: "none",
+    conversation: checkpoint,
+    pid: process.pid,
+  });
 }
 
 async function scratchStore() {
@@ -258,7 +279,7 @@ test("restart rehydrates checkpoint and third run sees prior messages", async (t
   assert.match(JSON.stringify(contexts[0]), /three/u);
 });
 
-test("missing terminal conversation checkpoint fails closed", async (t) => {
+test("pending session-shaped journal without checkpoint is reported, not claimed", async (t) => {
   const { dir, store } = await scratchStore();
   t.after(() => rm(dir, { recursive: true, force: true }));
   await store.append("broken.1", `${JSON.stringify({
@@ -281,13 +302,203 @@ test("missing terminal conversation checkpoint fails closed", async (t) => {
     streamFn: () => { throw new Error("must not spend"); },
   });
   t.after(() => handler.close(1_000));
-  await handler.recover();
+  const report = await handler.recover();
+  assert.deepEqual(report.resumed, []);
+  assert.deepEqual(report.skipped, [{
+    runId: "broken.1", reason: "cave_session_conversation_unrecoverable",
+  }]);
   const status = await sessionStatus(handler, "broken");
-  assert.equal(status.response.status, 409);
-  assert.deepEqual(status.body, { error: "cave_session_conversation_unrecoverable" });
+  assert.equal(status.response.status, 404);
+  assert.deepEqual(status.body, { error: "cave_serve_not_found" });
   const message = await send(handler, "broken", "must fail");
-  assert.equal(message.response.status, 409);
-  assert.equal(message.body.error, "cave_session_conversation_unrecoverable");
+  assert.equal(message.response.status, 404);
+  assert.equal(message.body.error, "cave_serve_not_found");
+});
+
+test("post-terminal message starts a new run before journal cleanup awaits", async (t) => {
+  const { dir, store: disk } = await scratchStore();
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  let handler;
+  let injected = false;
+  const store = {
+    load: async (runId) => {
+      const lines = await disk.load(runId);
+      if (runId === "terminal-window.1" && !injected &&
+          lines.some((line) => JSON.parse(line).type === "run_completed")) {
+        injected = true;
+        const posted = await send(handler, "terminal-window", "after terminal");
+        assert.equal(posted.response.status, 202);
+        assert.deepEqual(posted.body, { runId: "terminal-window.2", queued: false });
+      }
+      return lines;
+    },
+    append: (runId, data) => disk.append(runId, data),
+    acquire: (runId) => disk.acquire(runId),
+    close: (runId) => disk.close(runId),
+    list: () => disk.list(),
+  };
+  handler = makeHandler({
+    definition: definition("terminal-window"), store, dir,
+    streamFn: (selected) => pushMessage(selected, "done"),
+  });
+  t.after(() => handler.close(1_000));
+  await handler.recover();
+  await createSession(handler, "terminal-window");
+  const turns = readTurns(await call(handler, "/sessions/terminal-window/events"), 2);
+  await send(handler, "terminal-window", "first");
+  const events = await turns;
+  const status = await idle(handler, "terminal-window");
+  assert.equal(injected, true);
+  assert.equal(events.filter((event) => event.kind === "turn.start").length, 2);
+  assert.equal(events.filter((event) => event.kind === "turn.end").length, 2);
+  assert.equal(status.queued, 0);
+});
+
+test("failed last session run restarts from its base checkpoint", async (t) => {
+  const { dir, store } = await scratchStore();
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const selected = definition("failed-restart");
+  const first = makeHandler({
+    definition: selected, store, dir,
+    streamFn: (model) => pushMessage(model, "remembered"),
+  });
+  await first.recover();
+  await createSession(first, "failed-restart");
+  await send(first, "failed-restart", "one");
+  await idle(first, "failed-restart");
+  await first.close(1_000);
+  const completed = (await store.load("failed-restart.1"))
+    .map((line) => JSON.parse(line))
+    .find((event) => event.type === "run_completed");
+  assert.ok(completed?.conversation);
+  await store.append("failed-restart.2", `${startedLine(
+    "failed-restart.2", selected, completed.conversation, "fails",
+  )}\n${JSON.stringify({
+    v: 2, at: new Date().toISOString(), type: "run_failed",
+    code: "fixture_failure", message: "failed", receipt: null,
+  })}\n`);
+
+  const contexts = [];
+  const restarted = makeHandler({
+    definition: selected, store, dir,
+    streamFn: (model, context) => {
+      contexts.push(structuredClone(context.messages));
+      return pushMessage(model, "recovered");
+    },
+  });
+  t.after(() => restarted.close(1_000));
+  await restarted.recover();
+  assert.deepEqual((await send(restarted, "failed-restart", "three")).body, {
+    runId: "failed-restart.3", queued: false,
+  });
+  await idle(restarted, "failed-restart");
+  assert.match(JSON.stringify(contexts[0]), /one/u);
+  assert.match(JSON.stringify(contexts[0]), /three/u);
+});
+
+test("session namespace adopts checkpoints, skips squatters, and reserves numeric suffixes", async (t) => {
+  const { dir, store } = await scratchStore();
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const selected = definition("namespace");
+  const legacy = {
+    v: 2, at: new Date().toISOString(), type: "run_started", runId: "sq.1",
+    agentId: selected.id, definitionSha256: agentDefinitionSHA256(selected), input: "legacy",
+    sessionId: "sq", denomination: "none", budgetSha256: "none", pid: process.pid,
+  };
+  await store.append("sq.1", `${JSON.stringify(legacy)}\n`);
+  const wrongCheckpoint = durableConversationCheckpoint("other", []);
+  await store.append("wrong.1", `${JSON.stringify({
+    ...JSON.parse(startedLine("wrong.1", selected, wrongCheckpoint)), sessionId: "wrong",
+  })}\n`);
+  const handler = makeHandler({
+    definition: selected, store, dir,
+    streamFn: (model) => pushMessage(model, "ok"),
+  });
+  t.after(() => handler.close(1_000));
+  const recovery = await handler.recover();
+  assert.ok(recovery.skipped.some((entry) => entry.runId === "sq.1" &&
+    entry.reason === "cave_session_conversation_unrecoverable"));
+  await createSession(handler, "sq");
+  assert.deepEqual((await send(handler, "sq", "hello")).body, { runId: "sq.2", queued: false });
+  await idle(handler, "sq");
+  await createSession(handler, "wrong");
+  assert.deepEqual((await send(handler, "wrong", "hello")).body, {
+    runId: "wrong.2", queued: false,
+  });
+  await idle(handler, "wrong");
+  const reserved = await call(handler, "/runs", {
+    method: "POST", body: JSON.stringify({ runId: "caller.9", input: "no" }),
+  });
+  assert.equal(reserved.status, 400);
+  assert.deepEqual(await reserved.json(), { error: "cave_serve_run_id_reserved" });
+});
+
+test("shared journal lock admits one session owner and rejects the other", async (t) => {
+  const { dir, store } = await scratchStore();
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const selected = definition("single-writer");
+  const checkpoint = durableConversationCheckpoint("single-writer", []);
+  await store.append("single-writer.1", `${startedLine(
+    "single-writer.1", selected, checkpoint,
+  )}\n`);
+  let release;
+  const blocked = new Promise((resolveWait) => { release = resolveWait; });
+  const owner = makeHandler({
+    definition: selected, store, dir,
+    streamFn: (model) => pushMessage(model, "owner", blocked),
+  });
+  const loser = makeHandler({
+    definition: selected, store, dir,
+    streamFn: () => { throw new Error("loser must not spend"); },
+  });
+  t.after(() => Promise.all([owner.close(1_000), loser.close(1_000)]));
+  const ownerReport = await owner.recover();
+  assert.deepEqual(ownerReport.resumed, ["single-writer.1"]);
+  const loserReport = await loser.recover();
+  assert.deepEqual(loserReport.resumed, []);
+  assert.ok(loserReport.skipped.some((entry) => entry.runId === "single-writer.1" &&
+    entry.reason === "cave_durable_run_locked"));
+  const status = await sessionStatus(loser, "single-writer");
+  assert.equal(status.response.status, 200);
+  assert.equal(status.body.active, undefined);
+  const rejected = await send(loser, "single-writer", "do not fork");
+  assert.equal(rejected.response.status, 409);
+  assert.equal(rejected.body.error, "cave_session_busy_elsewhere");
+  release();
+  await idle(owner, "single-writer");
+});
+
+test("session recovery shares journal loads with legacy sweep", async (t) => {
+  const selected = definition("load-once");
+  const checkpoint = durableConversationCheckpoint("load-once", []);
+  const failed = JSON.stringify({
+    v: 2, at: new Date().toISOString(), type: "run_failed",
+    code: "fixture", message: "done", receipt: null,
+  });
+  const journals = new Map([
+    ["load-once.1", [startedLine("load-once.1", selected, checkpoint), failed]],
+    ["legacy", [JSON.stringify({
+      v: 2, at: new Date().toISOString(), type: "run_started", runId: "legacy",
+      agentId: selected.id, definitionSha256: "a".repeat(64), input: "x",
+      sessionId: "legacy", denomination: "none", budgetSha256: "none", pid: process.pid,
+    }), failed]],
+  ]);
+  const loads = new Map();
+  const store = {
+    list: async () => [...journals.keys()],
+    load: async (runId) => {
+      loads.set(runId, (loads.get(runId) ?? 0) + 1);
+      return journals.get(runId) ?? [];
+    },
+    append: async () => {}, acquire: async () => async () => {}, close: async () => {},
+  };
+  const handler = makeHandler({
+    definition: selected, store, dir: ".",
+    streamFn: () => { throw new Error("must not run"); },
+  });
+  t.after(() => handler.close(0));
+  await handler.recover();
+  assert.deepEqual(Object.fromEntries(loads), { "load-once.1": 1, legacy: 1 });
 });
 
 test("fetch handler serves sessions without importing node:http", async (t) => {
@@ -436,4 +647,116 @@ test("Node upgrade fails closed when optional ws import is unavailable", async (
     "--eval",
     script,
   ]);
+});
+
+test("Node rejects upgrades outside the session WebSocket path without reading SSE", async (t) => {
+  const { dir, store } = await scratchStore();
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const server = createAgentServer({
+    definition: definition("upgrade-route"), token: TOKEN, store, rootDir: dir,
+    runOptions: { ensureRuntime: false, model: fauxModel() },
+  });
+  t.after(() => server.close(1_000));
+  const port = await server.listen(0, "127.0.0.1");
+  const response = await new Promise((resolveResponse, rejectResponse) => {
+    const socket = createConnection({ port, host: "127.0.0.1" });
+    let raw = "";
+    socket.setTimeout(2_000, () => socket.destroy(new Error("upgrade response timed out")));
+    socket.on("connect", () => socket.write([
+      "GET /sessions/nope/events HTTP/1.1",
+      `Host: 127.0.0.1:${port}`,
+      "Connection: Upgrade",
+      "Upgrade: websocket",
+      `Authorization: Bearer ${TOKEN}`,
+      "",
+      "",
+    ].join("\r\n")));
+    socket.on("data", (chunk) => { raw += chunk.toString("utf8"); });
+    socket.on("end", () => resolveResponse(raw));
+    socket.on("error", rejectResponse);
+  });
+  assert.match(response, /^HTTP\/1\.1 426 Upgrade Required/mu);
+  assert.match(response, /cave_serve_upgrade_required/u);
+});
+
+test("session state caps messages and evicts retained idle sessions", async () => {
+  const store = {
+    load: async () => [], append: async () => {}, acquire: async () => async () => {},
+    close: async () => {}, list: async () => [],
+  };
+  const driver = {
+    start(run) { run.onAdmitted(); },
+    cancel: async () => {},
+    summary: async (runId) => ({ status: "missing", runId }),
+  };
+  const sessions = new AgentSessions(store, driver, 1024 * 1024);
+  const route = (path, method = "GET", body) => sessions.route(new Request(`https://agent.test${path}`, {
+    method,
+    ...(body === undefined ? {} : {
+      headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+    }),
+  }), path);
+  await route("/sessions", "POST", { sessionId: "bounded" });
+  for (let index = 0; index < 260; index++) {
+    const response = await route("/sessions/bounded/messages", "POST", { text: `m-${index}` });
+    assert.equal(response.status, 202);
+  }
+  const bounded = await route("/sessions/bounded");
+  assert.equal((await bounded.json()).messages.length, 256);
+
+  const realNow = Date.now;
+  let now = realNow();
+  Date.now = () => now;
+  try {
+    for (let index = 0; index < 1024; index++) {
+      await route("/sessions", "POST", { sessionId: `idle-${index}` });
+    }
+    now += 5 * 60_000 + 1;
+    await route("/sessions", "POST", { sessionId: "idle-new" });
+    const evicted = await route("/sessions/idle-0");
+    assert.equal(evicted.status, 404);
+  } finally {
+    Date.now = realNow;
+    sessions.close();
+  }
+});
+
+test("WebSocketLike declaration uses a shaped listener event", async () => {
+  const declaration = await readFile(resolve(DIST, "serve-handler.d.ts"), "utf8");
+  assert.doesNotMatch(declaration, /addEventListener\([^;]+event: any/su);
+  assert.match(declaration, /fn: \(event: \{\s*data\?: unknown;\s*\}\) => void/su);
+});
+
+test("undeclared sandbox announces host execution at handler construction", async () => {
+  const moduleUrl = pathToFileURL(resolve(DIST, "serve-handler.js")).href;
+  const script = `
+    const { createAgentHandler } = await import(${JSON.stringify(moduleUrl)});
+    const store = {
+      load: async () => [], append: async () => {}, acquire: async () => async () => {},
+      close: async () => {}, list: async () => [],
+    };
+    const handler = createAgentHandler({
+      definition: {
+        kind: "agent", id: "host-warning", instructions: "x", model: "auto",
+        reasoning: "low", tools: [], contexts: [], sandbox: "required", sandboxDeclared: false,
+      },
+      token: ${JSON.stringify(TOKEN)}, store, runOptions: () => ({ entryPath: "agent.ts" }),
+    });
+    await handler.close(0);
+  `;
+  const child = await execFileAsync(process.execPath, ["--input-type=module", "--eval", script]);
+  assert.equal(child.stdout, "");
+  assert.equal(child.stderr, "cave: host-warning serves with host execution — tools are not isolated\n");
+});
+
+test("serving guide documents ownership, deletion, reserved ids, and valid run options", async () => {
+  const guide = await readFile(resolve(
+    dirname(fileURLToPath(import.meta.url)),
+    "../../../caveman-docs/guides/11-serving-and-hosting.md",
+  ), "utf8");
+  assert.match(guide, /process-local/u);
+  assert.match(guide, /cave_session_busy_elsewhere/u);
+  assert.match(guide, /reserved for session journals/u);
+  assert.match(guide, /executionBackend.*createCodingAgent/u);
+  assert.doesNotMatch(guide, /runOptions:[\s\S]{0,160}executionBackend/u);
 });
