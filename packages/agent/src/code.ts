@@ -65,7 +65,7 @@ import {
   type ExecResult,
   type ExecutionBackend,
 } from "./execution-backend.js";
-import { hostShellInvocation } from "./portable-process.js";
+import { hostShellInvocation, LOCAL_BACKEND_INTERNALS, type LocalBackendInternals } from "./portable-process.js";
 import {
   createConversation,
   AgentRunController,
@@ -488,7 +488,11 @@ function codingTools(
       if (!await backendIsFile(executionBackend, target)) {
         throw new Error(`caveman-code: not a file: ${input.path}`);
       }
-      const content = Buffer.from(await executionBackend.readFile(target)).toString("utf8");
+      const data = await executionBackend.readFile(target).catch((error: NodeJS.ErrnoException) => {
+        if (error.code === "EISDIR") throw new Error(`caveman-code: not a file: ${input.path}`);
+        throw error;
+      });
+      const content = Buffer.from(data).toString("utf8");
       const lines = content.split("\n");
       const offset = Math.max(1, input.offset ?? 1);
       const limit = input.limit === undefined ? lines.length : Math.max(1, input.limit);
@@ -599,13 +603,14 @@ function codingTools(
         const timeoutMs = Math.min(input.timeoutMs ?? BASH_TIMEOUT_MS, BASH_TIMEOUT_MS);
         const yieldTimeMs = "yieldTimeMs" in input ? input.yieldTimeMs : undefined;
         validateBashWait(yieldTimeMs, "yieldTimeMs");
-        const env = buildCodingProcessEnv();
-        const shell = localBackendInternals(executionBackend) !== undefined
+        const local = localBackendInternals(executionBackend) !== undefined;
+        const env = buildCodingProcessEnv(local);
+        const shell = local
           ? hostShellInvocation(input.command, process.platform, env)
-          : { command: "sh", args: ["-lc", input.command] as readonly string[] };
+          : { command: "sh", args: ["-c", input.command] as readonly string[] };
         if (commandSessions === undefined) {
           if (yieldTimeMs !== undefined) {
-            throw new Error("cave_execution_backend_command_sessions_local_only");
+            throw new Error(local ? "cave_execution_backend_command_sessions_disabled" : "cave_execution_backend_command_sessions_local_only");
           }
           const run = await executionBackend.exec({
             command: shell.command,
@@ -616,13 +621,14 @@ function codingTools(
             maxOutputBytes: PROCESS_CAPTURE_MAX_BYTES,
             ...(signal === undefined ? {} : { signal }),
           });
-          if (run.code === null && run.stderr.startsWith("cave_execution_backend_spawn_failed:")) {
+          if (run.code === 127 || run.startFailed === true) {
             throw new Error("caveman-code: host command shell is not available");
           }
           const status = run.timedOut ? `exit timeout after ${timeoutMs}ms` : `exit ${run.code}`;
-          const output = `${run.stdout}${run.stderr}`.trim() === ""
+          const combined = combinedProcessOutput(run);
+          const output = combined.trim() === ""
             ? "(no output)"
-            : `${run.stdout}${run.stderr}`;
+            : combined;
           const text = `${status}\n${capToolOutput({
             text: output,
             maxBytes: Math.max(1, caps.bash - Buffer.byteLength(`${status}\n`, "utf8")),
@@ -1093,12 +1099,6 @@ function formatCommandSessionList(
   ].join("\n"), outputCap);
 }
 
-const LOCAL_BACKEND_INTERNALS = Symbol.for("@caveman-ai/agent/execution-backend-local-internals");
-type LocalBackendInternals = {
-  resolvePath(workspace: string, candidate: string): Promise<string>;
-  isFile(path: string): Promise<boolean>;
-  writeFile(path: string, data: Uint8Array, exclusive: boolean): Promise<void>;
-};
 function localBackendInternals(backend: ExecutionBackend): LocalBackendInternals | undefined {
   return (backend as ExecutionBackend & {
     [LOCAL_BACKEND_INTERNALS]?: LocalBackendInternals;
@@ -1216,12 +1216,12 @@ type ProcessRun = {
  * The env allow-list only removes the framework-managed secrets from what those
  * commands can read; it does not, and is not meant to, contain what they do.
  */
-function buildCodingProcessEnv(): Record<string, string> {
-  const allow = [
-    "PATH", "HOME", "USER", "LOGNAME", "SHELL", "LANG", "LC_ALL", "LC_CTYPE",
-    "TZ", "TERM", "TMPDIR", "PWD", "ComSpec", "PATHEXT", "SystemRoot", "TEMP",
-    "TMP", "USERPROFILE", "APPDATA", "LOCALAPPDATA",
-  ];
+function buildCodingProcessEnv(local: boolean): Record<string, string> {
+  const allow = local ? [
+    "PATH", "HOME", "USER", "LOGNAME", "SHELL", "LANG", "LC_ALL", "LC_CTYPE", "TZ",
+    "TERM", "TMPDIR", "PWD", "ComSpec", "PATHEXT", "SystemRoot", "TEMP", "TMP",
+    "USERPROFILE", "APPDATA", "LOCALAPPDATA",
+  ] : ["LANG", "LC_ALL", "LC_CTYPE", "TZ", "TERM"];
   const env: Record<string, string> = {};
   for (const key of allow) {
     const value = process.env[key];
@@ -1242,20 +1242,21 @@ async function runBackendProcess(
     command,
     args,
     cwd,
-    env: buildCodingProcessEnv(),
+    env: buildCodingProcessEnv(localBackendInternals(backend) !== undefined),
     timeoutMs,
     maxOutputBytes: PROCESS_CAPTURE_MAX_BYTES,
     ...(signal === undefined ? {} : { signal }),
   });
   return {
-    output: `${result.stdout}${result.stderr}`,
+    output: combinedProcessOutput(result),
     code: result.code,
     timedOut: result.timedOut,
-    spawnFailed: result.code === null &&
-      result.stderr.startsWith("cave_execution_backend_spawn_failed:"),
+    spawnFailed: result.code === 127 || result.startFailed === true,
     captureComplete: !result.truncated,
   };
 }
+
+function combinedProcessOutput(result: ExecResult): string { return `${result.stdout}${result.stdout !== "" && !result.stdout.endsWith("\n") && result.stderr !== "" ? "\n" : ""}${result.stderr}`; }
 
 function resolveCodingModelID(explicit: string | undefined): string {
   const requested = explicit ?? process.env.CAVE_MODEL;
