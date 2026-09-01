@@ -1,12 +1,14 @@
 # Execution modes
 
-A run reports its mode on `RunResult.mode`. There are two, and the difference is
-visible in every receipt.
+The default is **direct**: your key, your provider, no proxy. The receipt value
+for a direct run is `observe-only`, which is what `RunResult.mode` carries.
+`optimized` is the optional second mode and requires the local Caveman gateway.
+The difference is visible in every receipt.
 
-| Mode | What happens | What is claimed |
-| --- | --- | --- |
-| `optimized` | Traffic routes through the local Caveman gateway; eligible context transforms and context telemetry apply | Local reductions, basis `inferred` |
-| `observe-only` | The provider's own base URL, no transform, no gateway telemetry | Nothing. Provider usage and local context estimates remain available |
+| Mode | Receipt value | What happens | What is claimed |
+| --- | --- | --- | --- |
+| direct (default) | `observe-only` | The provider's own base URL, no transform, no gateway telemetry | Nothing. Provider usage and local context estimates remain available |
+| optimized (opt-in) | `optimized` | Traffic routes through the local Caveman gateway; eligible context transforms and context telemetry apply | Local reductions, basis `inferred` |
 
 ## How a run picks its mode
 

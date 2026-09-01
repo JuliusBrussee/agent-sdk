@@ -6,7 +6,7 @@ Every identifier the runtime, adapters, and tooling can emit under the reserved
 `cave_` namespace: failure codes, stop reasons, framework-owned tool names, and
 refusal reasons. The namespace is reserved; user tools may not declare names in it.
 
-Total: **732** identifiers.
+Total: **751** identifiers.
 
 ## Sandbox and containment
 
@@ -204,17 +204,25 @@ Total: **732** identifiers.
 | `cave_durable_input_reserved_prefix` | `packages/agent/src/runtime.ts` |
 | `cave_durable_journal_corrupt` | `packages/agent/src/budget.ts` |
 | `cave_durable_journal_event_unknown` | `packages/agent/src/durable.ts` |
-| `cave_durable_journal_limit` | `packages/agent/src/durable-stores.ts` |
+| `cave_durable_journal_limit` | `packages/agent/src/durable-object-store.ts` |
 | `cave_durable_journal_version_unsupported` | `packages/agent/src/durable.ts` |
 | `cave_durable_max_cost_usd_unsupported` | `packages/agent/src/runtime.ts` |
 | `cave_durable_meter_not_fresh` | `packages/agent/src/budget.ts` |
+| `cave_durable_object_conditional_put_required` | `packages/agent/src/durable-object-store.ts` |
+| `cave_durable_object_lease_invalid` | `packages/agent/src/durable-object-store.ts` |
+| `cave_durable_object_lease_ttl_invalid` | `packages/agent/src/durable-object-store.ts` |
+| `cave_durable_object_lock_lost` | `packages/agent/src/durable-object-store.ts` |
 | `cave_durable_run_cancelled` | `packages/agent/src/durable-control.ts` |
 | `cave_durable_run_id_invalid` | `packages/agent/src/durable-limits.ts` |
-| `cave_durable_run_locked` | `packages/agent/src/durable-stores.ts` |
+| `cave_durable_run_locked` | `packages/agent/src/durable-object-store.ts` |
 | `cave_durable_session_id_invalid` | `packages/agent/src/durable.ts` |
 | `cave_durable_session_mismatch` | `packages/agent/src/runtime.ts` |
 | `cave_durable_sleep_reason_invalid` | `packages/agent/src/durable-control.ts` |
 | `cave_durable_sleep_wake_invalid` | `packages/agent/src/durable-control.ts` |
+| `cave_durable_sql_dialect_unsupported` | `packages/agent/src/durable-sql-store.ts` |
+| `cave_durable_sql_lease_ttl_invalid` | `packages/agent/src/durable-sql-store.ts` |
+| `cave_durable_sql_lock_lost` | `packages/agent/src/durable-sql-store.ts` |
+| `cave_durable_sql_table_invalid` | `packages/agent/src/durable-sql-store.ts` |
 | `cave_durable_subagent_unsupported` | `packages/agent/src/runtime.ts` |
 | `cave_durable_tool_call_id_invalid` | `packages/agent/src/durable.ts` |
 | `cave_durable_tool_call_id_missing` | `packages/agent/src/runtime.ts` |
@@ -283,7 +291,7 @@ Total: **732** identifiers.
 | `cave_tool_result_recovery_mismatch` | `packages/agent/src/runtime.ts` |
 | `cave_tool_result_requires_recovery` | `packages/agent/src/runtime.ts` |
 | `cave_tool_sandbox_entry_escapes_root` | `packages/agent/src/runtime.ts` |
-| `cave_tool_sandbox_entry_required` | `packages/agent/src/runtime.ts` |
+| `cave_tool_sandbox_entry_required` | `packages/agent/src/defaults.ts` |
 | `cave_tool_sandbox_source_escapes_root` | `packages/agent/src/runtime.ts` |
 | `cave_tool_schema_implementation_sha256` | `packages/agent/src/build.ts` |
 | `cave_tool_schema_invalid` | `packages/agent/src/runtime.ts` |
@@ -751,6 +759,15 @@ Total: **732** identifiers.
 | `cave_elided` | `packages/agent/src/compaction.ts` |
 | `cave_engine_aborted` | `packages/agent/src/runtime.ts` |
 | `cave_engine_timeout` | `packages/agent/src/runtime.ts` |
+| `cave_execution_backend_command_sessions_disabled` | `packages/agent/src/code.ts` |
+| `cave_execution_backend_command_sessions_local_only` | `packages/agent/src/code.ts` |
+| `cave_execution_backend_http_` | `packages/agent/src/execution-backend.ts` |
+| `cave_execution_backend_http_exec_invalid` | `packages/agent/src/execution-backend.ts` |
+| `cave_execution_backend_http_read_invalid` | `packages/agent/src/execution-backend.ts` |
+| `cave_execution_backend_http_snapshot_invalid` | `packages/agent/src/execution-backend.ts` |
+| `cave_execution_backend_http_token_required` | `packages/agent/src/execution-backend.ts` |
+| `cave_execution_backend_http_url_required` | `packages/agent/src/execution-backend.ts` |
+| `cave_execution_backend_spawn_failed` | `packages/agent/src/code.ts` |
 | `cave_execution_mode_ambiguous` | `packages/agent/src/claude-runtime.ts` |
 | `cave_execution_plan_selection_mismatch` | `packages/agent/src/execution-kernel.ts` |
 | `cave_fan_out_cap_exceeded` | `packages/agent/src/breakers.ts` |
@@ -765,6 +782,7 @@ Total: **732** identifiers.
 | `cave_frozen_prefix_volatile_segment` | `packages/agent/src/cache-planner/static-checks.ts` |
 | `cave_gateway_identity_unverified` | `packages/agent/src/gateway.ts` |
 | `cave_gateway_required_for_locked_plan` | `packages/agent/src/runtime.ts` |
+| `cave_gateway_unreachable` | `packages/agent/src/gateway.ts` |
 | `cave_host_sandbox_lock_ineligible` | `packages/agent/src/definition.ts` |
 | `cave_host_sandbox_nested_under_required` | `packages/agent/src/definition-graph.ts` |
 | `cave_incomplete_evidence` | `packages/agent/src/runtime.ts` |
@@ -871,6 +889,7 @@ Total: **732** identifiers.
 | `cave_side_effect_blocked` | `packages/agent/src/runtime.ts` |
 | `cave_stale_lock` | `packages/agent/src/cli.ts` |
 | `cave_stream_cancelled` | `packages/agent/src/runtime.ts` |
+| `cave_testing_script_exhausted` | `packages/agent/src/testing.ts` |
 | `cave_transform_registry_unavailable` | `packages/agent/src/cli.ts` |
 | `cave_transform_safety_mismatch` | `packages/agent/src/runtime.ts` |
 | `cave_transform_trace_basis_mixed` | `packages/agent/src/code.ts` |

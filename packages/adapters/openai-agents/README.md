@@ -1,5 +1,8 @@
 # `@caveman-ai/adapter-openai-agents`
 
+**Observability adapter.** Records lifecycle and usage from a native OpenAI
+Agents loop; it does not run a Caveman agent.
+
 Thin native model-boundary adapter for `@openai/agents@0.17.0` and
 `@openai/agents-core@0.17.0`.
 

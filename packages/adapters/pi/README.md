@@ -1,5 +1,9 @@
 # `@caveman-ai/adapter-pi`
 
+**Observability adapter.** Records lifecycle and usage from a native Pi loop;
+it does not run a Caveman agent. The separate exact-native Pi compiler target
+and locked runner in this package are not that adapter.
+
 Caveman Pi adapter plus exact-native Pi compiler target, pinned to
 `@earendil-works/pi-agent-core@0.83.0`.
 

@@ -128,6 +128,10 @@ provider. Bounds: `MODEL_BOUNDARY_MAX_MIDDLEWARE`,
 
 # 3. The adapter lanes
 
+Every adapter is an **observability adapter**: it records lifecycle and usage
+from a native framework loop, and it does not run a Caveman agent. The framework
+keeps its own loop, tools, retries, and provider call.
+
 Adapters install separately and pin **one exact upstream version** each.
 
 ```bash

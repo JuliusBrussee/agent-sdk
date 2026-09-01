@@ -9,8 +9,9 @@ runtime entrypoint, threat boundary, and honest live-provider gate.
   deterministic HTTP proof.
 - `security-incident-triage`: implemented evidence-only incident containment handoff.
 - `vendor-risk-review`: implemented evidence-only vendor risk handoff.
-- `adapters/*`: exact-pinned runnable lanes for Pi, Claude Agent SDK, Vercel AI
-  SDK, Eve, and Mastra. Planned.
+- `adapters/*`: exact-pinned runnable lanes for the observability adapters —
+  they record lifecycle and usage from a native framework loop and do not run a
+  Caveman agent. Pi, Claude Agent SDK, Vercel AI SDK, Eve, and Mastra. Planned.
 
 README presence is not proof; root `npm run test:example` executes every sample
 package.

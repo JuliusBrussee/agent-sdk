@@ -63,7 +63,7 @@ Task-shaped, in roughly the order you meet them.
 | [Artifacts and files](reference/artifacts.md) | `.caveman/*`, lock envelopes, profiles, build reports, journals |
 | [Reserved `cave_` identifiers](reference/identifiers.md) | All 726 failure codes, tool names, and refusal reasons |
 | [Packages](reference/packages.md) | Every workspace package, its purpose, exports, and install line |
-| [Glossary](reference/glossary.md) | Cave Build, Context IR, CCR, claim basis, epoch, tranche, and the rest |
+| [Glossary](reference/glossary.md) | Twenty-five terms — direct, session, durable store, execution backend, basis, Cave Build — each naming the file that owns it |
 
 ## Regenerating the generated pages
 

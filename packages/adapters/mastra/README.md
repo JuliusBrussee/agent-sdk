@@ -1,5 +1,8 @@
 # `@caveman-ai/adapter-mastra`
 
+**Observability adapter.** Records lifecycle and usage from a native Mastra
+loop; it does not run a Caveman agent.
+
 Native Caveman `Processor` for exact `@mastra/core@1.63.2`. No wrapper agent,
 second model loop, proxy, cache, retry engine, workflow runtime, memory layer, or
 telemetry provider.

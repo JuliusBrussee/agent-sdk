@@ -8,9 +8,9 @@ Declaration file: `packages/agent/dist/index.d.ts`.
 <details><summary>Symbol index</summary>
 
 - **Class**: `AgentRunController`, `BudgetController`, `CavemanRunError`, `ConnectRuntime`, `DiskDurableStore`, `HttpDurableStore`, `MemoryEngine`, `ProgrammaticSpeculationScope`
-- **Interface**: `AgentAudioInputPart`, `AgentDefinition`, `AgentDefinitionTransform`, `AgentDirConfig`, `AgentDirModules`, `AgentDirRunDefaults`, `AgentFileInputPart`, `AgentImageInputPart`, `AgentInputBase64Source`, `AgentInputEncoder`, `AgentInputURLSource`, `AgentOpaqueInputPart`, `AgentTextInputPart`, `ArtifactDefinition`, `BreakerEvent`, `BudgetExhaustionContext`, `BudgetTranche`, `CapturedModelBoundary`, `CapturedModelBoundaryCall`, `CompactionOptions`, `CompiledPipelineResult`, `CompileProfiledInput`, `CompileProfiledNativePiInput`, `CompileProfiledResult`, `CompilerTarget`, `CompleteModelUsage`, `CompletionMemorySidecarOptions`, `ConnectAction`, `ConnectConnection`, `ConnectEfficiencyComparison`, `ConnectEfficiencyRun`, `ConnectExecuteOptions`, `ConnectIntegration`, `ConnectMcpCallResult`, `ConnectMcpTool`, `ConnectMcpToolAnnotations`, `ConnectMcpToolExecution`, `ConnectMcpToolIcon`, `ConnectOptions`, `ConnectProcessResult`, `ConnectQualityPolicy`, `ConnectRuntimeOptions`, `ConnectSource`, `ConnectToolRuntimeDefinition`, `ContextAnchor`, `ContextCompactionFixture`, `ContextCompactionFixtureRound`, `ContextCompactionHarnessOptions`, `ContextCompactionHarnessResult`, `ContextCompactionHarnessRoundResult`, `ContextCompactionSummarizerRequest`, `ContextDefinition`, `ContextIR`, `ContextIRWire`, `ContextSegment`, `ContextSegmentWire`, `ContextSummary`, `ContextSummaryEvaluation`, `ContextSummaryEvaluationInput`, `ContextSummaryRound`, `ContextSummarySource`, `ContextSummaryStability`, `ContextSummaryValidation`, `CreateMemoryEngineOptions`, `DurableRunOptions`, `DurableStore`, `EvalDefinition`, `ExecuteCompiledPipelineInput`, `ExpectedContextAnchor`, `FileSource`, `HttpDurableStoreOptions`, `LoweredContext`, `MemoryAmbientOptions`, `MemoryCompletionRequest`, `MemoryConsolidationInput`, `MemoryDefinition`, `MemoryDraft`, `MemoryEdge`, `MemoryEmbeddingAdapter`, `MemoryExtractionInput`, `MemoryHit`, `MemoryRecall`, `MemoryRecord`, `MemoryRememberInput`, `MemoryReviewInput`, `MemoryReviewResult`, `MemoryRuntimeConfig`, `MemoryScope`, `MemorySearchOptions`, `MemorySessionHit`, `MemorySidecarAdapter`, `MemorySource`, `MemoryState`, `MemoryStorageAdapter`, `MemoryStoreConfig`, `MemoryTurn`, `MemoryTurnInput`, `MemoryVector`, `ModelBoundary`, `ModelBoundaryContext`, `ModelBoundaryFailed`, `ModelBoundaryMiddleware`, `ModelBoundaryPrepare`, `ModelBoundarySettled`, `ModelCallRouteDecision`, `ModelCallRouteInput`, `ModelUsage`, `NativePiCandidatePlanningInput`, `NestedToolDispatchOptions`, `NormalizedAgentInput`, `NormalizedCompaction`, `NormalizedConnectAction`, `NormalizedConnectQualityPolicy`, `NormalizedConnectSource`, `NormalizedToolActivity`, `NormalizedTrajectory`, `NormalizeTrajectoryOptions`, `OpenAICompatibleMemoryEmbeddingOptions`, `OutputDefinition`, `PreparedModelBoundaryCall`, `ProfileToolEffect`, `ProgrammaticSpeculationActivation`, `ProgrammaticSpeculationLaunch`, `ProgrammaticToolInstructionOptions`, `ProgrammaticToolRuntime`, `ProgrammaticToolStats`, `ReceiptCall`, `ReceiptCompaction`, `ReceiptLike`, `ReceiptPrintCall`, `ReceiptResume`, `ReceiptTool`, `ResolvedEgressPolicy`, `RoutineOutcomeCount`, `RunBreakers`, `RunBudget`, `RunOptions`, `RunReceipt`, `RunResult`, `RuntimeContextSegment`, `SandboxEgressPolicy`, `StandardInputOutputToolOptions`, `StandardJSONOutputToolOptions`, `StandardJSONToolOptions`, `StandardJSONTypeBoxOutputToolOptions`, `StandardOutputToolOptions`, `StandardToolOptions`, `StandardTypeBoxOutputToolOptions`, `SubagentRuntimeDefinition`, `ToolDefinition`, `ToolExecutionContext`, `ToolOptions`, `TypeBoxOutputToolOptions`, `WorkloadPartition`, `WorkloadProfile`
+- **Interface**: `AgentAudioInputPart`, `AgentDefinition`, `AgentDefinitionTransform`, `AgentDirConfig`, `AgentDirModules`, `AgentDirRunDefaults`, `AgentFileInputPart`, `AgentImageInputPart`, `AgentInputBase64Source`, `AgentInputEncoder`, `AgentInputURLSource`, `AgentOpaqueInputPart`, `AgentTextInputPart`, `ArtifactDefinition`, `BreakerEvent`, `BudgetExhaustionContext`, `BudgetTranche`, `CapturedModelBoundary`, `CapturedModelBoundaryCall`, `CompactionOptions`, `CompiledPipelineResult`, `CompileProfiledInput`, `CompileProfiledNativePiInput`, `CompileProfiledResult`, `CompilerTarget`, `CompleteModelUsage`, `CompletionMemorySidecarOptions`, `ConnectAction`, `ConnectConnection`, `ConnectEfficiencyComparison`, `ConnectEfficiencyRun`, `ConnectExecuteOptions`, `ConnectIntegration`, `ConnectMcpCallResult`, `ConnectMcpTool`, `ConnectMcpToolAnnotations`, `ConnectMcpToolExecution`, `ConnectMcpToolIcon`, `ConnectOptions`, `ConnectProcessResult`, `ConnectQualityPolicy`, `ConnectRuntimeOptions`, `ConnectSource`, `ConnectToolRuntimeDefinition`, `ContextAnchor`, `ContextCompactionFixture`, `ContextCompactionFixtureRound`, `ContextCompactionHarnessOptions`, `ContextCompactionHarnessResult`, `ContextCompactionHarnessRoundResult`, `ContextCompactionSummarizerRequest`, `ContextDefinition`, `ContextIR`, `ContextIRWire`, `ContextSegment`, `ContextSegmentWire`, `ContextSummary`, `ContextSummaryEvaluation`, `ContextSummaryEvaluationInput`, `ContextSummaryRound`, `ContextSummarySource`, `ContextSummaryStability`, `ContextSummaryValidation`, `CreateMemoryEngineOptions`, `DurableRunOptions`, `DurableStore`, `EvalDefinition`, `ExecRequest`, `ExecResult`, `ExecuteCompiledPipelineInput`, `ExecutionBackend`, `ExpectedContextAnchor`, `FileSource`, `HttpDurableStoreOptions`, `LoweredContext`, `MemoryAmbientOptions`, `MemoryCompletionRequest`, `MemoryConsolidationInput`, `MemoryDefinition`, `MemoryDraft`, `MemoryEdge`, `MemoryEmbeddingAdapter`, `MemoryExtractionInput`, `MemoryHit`, `MemoryRecall`, `MemoryRecord`, `MemoryRememberInput`, `MemoryReviewInput`, `MemoryReviewResult`, `MemoryRuntimeConfig`, `MemoryScope`, `MemorySearchOptions`, `MemorySessionHit`, `MemorySidecarAdapter`, `MemorySource`, `MemoryState`, `MemoryStorageAdapter`, `MemoryStoreConfig`, `MemoryTurn`, `MemoryTurnInput`, `MemoryVector`, `ModelBoundary`, `ModelBoundaryContext`, `ModelBoundaryFailed`, `ModelBoundaryMiddleware`, `ModelBoundaryPrepare`, `ModelBoundarySettled`, `ModelCallRouteDecision`, `ModelCallRouteInput`, `ModelUsage`, `NativePiCandidatePlanningInput`, `NestedToolDispatchOptions`, `NormalizedAgentInput`, `NormalizedCompaction`, `NormalizedConnectAction`, `NormalizedConnectQualityPolicy`, `NormalizedConnectSource`, `NormalizedToolActivity`, `NormalizedTrajectory`, `NormalizeTrajectoryOptions`, `OpenAICompatibleMemoryEmbeddingOptions`, `OutputDefinition`, `PreparedModelBoundaryCall`, `ProfileToolEffect`, `ProgrammaticSpeculationActivation`, `ProgrammaticSpeculationLaunch`, `ProgrammaticToolInstructionOptions`, `ProgrammaticToolRuntime`, `ProgrammaticToolStats`, `ReceiptCall`, `ReceiptCompaction`, `ReceiptLike`, `ReceiptPrintCall`, `ReceiptResume`, `ReceiptTool`, `ResolvedEgressPolicy`, `RoutineOutcomeCount`, `RunBreakers`, `RunBudget`, `RunOptions`, `RunReceipt`, `RunResult`, `RuntimeContextSegment`, `SandboxEgressPolicy`, `StandardInputOutputToolOptions`, `StandardJSONOutputToolOptions`, `StandardJSONToolOptions`, `StandardJSONTypeBoxOutputToolOptions`, `StandardOutputToolOptions`, `StandardToolOptions`, `StandardTypeBoxOutputToolOptions`, `SubagentRuntimeDefinition`, `ToolDefinition`, `ToolExecutionContext`, `ToolOptions`, `TypeBoxOutputToolOptions`, `WorkloadPartition`, `WorkloadProfile`
 - **Type alias**: `AgentDirContextValue`, `AgentInput`, `AgentInputPart`, `AgentInputSource`, `Auto`, `BudgetDenomination`, `BudgetExhaustionHandler`, `CacheRegion`, `CavemanRunEvent`, `ConnectActionBindValue`, `ConnectExecutor`, `ContextAnchorKind`, `ContextCompactionSummarizer`, `ContextKind`, `ContextPriority`, `ContextStability`, `ConversationState`, `DurableRunSummary`, `EvalGuardrail`, `EvalSplit`, `FiniteJSON`, `MemoryKind`, `MemoryRelation`, `ModelBoundaryRole`, `ModelCallRouter`, `ModelUsageAccountingStatus`, `ModelUsageCost`, `ModelUsageTokenCount`, `PrivacyClass`, `ProfiledCompileStatus`, `ProgrammaticSpeculationDispatch`, `QualityGrader`, `RecoveryKind`, `RoutineOutcome`, `RunStopReason`, `SafetyClass`, `SandboxEgress`, `StandardToolSchema`, `ToolEffect`, `ToolResultPolicy`, `ToolRuntimeDefinition`, `TrajectorySource`, `WorkloadSplit`
-- **Function**: `agent`, `appendRuntimeContextSegment`, `applyAgentDefinitionTransforms`, `artifact`, `assertProfiledBuildTarget`, `assertQualityGrader`, `auto`, `capabilityManifestFor`, `captureModelBoundary`, `compareConnectEfficiency`, `compileProfiled`, `compileProfiledNativePi`, `completionMemorySidecar`, `composeAgentDir`, `connectEnvironment`, `context`, `contextBill`, `contextIRFromWire`, `contextIRToWire`, `contextSummarySources`, `cosine`, `createBudgetController`, `createCompilerWorkloadProfile`, `createConnect`, `createConversation`, `createFileMemoryAdapter`, `createInMemoryMemoryStorage`, `createMemoryEngine`, `createMemoryWorkflow`, `createModelBoundary`, `createProgrammaticToolErrorWrapper`, `createProgrammaticToolRuntime`, `createSparseEmbeddingAdapter`, `createWorkloadProfile`, `defineAgentInputEncoder`, `defineModelUsage`, `defineRunReceipt`, `durableInputIsReplayable`, `durableRunSummary`, `egressAllowed`, `emptyMemoryState`, `encodeAgentInput`, `eval`, `evalFixture`, `evaluateContextSummary`, `evaluateContextSummaryStability`, `executeCompiledPipeline`, `executeConnectTool`, `file`, `latestContextSummary`, `loadAgentDir`, `lowerContext`, `memory`, `memoryTTLMilliseconds`, `modelUsageAccountingStatus`, `nativePiCompilerTarget`, `normalizeAgentInput`, `normalizeCompaction`, `normalizeTrajectory`, `opaquePayload`, `openAICompatibleMemoryEmbedding`, `output`, `packVector`, `parseContextSummary`, `parseNormalizedTrajectory`, `parseWorkloadProfile`, `planNativePiCandidates`, `programmaticToolInstructions`, `programmaticToolMetadata`, `renderReceipt`, `renderSummary`, `requireCompleteModelUsage`, `resolveConnectBinary`, `resolveEgressPolicy`, `routine`, `routineOutcomes`, `run`, `runContextCompactionHarness`, `runLocked`, `sha256`, `stableStringify`, `stream`, `subagent`, `summarizationInstruction`, `tool`, `validateContextSummaryTransition`, `verifySandboxConformance`, `workloadSplitSHA256`
+- **Function**: `agent`, `appendRuntimeContextSegment`, `applyAgentDefinitionTransforms`, `artifact`, `assertProfiledBuildTarget`, `assertQualityGrader`, `auto`, `capabilityManifestFor`, `captureModelBoundary`, `compareConnectEfficiency`, `compileProfiled`, `compileProfiledNativePi`, `completionMemorySidecar`, `composeAgentDir`, `connectEnvironment`, `context`, `contextBill`, `contextIRFromWire`, `contextIRToWire`, `contextSummarySources`, `cosine`, `createBudgetController`, `createCompilerWorkloadProfile`, `createConnect`, `createConversation`, `createFileMemoryAdapter`, `createInMemoryMemoryStorage`, `createMemoryEngine`, `createMemoryWorkflow`, `createModelBoundary`, `createProgrammaticToolErrorWrapper`, `createProgrammaticToolRuntime`, `createSparseEmbeddingAdapter`, `createWorkloadProfile`, `defineAgentInputEncoder`, `defineModelUsage`, `defineRunReceipt`, `durableInputIsReplayable`, `durableRunSummary`, `egressAllowed`, `emptyMemoryState`, `encodeAgentInput`, `eval`, `evalFixture`, `evaluateContextSummary`, `evaluateContextSummaryStability`, `executeCompiledPipeline`, `executeConnectTool`, `file`, `httpExecutionBackend`, `latestContextSummary`, `loadAgentDir`, `localExecutionBackend`, `lowerContext`, `memory`, `memoryTTLMilliseconds`, `modelUsageAccountingStatus`, `nativePiCompilerTarget`, `normalizeAgentInput`, `normalizeCompaction`, `normalizeTrajectory`, `opaquePayload`, `openAICompatibleMemoryEmbedding`, `output`, `packVector`, `parseContextSummary`, `parseNormalizedTrajectory`, `parseWorkloadProfile`, `planNativePiCandidates`, `programmaticToolInstructions`, `programmaticToolMetadata`, `renderReceipt`, `renderSummary`, `requireCompleteModelUsage`, `resolveConnectBinary`, `resolveEgressPolicy`, `routine`, `routineOutcomes`, `run`, `runContextCompactionHarness`, `runLocked`, `sha256`, `stableStringify`, `stream`, `subagent`, `summarizationInstruction`, `tool`, `validateContextSummaryTransition`, `verifySandboxConformance`, `workloadSplitSHA256`
 - **Variable**: `AGENT_DIR_ENTRY`, `AGENT_INPUT_MAX_BASE64_BYTES_PER_PART`, `AGENT_INPUT_MAX_BASE64_BYTES_TOTAL`, `AGENT_INPUT_MAX_FILE_NAME_LENGTH`, `AGENT_INPUT_MAX_MIME_LENGTH`, `AGENT_INPUT_MAX_PARTS`, `AGENT_INPUT_MAX_TEXT_BYTES`, `AGENT_INPUT_MAX_URL_LENGTH`, `AGENT_RUN_RECEIPT_SCHEMA`, `AUTO`, `MODEL_BOUNDARY_MAX_CONTEXT_STRING_LENGTH`, `MODEL_BOUNDARY_MAX_ID_LENGTH`, `MODEL_BOUNDARY_MAX_MIDDLEWARE`, `OUTPUT_CLAMP_FLOOR_TOKENS`, `PROFILED_COMPILER_SHA256`, `PROFILED_COMPILER_VERSION`, `PROGRAMMATIC_TOOL_NAME`, `schema`, `SUMMARY_SCHEMA_VERSION`, `TARGET_CAPABILITY_LATTICE`, `TRAJECTORY_IR_SCHEMA_VERSION`, `validateRunReceipt`, `WORKLOAD_PROFILE_SCHEMA_VERSION`
 
 </details>
@@ -339,6 +339,14 @@ export interface AgentDefinition {
      *   escape its root's containment. Host execution is never isolation.
      */
     readonly sandbox: "required" | "fixture" | "host";
+    /**
+     * Whether the author named a sandbox posture. `false` means the `"required"`
+     * above is the type-level default rather than a stated intent, which is what
+     * lets `run()`/`stream()` execute on the host (loudly) when no `entryPath` is
+     * supplied. An explicit posture — including an explicit `"required"` — is
+     * never reinterpreted.
+     */
+    readonly sandboxDeclared: boolean;
 }
 ```
 
@@ -1465,6 +1473,36 @@ export interface EvalDefinition {
 
 Declared in `packages/agent/dist/primitives.d.ts`.
 
+### `ExecRequest`
+
+```ts
+export interface ExecRequest {
+    readonly command: string;
+    readonly args: readonly string[];
+    readonly cwd: string;
+    readonly env: Readonly<Record<string, string>>;
+    readonly timeoutMs: number;
+    readonly maxOutputBytes: number;
+    readonly signal?: AbortSignal;
+}
+```
+
+Declared in `packages/agent/dist/execution-backend.d.ts`.
+
+### `ExecResult`
+
+```ts
+export interface ExecResult {
+    readonly stdout: string;
+    readonly stderr: string;
+    readonly code: number | null;
+    readonly timedOut: boolean;
+    readonly truncated: boolean;
+}
+```
+
+Declared in `packages/agent/dist/execution-backend.d.ts`.
+
 ### `ExecuteCompiledPipelineInput`
 
 ```ts
@@ -1482,6 +1520,25 @@ export interface ExecuteCompiledPipelineInput {
 ```
 
 Declared in `packages/agent/dist/compiler.d.ts`.
+
+### `ExecutionBackend`
+
+```ts
+export interface ExecutionBackend {
+    readonly id: string;
+    exec(request: ExecRequest): Promise<ExecResult>;
+    readFile(path: string, opts?: {
+        maxBytes?: number;
+    }): Promise<Uint8Array>;
+    writeFile(path: string, data: Uint8Array): Promise<void>;
+    prepare?(): Promise<void>;
+    snapshot?(): Promise<string>;
+    restore?(snapshotId: string): Promise<void>;
+    close?(): Promise<void>;
+}
+```
+
+Declared in `packages/agent/dist/execution-backend.d.ts`.
 
 ### `ExpectedContextAnchor`
 
@@ -4375,6 +4432,18 @@ export declare function file(path: string): FileSource;
 
 Declared in `packages/agent/dist/primitives.d.ts`.
 
+### `httpExecutionBackend`
+
+```ts
+export declare function httpExecutionBackend(opts: {
+    url: string;
+    token: string;
+    fetch?: typeof fetch;
+}): ExecutionBackend;
+```
+
+Declared in `packages/agent/dist/execution-backend.d.ts`.
+
 ### `latestContextSummary`
 
 Recover the newest trusted capsule from model-visible conversation history.
@@ -4403,6 +4472,14 @@ export declare function loadAgentDir(rootDir: string, options?: {
 ```
 
 Declared in `packages/agent/dist/dir-loader.d.ts`.
+
+### `localExecutionBackend`
+
+```ts
+export declare function localExecutionBackend(): ExecutionBackend;
+```
+
+Declared in `packages/agent/dist/execution-backend.d.ts`.
 
 ### `lowerContext`
 

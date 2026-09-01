@@ -1,212 +1,153 @@
 # `@caveman-ai/agent`
 
-> **Build anywhere. Compile with Caveman.**
+> **The session kernel.** Put your agent in it and it becomes durable,
+> budgeted, resumable, multi-client, and able to run its tools anywhere. Your
+> key, your provider, any sandbox.
 
-`@caveman-ai/agent` now includes one-command profile/build proof flow:
+No account and no hosted service sit in the path. The sample below runs on one
+provider key and zero configuration; everything after it is opt-in.
+
+> **Release status:** the v0.2 slice is implemented in this repository but is
+> not published to npm. Registry installs may expose an older surface, and the
+> commands below assume this checkout or a local tarball.
 
 ```bash
-npm run build
+npm install @caveman-ai/agent      # Node 22.19+, one provider key
 ```
 
-No prior traces required. Build runs declared `profile` evals, searches on
-`development`, freezes selected plan, then opens untouched `holdout`. If
-content-blind Caveman RunResult, OpenTelemetry, or OpenInference rows already
-exist under `.caveman/traces/`, same command imports them and skips profile-eval
-spend. No Caveman account required.
-
-Successful split-role v0.2 build writes:
-
-- `.caveman/agent.lock.json` — native Pi behavioral or generic/external baseline
-  Cave Build v3 proof envelope;
-- `.caveman/workload-profile.json` — content-blind profile and provenance;
-- `.caveman/build-report.json` — search cost, holdout evidence, passes, claims,
-  and local/inferred point-estimate `break_even_tasks` when total actual search
-  cost is complete and holdout catalog delta is positive (`null` otherwise).
-
-Exact first-party native Pi (`tool-free-v1`) owns candidate generation and both
-`runAgentInternal` eval runners. For agents with no declared tools it can select
-a priced model, lower reasoning effort, add reversible Context IR routes with
-derived recovery, and lower output budget. Required semantics and sorted passes
-must exactly match the plan diff. Any root tool—including a subagent—refuses
-before runner spend. Generic/custom Pi, Vercel AI SDK, Eve, and Mastra remain
-baseline-equivalent with empty capabilities and only
-`profile_guided_selection`. Claude Cave Build compilation and registration
-refuse. Every failure aborts; embedded baseline pointer is manual recovery,
-never automatic second paid attempt. Evidence is local `inferred` or registered
-client-declared; verified savings remain `$0`. Publish no savings percentage.
-Build, compiler, and adapter-contract hashes bind canonical bytes for integrity;
-they are not signatures, binary/SBOM provenance, runtime attestation, or proof
-that registered bytes served traffic.
-
-Minimal eval file declares independent lineages. Invoking `npm run build`
-executes every declared fixture within configured search budget; SDK adds no
-approval or permission gate.
+## Define
 
 ```ts
-import { eval as defineEval } from "@caveman-ai/agent";
+import { agent, auto } from "@caveman-ai/agent";
 
-export const profile = defineEval({
-  id: "profile-a", lineageId: "profile-family", split: "profile",
-  input: "representative task",
-  quality: [{ type: "exact_match", expected: "expected result" }],
-});
-export const development = defineEval({
-  id: "development-a", lineageId: "development-family-a", split: "development",
-  input: "different representative task",
-  quality: [{ type: "exact_match", expected: "expected result" }],
-});
-export const developmentB = defineEval({
-  id: "development-b", lineageId: "development-family-b", split: "development",
-  input: "second development task",
-  quality: [{ type: "exact_match", expected: "second result" }],
-});
-export const holdout = defineEval({
-  id: "holdout-a", lineageId: "holdout-family-a", split: "holdout",
-  input: "unseen representative task",
-  quality: [{ type: "exact_match", expected: "expected result" }],
-});
-export const holdoutB = defineEval({
-  id: "holdout-b", lineageId: "holdout-family-b", split: "holdout",
-  input: "second unseen task",
-  quality: [{ type: "exact_match", expected: "second result" }],
-});
-```
-
-Optional trace row envelope is deliberately tiny; `trace` may be RunResult,
-OTel span, or OpenInference span. Raw prompt/result span attributes are refused.
-Generic OTel/OpenInference spans always remain unpriced; only strict Caveman
-evidence can be repriced from pinned public catalog.
-
-```json
-{"schema_version":1,"case_id":"case-a","lineage_id":"family-a","input_sha256":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","agent_sha256":"abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789","trace":{"traceId":"...","spanId":"...","attributes":{}}}
-```
-
-Advanced exact-native programmatic API uses the compiler-owned runner:
-
-```ts
-import {
-  compileProfiledNativePi,
-  createCompilerWorkloadProfile,
-  normalizeTrajectory,
-} from "@caveman-ai/agent";
-
-const profile = createCompilerWorkloadProfile([
-  normalizeTrajectory(profileRun, {
-    split: "profile", caseId: "case-1", lineageId: "family-1",
-    inputSha256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-  }),
-]);
-
-const result = await compileProfiledNativePi({
-  ...nativeCompilerInput, // agent, Context IR, baseline, policy, and digests
-  rootDir: process.cwd(),
-  entryPath: "src/agent.ts",
-  profile,
-  developmentEvals,
-  holdoutEvals,
-});
-
-if (result.status !== "locked") throw new Error(result.reason ?? result.status);
-console.log(result.lock.build_sha256);
-```
-
-Callers cannot inject native candidates, runners, or target identity.
-`compileProfiled` remains the generic caller-owned-runner API and emits
-baseline-equivalent v3 only.
-
-Release status: v0.2 reference slice is implemented in this repository but is
-non-release and not published to npm. Registry commands below require local
-tarballs until `@caveman-ai/agent` and `create-caveman-agent` publish.
-
-Standalone authoring API remains optional convenience. Define instructions,
-tools, context, evals, and budgets in TypeScript; Caveman runs agent, reports
-provider usage, and produces v3 whenever evals declare split roles.
-Unsplit legacy eval suites continue producing Pi Cave Build v2.
-
-Local Caveman Engine is optional. With Engine running, eligible context can use
-recoverable local compression. Without it, SDK calls provider directly in explicit
-observe-only mode: no transforms or Caveman gateway telemetry. Provider usage and
-local context estimates remain available.
-
-## Connect provider data without prompt bloat
-
-```ts
-import { agent, auto, createConnect } from "@caveman-ai/agent";
-
-const data = createConnect({
-  sources: [{
-    id: "work-github",
-    provider: "github",
-    collect: ["issues"],
-    models: ["Issue"],
-  }],
-});
-
-export default agent({
-  id: "issue-triage",
-  instructions: "Use connected source data. Never invent missing records.",
+export const reviewer = agent({
+  id: "reviewer",
+  instructions: "Review the change. Name the root cause, not the symptom.",
   model: auto(),
-  tools: [data.tool],
 });
 ```
 
-Run `caveman-agent connect github` once, then `await data.collect()` from app or
-deployment job. One stable `connected_data` schema enters model context;
-provider catalog, sync/action schemas, and records load only on demand.
-Paginated reads never silently summarize or skip records: capped output returns
-`complete: false`, exact continuation when available, and `must_refuse: true`.
+`auto()` resolves `CAVE_MODEL`, then `.caveman/provider.json`, then the
+baseline model for the one supported provider credential present. It never
+classifies a task and never routes between models on quality.
 
-Full cost, quality, security, and evidence contract:
-[`docs/connect.md`](docs/connect.md).
+## Run
 
-## Quick start
+```ts
+import { run } from "@caveman-ai/agent";
 
-Requires Node.js 22.19+ and one supported provider credential.
-
-```bash
-npm create @caveman-ai/agent@latest my-agent
-cd my-agent
-npm run dev
+const result = await run(reviewer, "Why does the parser drop trailing commas?");
+console.log(result.text);
+console.log(result.receipt);
 ```
 
-Two commands, no Caveman account or hosted Caveman service. Provider credential
-and network still required. On machine that has never seen Caveman, first run
-looks like this:
+The receipt carries per-call, per-tool, and per-subagent spend, the usage and
+price basis, stop reason, compactions, retries, and resume state. A run that
+fails after spending throws `CavemanRunError` carrying the same partial
+receipt. `stream()` gives the same run as typed events.
 
-```console
-$ npm create @caveman-ai/agent@latest my-agent
-$ cd my-agent && npm run dev
+## Serve sessions
 
-  cave: observe-only — engine/gateway unavailable; transforms and gateway
-  telemetry off (provider usage and local context estimates remain available)
+A session owns one conversation and one `AgentRunController`. A message that
+arrives while a run is active queues onto that run (`mode: "steer"` interrupts
+instead); a message while idle starts the next run on the same conversation.
+Every attached client sees the same frames.
 
-  agent > what does src/index.ts export?
-  … model answers through your own provider credential, direct to the provider …
+```ts
+import { createAgentServer } from "@caveman-ai/agent/serve";
+
+const server = createAgentServer({
+  definition: reviewer,
+  token: process.env.CAVE_SERVE_TOKEN!,   // ≥16 chars; this endpoint spends money
+});
+await server.listen(8080);
 ```
 
-`npm run dev` auto-starts local Cave Runtime when installed. When unavailable,
-run uses **observe-only** mode: provider's own base URL, no transform, no gateway
-telemetry, and `RunResult.mode: "observe-only"`. Provider usage and local context
-estimates remain available; no efficiency result is claimed. To enable Engine:
-
-```bash
-npm i -g @caveman-ai/cli && caveman start
+```text
+POST   /sessions                  → {sessionId}
+POST   /sessions/{id}/messages    → {runId, queued}
+GET    /sessions/{id}             → runs, active run, queue depth
+GET    /sessions/{id}/events      → Server-Sent Events across every run
+DELETE /sessions/{id}             → cancel the active run, drop the queue
+WS     /sessions/{id}/ws          → the same frames, bidirectional
 ```
 
-Then same commands can run `mode: "optimized"`, routed through local gateway with
-eligible transforms and context telemetry. Gateway proxies `anthropic`, `openai`,
-and `google`; other providers go direct and report `observe-only`. Set `cave:
-"off"` in `RunOptions` to choose observe-only. Run carrying Cave Build lock or
-candidate plan refuses silent downgrade with
+`createAgentHandler` from `@caveman-ai/agent/serve-handler` is the same server
+as a web-standard `fetch(Request)` with no `node:http` import, for Cloudflare
+Durable Objects, Deno, and Bun. `runOptions` accepts a per-run factory
+(`({ sessionId, runId }) => …`) so no controller or signal is ever shared
+between runs. In the browser, `useSession` from `@caveman-ai/react` consumes
+the stream and never holds the token.
+
+## Keep the session (durable store)
+
+```ts
+import { SqlDurableStore } from "@caveman-ai/agent/durable";
+
+const store = new SqlDurableStore({
+  sql: { exec: (query, params) => db.prepare(query).all(...params) },
+  dialect: "sqlite",
+});
+```
+
+One method is the entire database dependency, so Durable Object SQLite,
+better-sqlite3, `node:sqlite`, and Postgres are the same three lines;
+`ObjectDurableStore` is the same over S3/R2/GCS. Run
+`SqlDurableStore.schema(dialect)` once yourself — the store issues no DDL.
+Durable runs journal call intent before network work, so a resume restores
+known spend and the execution boundary. A request in flight during a crash
+stays `unknown`: the SDK cannot know whether the provider billed it, and says
+so instead of guessing.
+
+## Run the tools somewhere else (execution backend)
+
+```ts
+import { httpExecutionBackend } from "@caveman-ai/agent";
+import { createCodingAgent } from "@caveman-ai/agent/code";
+
+const coding = createCodingAgent({
+  workspace: process.cwd(),
+  executionBackend: httpExecutionBackend({ url: process.env.CAVE_EXEC_URL!, token }),
+});
+```
+
+Every coding tool that shells out or touches the workspace routes through the
+backend. The default, `localExecutionBackend()`, is uncontained host execution
+and is not isolation. The remote contract is a bearer token and three JSON
+endpoints (`/exec`, `/read`, `/write`, plus optional
+`/prepare`, `/snapshot`, `/restore`), which any container or sandbox provider
+satisfies in about forty lines: [`docs/execution-backend.md`](docs/execution-backend.md).
+The environment handed to `/exec` stays the explicit allowlist the SDK built;
+interactive command sessions remain local-only and fail closed elsewhere.
+
+## Budget
+
+```ts
+const result = await run(reviewer, input, {
+  budget: { maxUsd: 1.0, onExhausted: "compact" },
+});
+```
+
+Every priced root or descendant call reserves its catalog worst case before the
+request and settles measured cost after. A model the public catalog cannot
+price cannot be capped: under a USD budget that call fails closed instead of
+consuming an imaginary `$0`. Token budgets use the same root ledger. Both are
+local controls at public list prices — not provider invoices, platform quotas,
+or cross-process financial reservations. `onExhausted: "compact"` enters the
+fail-closed ladder: exact-recovery eviction, typed summary, output clamp, stop.
+
+## Modes
+
+The default is **direct**: your key, your provider, no proxy. The receipt value
+for direct is `observe-only` — no transforms, no gateway telemetry, and no
+efficiency claim; provider usage and local context estimates remain available.
+`optimized` is optional and requires the local Caveman gateway
+(`npm i -g @caveman-ai/cli && caveman start`), which proxies `anthropic`,
+`openai`, and `google`; other providers go direct. A run carrying a Cave Build
+lock or candidate plan refuses to downgrade silently and fails with
 `cave_gateway_required_for_locked_plan`.
 
-Framework accepts loopback runtime only when health identity, run state, PID, and
-executable ownership validate. Unrelated local listener never receives provider
-traffic; run goes direct in observe-only mode. Local results remain `inferred`;
-verified savings stay `$0` until active production traffic passes separate rollout
-and ledger gates.
-
-Run a zero-provider-call readiness check before first use or deployment:
+Check what this machine would do, with no model call:
 
 ```console
 $ npx caveman-agent doctor          # add --json for the machine-readable report
@@ -217,63 +158,29 @@ WARN runtime_cli  Caveman runtime CLI unavailable — runs stay observe-only
 WARN gateway      gateway not reachable at 127.0.0.1:8787 — telemetry off
 ...
 run mode: observe-only (no transforms or gateway telemetry)
-next: npm i -g @caveman-ai/cli && caveman start
 ```
 
-Missing Engine, runtime CLI, or gateway is WARN and exits 0 because observe-only
-runs still work. Node version, broken sandbox containment, invalid config, or lock
-drift fails check. Doctor also checks engine registry, gateway reachability,
-project/config load, Context IR, and provider selection.
+Missing engine, runtime CLI, or gateway is a `WARN` and exits 0, because direct
+runs still work. A bad Node version, broken sandbox containment, invalid
+config, or lock drift fails the check.
 
-Harnesses report separately. Exact native Pi owns `runAgentInternal` candidate
-and locked execution and may emit the closed behavioral plan above. Generic
-compiler harness accepts adapter-owned runners and binds identity/evidence around
-unchanged baseline. Framework-native Vercel and Mastra integration lives only in
-their adapter packages; core carries no second host implementation.
-Direct `runClaudeAgent` remains unlocked, and every Claude v3 compile refuses
-pending source, budget, recovery, cache, and replay evidence.
+## Going further
 
-Context compaction uses the public, modular `@caveman-ai/agent/compaction`
-surface. See [`docs/compaction.md`](docs/compaction.md) for runtime setup,
-capsule validation, deterministic stability tests, and live-model adapters.
+- [Evals and Cave Build](#evals-and-cave-build) — profile evals, candidate
+  search on development, frozen holdouts, `.caveman/agent.lock.json`, and what
+  a lock does and does not prove.
+- [Caveman Connect](docs/connect.md) — provider data through one stable
+  `connected_data` tool; catalog, sync schemas, and records stay out of the
+  prompt until asked for, and a capped read refuses instead of omitting.
+- [Memory](docs/memory.md) and [compaction](docs/compaction.md) — next-turn
+  recall and typed capsules that preserve exact commitments under a budget.
+- [Programmatic tools](#programmatic-tools-and-speculative-reads) — one bounded
+  `caveman_code` cell instead of a wall of JSON tools.
+- [The coding agent](#the-coding-agent-caveman-aicoding-agent) and
+  [Claude Agent SDK lane](#claude-agent-sdk).
+- [Public surface](#public-surface) — every published entrypoint.
 
-Adapter frameworks ship as separate exact-pinned packages; install only lane used:
-
-```bash
-npm install @caveman-ai/agent @caveman-ai/adapter-vercel-ai-sdk ai@7.0.84
-npm install @caveman-ai/agent @caveman-ai/adapter-mastra @mastra/core@1.63.2
-npm install @caveman-ai/agent @caveman-ai/adapter-eve eve@0.29.2
-```
-
-Eve 0.29.2 requires Node.js 24+. Base SDK, Vercel, and Mastra lanes keep package
-minimum Node.js 22.19. Each adapter owns and tests its exact upstream pin.
-
-## Smallest agent
-
-```ts
-import { agent, auto } from "@caveman-ai/agent";
-
-export default agent({
-  id: "support",
-  instructions: "Answer from policy. Never invent policy.",
-  model: auto(),
-});
-```
-
-`auto()` selects configured/default model. Resolution order is `CAVE_MODEL`,
-`.caveman/provider.json`, then baseline model for the sole supported provider
-credential. It never classifies tasks or routes between models.
-
-Run agent from code:
-
-```ts
-import support from "./agent.js";
-import { run } from "@caveman-ai/agent";
-
-const result = await run(support, "Can I get a refund?");
-console.log(result.text);
-console.log(result.contextBill);
-```
+## Runs in depth
 
 Embed one locked Pi Cave Build after deployment freshness gate:
 

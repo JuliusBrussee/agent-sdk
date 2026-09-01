@@ -21,10 +21,15 @@ provider choice, and installs dependencies. Exactly one detected credential is
 selected silently; zero or several prompt once. Secrets are never printed or
 written.
 
+Two templates ship: `support-bot` (the default: tools, evals, a build config)
+and `background-agent` (server-first sessions, a durable store per session, a
+remote execution backend, no build).
+
 Non-interactive:
 
 ```bash
 npm create @caveman-ai/agent@latest my-agent -- --provider anthropic
+npm create @caveman-ai/agent@latest my-agent -- --template background-agent
 npm create @caveman-ai/agent@latest my-agent -- --provider openai --no-install
 ```
 
@@ -97,18 +102,20 @@ never silent.
 
 ## What the first run tells you
 
-On a machine with only Node and a provider key:
+Runs are **direct** by default: your key, your provider, no proxy. On a machine
+with only Node and a provider key:
 
 ```text
 cave: observe-only — engine/gateway unavailable; transforms and gateway
 telemetry off (provider usage and local context estimates remain available)
 ```
 
-`RunResult.mode` is `"observe-only"`. The call went straight to your provider.
-Provider usage and local context estimates are still there; no efficiency is
-claimed. See [Execution modes](../concepts/execution-modes.md).
+`observe-only` is the receipt value for a direct run — `RunResult.mode` is
+`"observe-only"`. The call went straight to your provider. Provider usage and
+local context estimates are still there; no efficiency is claimed. See
+[Execution modes](../concepts/execution-modes.md).
 
-To enable `optimized` mode:
+`optimized` is optional and requires the Caveman gateway:
 
 ```bash
 npm i -g @caveman-ai/cli
@@ -160,3 +167,5 @@ config, or lock drift fails.
 - [The agent directory](03-agent-directory.md) — the filesystem-first layout.
 - [Tools](04-tools.md) — schemas, effects, and result policies.
 - [Budgets, receipts, and breakers](09-budgets-receipts-breakers.md) — spend control.
+- [Serving and hosting](11-serving-and-hosting.md) — sessions, the fetch
+  handler, and durable stores.

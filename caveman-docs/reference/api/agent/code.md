@@ -99,6 +99,10 @@ export interface CodingAgentOptions {
     speculativeToolCalls?: boolean;
     /** Optional bounded disk retention for command output evicted from memory. */
     commandSessionSpill?: CommandSessionSpillOptions;
+    /** Interactive bash sessions. Defaults on locally and off for non-local backends. */
+    commandSessions?: boolean;
+    /** Workspace and process execution. Defaults to the local host backend. */
+    executionBackend?: ExecutionBackend;
     /** Trusted product adapters applied before direct/programmatic tool finalization. */
     definitionTransforms?: readonly AgentDefinitionTransform[];
     /** Provider-visible composite tool name. Product wrappers may brand it; default `caveman_code`. */

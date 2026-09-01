@@ -1,5 +1,8 @@
 # `@caveman-ai/adapter-langgraph`
 
+**Observability adapter.** Records lifecycle and usage from a native LangGraph
+loop; it does not run a Caveman agent.
+
 Native, observation-only Caveman adapter for LangGraph.js. It attaches one
 LangChain callback handler and one LangGraph v3 stream-transformer factory. It
 does not wrap `invoke`, replace graph execution, proxy model traffic, mutate

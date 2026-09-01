@@ -1,5 +1,8 @@
 # `@caveman-ai/adapter-cloudflare-agents`
 
+**Observability adapter.** Records lifecycle and usage from a native Cloudflare
+Agents loop; it does not run a Caveman agent.
+
 Small native observability adapter for `agents@0.22.0`.
 
 ```ts

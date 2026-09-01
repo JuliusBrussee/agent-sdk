@@ -1,142 +1,115 @@
 # Glossary
 
+Twenty-five terms, each ending in the file that owns it. Everything else in
+these docs is explained where it is used.
+
 **Agent directory** — The filesystem-first convention: `instructions.md` +
-`agent.ts` + `tools/` + `skills/` + `subagents/`, composed by `loadAgentDir()`
-into one ordinary `agent()` call. See [guide](../guides/03-agent-directory.md).
+`agent.ts` + `tools/` + `skills/` + `subagents/`, composed into one ordinary
+`agent()` call by `loadAgentDir()`. `packages/agent/src/dir-loader.ts`
 
-**Anchor** — A typed reference inside a `cave.context-summary.v2` capsule. A
-*critical* anchor must survive byte-identically across a compaction generation
-unless a later user-grounded source supersedes it with an explicit edge.
+**Basis** — The provenance label on a number. `claimBasis` is `inferred` (a
+local estimate — the strongest claim any local path here makes), `measured`, or
+`verified` (reserved for a system that can compare against a bill; nothing in
+this repository emits it). `usageBasis` is `provider_reported` or `unavailable`;
+`priceBasis` is `public_catalog` or `unpriced`. `packages/agent/src/run-receipt.ts`
 
-**Basis** — The provenance label on a number. `claimBasis` is `inferred`,
-`measured`, or (reserved, never emitted here) `verified`. `usageBasis` is
-`provider_reported` or `unavailable`. `priceBasis` is `public_catalog` or
-`unpriced`.
+**Breaker** — A deterministic circuit breaker: repeated-tool-call detection,
+no-progress windows, per-turn fan-out cap, budgeted retry. No model
+participates in any breaker decision. `packages/agent/src/breakers.ts`
 
-**Breaker** — A deterministic circuit breaker: repeated-tool-call loop detection,
-no-progress windows, per-turn fan-out cap, budgeted retry. No model participates
-in any breaker decision.
+**Budget** — A run's declared ceiling in exactly one denomination, `usd` or
+`tokens`, enforced by reserve-and-clamp: hold each call's worst case before it
+leaves, clamp its output allowance when the remainder cannot fund it, stop
+below the floor. A local control, never an invoice. `packages/agent/src/budget.ts`
 
-**Cache epoch** — The window inside which the provider-visible stable prefix stays
-byte-stable. A definition, model, or plan change rotates the epoch rather than
-replaying stale bytes.
+**Cache epoch** — The window inside which the provider-visible stable prefix
+stays byte-stable. A definition, model, or plan change rotates the epoch rather
+than replaying stale bytes. `packages/agent/src/runtime.ts`
 
-**Cave Build** — The immutable proof envelope a successful `caveman-agent build`
-writes to `.caveman/agent.lock.json`. v2 is the legacy unsplit form; v3 is the
-split-role profile-guided form.
+**Cave Build (lock)** — The immutable proof envelope a successful
+`caveman-agent build` writes to `.caveman/agent.lock.json`. It binds canonical
+bytes for integrity; it is not a signature or an attestation.
+`packages/agent/src/build.ts`
 
-**CCR (exact byte-recovery)** — The recovery class where original bytes can be
-restored exactly, through the framework `cave_retrieve` tool. Only
-CCR-recoverable transforms are eligible for a default plan.
+**Compaction capsule** — A `cave.context-summary.v2` replacement for older
+context, with typed anchors. A *critical* anchor must survive byte-identically
+across generations unless a later user-grounded source supersedes it through an
+explicit edge. `packages/agent/src/compaction-api.ts`
 
-**Claim basis** — See *Basis*.
+**Connect** — The optional client for `cave-connectd`: allowed provider data
+behind one stable `connected_data` tool, with exact paginated reads that refuse
+rather than silently omit. `packages/agent/src/connect.ts`
 
-**Clamp** — The budget rung that lowers an outgoing call's output allowance to
-what the remaining budget affords. Below `OUTPUT_CLAMP_FLOOR_TOKENS` (256) the
-run stops instead.
+**Direct** — The default execution mode: your key, your provider, no proxy. Its
+receipt value is `observe-only`. `packages/agent/src/gateway.ts`
 
-**Content-blind** — Evidence carrying no prompt, result, tool, or error content —
-only digests, counts, and identifiers. Profile traces and gateway telemetry are
-content-blind.
+**Durable store** — The journal behind a durable run or session:
+`DiskDurableStore`, `HttpDurableStore`, `SqlDurableStore`, or
+`ObjectDurableStore`. Exclusivity is a lease; a lease this process cannot renew
+poisons its appends rather than risking two drivers. `packages/agent/src/durable.ts`
 
-**Context IR** — The lowered, content-blind representation of context the
-compiler reasons about. A lock binds **static** Context IR only.
+**Effect** — A tool's declared side-effect class: `read`, `write`,
+`idempotent`, or `external`. Mandatory in every sandbox mode.
+`packages/agent/src/primitives.ts`
 
-**Denomination** — The unit a run's budget is metered in: `usd` or `tokens`.
-Exactly one per run, declared up front, and refused when it cannot be honestly
-metered.
+**Eval split** — `profile`, `development`, or `holdout`. A build searches on
+development, freezes the winner, then opens untouched holdout fixtures.
+`packages/agent/src/profile.ts`
 
-**Effect** — A tool's declared side-effect class: `read`, `write`, `idempotent`,
-`external`. Mandatory in every sandbox mode.
-
-**Epoch** — See *Cache epoch*.
-
-**Eval split** — `profile`, `development`, or `holdout`. A v3 build searches on
-development, freezes, then opens untouched holdout.
+**Execution backend** — The seam every coding tool's process and workspace
+effects pass through: `localExecutionBackend()` (the host) or
+`httpExecutionBackend()` (a remote sandbox speaking three JSON endpoints).
+`packages/agent/src/execution-backend.ts`
 
 **Fail closed** — Refusing to produce a value when the evidence for it is
 missing, rather than substituting a default. Unknown model, pricing, usage,
-grader, runtime, or sandbox state fails closed.
+grader, runtime, or sandbox state fails closed. `AGENTS.md`
 
-**Fixture mode** — `sandbox: "fixture"`: trusted test tools in the host process,
-with `effect: "write"` blocked rather than executed. Not a security boundary.
+**Memory** — Durable recall scoped to `(tenant, agentId, namespace)`: passive
+next-turn retrieval, explicit remember/search/forget, TTL, and reversible
+consolidation. Retrieved memory is inferred and possibly stale.
+`packages/agent/src/memory.ts`
 
-**Frozen prefix** — The build-stable, provider-visible portion of context.
-Volatile data in it is rejected.
+**Model boundary** — The adapter seam where `prepare(request, context)` returns
+a **replacement** request. Home of compaction and model routing.
+`packages/agent/src/model-boundary.ts`
 
-**Gated (cache)** — The wire transport's default: only cache grammars proven
-against a live provider are released. Today that is the OpenAI affinity routing
-key alone.
+**Observability adapter** — A package under `packages/adapters/*` that records
+lifecycle and usage from a native framework loop. It does not run a Caveman
+agent, and its manifest declares every capability, with unknown support as
+`unsupported`. `packages/adapter-kit/src/index.js`
 
-**Holdout** — Eval fixtures the candidate search never saw. Opened only after the
-winner is frozen.
+**Observe-only** — The receipt value a direct run carries: the provider's own
+base URL, no transform, no gateway telemetry, and no efficiency claim.
+`packages/agent/src/gateway.ts`
 
-**Host mode** — `sandbox: "host"`: closures run in-process, uncontained, and
-writes execute. Never a default, refused under a `required` ancestor, and
-lock-ineligible.
+**Optimized** — The optional mode routed through the local Caveman gateway,
+with eligible transforms and content-blind telemetry. Local reductions stay
+basis `inferred`. `packages/agent/src/gateway.ts`
 
-**Inferred** — A local estimate from your own traffic. The strongest claim any
-local path in this repository makes.
+**Programmatic mode** — One `caveman_code` tool instead of a JSON tool wall;
+the model writes a bounded cell that dispatches nested tools through the
+canonical kernel. `packages/agent/src/programmatic-tools.ts`
 
-**Lineage** — `lineageId`, the stable task-family identifier that keeps
-profile/development/holdout splits isolated.
-
-**Lock** — See *Cave Build*.
-
-**Model boundary** — The adapter seam where `prepare(request, context)` returns a
-**replacement** request. Home of compaction and model routing.
-
-**Observe-only** — The execution mode where the SDK calls your provider directly:
-no transforms, no gateway telemetry, no efficiency claim.
-
-**Optimized** — The execution mode routed through the local Caveman gateway with
-eligible transforms and context telemetry.
-
-**Programmatic mode** — One `caveman_code` tool instead of a JSON tool wall; the
-model writes a bounded cell that dispatches nested tools through the canonical
-kernel.
-
-**Receipt** — `RunReceipt`: per-call, per-tool, per-subagent breakdown plus
+**Receipt** — `RunReceipt`: per-call, per-tool, and per-subagent breakdown plus
 tranches, breakers, compactions, and resume evidence. Returned on success and
-carried on `CavemanRunError` after a failure.
+carried on `CavemanRunError` after a failure. `packages/agent/src/budget.ts`
 
-**Required mode** — `sandbox: "required"`: tool code runs in a separate
-OS-isolated subprocess under a kernel network boundary plus the Node permission
-model. The default.
+**Sandbox mode** — `required` (tool code in an OS-isolated subprocess; fails
+closed when containment cannot be verified), `host` (uncontained host
+execution, never a synonym for isolation, never lock-eligible), or `fixture`
+(trusted test tools in-process with writes blocked; not a security boundary).
+`packages/agent/src/definition.ts`
 
-**Reserve-and-clamp** — The single budget enforcement mode: hold each call's
-worst case before it leaves, clamp its output when the remainder cannot fund the
-full allowance, stop below the floor.
+**Session** — One conversation and one `AgentRunController` behind
+`/sessions/{id}`. A message during an active run queues onto it; a message
+while idle starts the next run on the same conversation.
+`packages/agent/src/serve-session.ts`
 
-**Result policy** — What happens to a tool result: `auto`, `inline`, `page`,
-`compress`, `exact_ccr`.
-
-**Route** — A Context IR transform assignment for one live-zone segment kind. Two
-routes matching one runtime segment collapse into `dynamic_route_ambiguous` and
-the segment passes through untouched.
-
-**Skill** — Agent Skills-compatible `SKILL.md` under
-`.agents/skills/<name>/`. Metadata enters stable prefix; `load_skill` reads
-full instructions or contained resources on demand.
-
-**Speculation** — Starting a complete literal `effect: "read"` call while the
-provider is still streaming the composite cell. Never applied to writes,
-idempotent operations, external calls, variable-dependent arguments, or reads
-after possible writes.
-
-**Stability** — A context segment's cache zone: `build` (frozen prefix),
-`session`, or `turn` (live zone).
-
-**Subagent wallet** — Under a metered run, a subagent's `maxCostUsd` / `maxTokens`
-carved out of the parent's *remaining* budget at spawn, with the unspent
-remainder returned when the child finishes.
-
-**Tranche** — One staged budget release: amount, reason, and the call index it
-happened at. Recorded on the receipt.
-
-**Verified** — Reserved for a system that can compare against a bill. Nothing in
-this repository emits it; `verifiedSavingsUsd` is always `0`.
+**Skill** — An Agent Skills-compatible `SKILL.md` under `.agents/skills/`.
+Metadata enters the stable prefix; the body loads on demand.
+`packages/agent/src/agent-environment.ts`
 
 **Wire transport** — `createCavemanTransport()`: a `fetch` replacement carrying
 the request ceiling, exact usage accounting, and provider-native cache hints.
-Scales by provider, not by framework.
+Scales by provider, not by framework. `packages/agent/src/wire.ts`
