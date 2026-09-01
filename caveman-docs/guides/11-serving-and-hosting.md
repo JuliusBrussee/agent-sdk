@@ -40,7 +40,7 @@ length-independent.
 | --- | --- |
 | `200` | The run is already settled (its journaled outcome is returned), or a `GET` found a run |
 | `202` | Accepted — `{"runId","status":"running"}` or `"resuming"` |
-| `400` | `cave_durable_run_id_invalid`, `cave_serve_body_invalid_json`, `cave_serve_body_invalid`, `cave_serve_run_id_required`, `cave_serve_input_must_be_text` |
+| `400` | `cave_durable_run_id_invalid`, `cave_serve_run_id_reserved`, `cave_serve_body_invalid_json`, `cave_serve_body_invalid`, `cave_serve_run_id_required`, `cave_serve_input_must_be_text` |
 | `401` | `cave_serve_unauthorized` |
 | `404` | `cave_serve_not_found`, or a `GET` for a run with no journal |
 | `413` | Body over the ceiling (default 1 MiB) |
@@ -48,6 +48,9 @@ length-independent.
 
 Input is **text only**. A multimodal input would journal a digest, which no
 unattended resume could reconstruct.
+
+Caller-chosen `/runs` ids must not end in `.<digits>`. That namespace is
+reserved for session journals (`${sessionId}.${n}`).
 
 ## What the server adds to the journal
 
@@ -81,7 +84,7 @@ const server = createAgentServer({
   store,                    // optional; defaults to DiskDurableStore
   build,                    // optional AnyCaveBuildLock → runLocked for every run
   // Factory form prevents controllers, signals, and other per-run state from sharing.
-  runOptions: ({ sessionId, runId }) => ({ budget, sessionId, workflow: runId }),
+  runOptions: ({ runId }) => ({ budget, workflow: runId }),
   maxConcurrentRuns: 2,     // model calls are the bottleneck, not CPU
   maxQueuedRuns: 64,        // accepted-but-not-started ceiling before shedding load
   maxBodyBytes: 1024 * 1024,
@@ -90,9 +93,11 @@ const server = createAgentServer({
 const port = await server.listen(8080, "0.0.0.0");
 ```
 
-The existing `runOptions: { ... }` object remains accepted for compatibility.
-New servers should use the factory. `durable` is always server-owned;
-`controller`, `signal`, and `conversation` are session-owned on session routes.
+The existing `runOptions: { ... }` object remains accepted for compatibility,
+but it cannot contain `durable`, `controller`, `signal`, or `conversation`.
+Those values are per-run and server-owned. New servers should use the factory.
+Its `sessionId` context value is informational: the server supplies the runtime
+`sessionId` and overrides any value returned by the factory.
 
 ## Sessions
 
@@ -106,7 +111,7 @@ POST   /sessions                       {"sessionId":"…"} → 201 {sessionId}
 POST   /sessions/{id}/messages         {"text":"…","author"?:"…","mode"?:"followUp"|"steer"}
 GET    /sessions/{id}                  → {sessionId,runs,active?,queued,messages}
 GET    /sessions/{id}/events           → Pebble v1 frames over one multi-run SSE stream
-DELETE /sessions/{id}                  → cancel active run and drop Pi queues
+DELETE /sessions/{id}                  → cancel active run, drop Pi queues, delete process-local state
 WS     /sessions/{id}/ws               → bidirectional session transport
 ```
 
@@ -120,6 +125,16 @@ Client WebSocket messages are either
 or `{"type":"cancel"}`. Server messages are unchanged Pebble frames. SSE and
 WebSocket replay use the same bounded process-local buffer and gap reporting.
 Run journals remain authority.
+
+Session deletion is process-local. It suppresses that session for the lifetime
+of the current handler; its journals remain durable, so the session reappears
+after process restart.
+
+Route one session id to one server instance. A Durable Object provides this
+ownership by construction. Per-run journal locks are a fail-closed backstop:
+another instance returns `409 cave_session_busy_elsewhere` while the owner holds
+the pending session run; the lock is not a replacement for session-affine
+routing.
 
 Pebble v1 has no author metadata field and its frozen `turn.start` has no
 payload extension field. Author therefore appears in `GET /sessions/{id}`
@@ -137,10 +152,8 @@ const handler = createAgentHandler({
   definition,
   token: env.CAVE_SERVE_TOKEN,
   store,
-  runOptions: ({ sessionId, runId }) => ({
-    sessionId,
+  runOptions: ({ runId }) => ({
     workflow: runId,
-    executionBackend,
   }),
   upgrade(request) {
     const pair = new WebSocketPair();
@@ -166,6 +179,9 @@ Cloudflare code must supply a Durable Object-backed `DurableStore`; local disk
 is not durable there. `createAgentHandler` never imports `node:http`. Node's
 `createAgentServer` wrapper lazily loads optional peer `ws`; an upgrade fails
 closed with `cave_serve_websocket_unavailable` when it is absent.
+
+`executionBackend` configures `createCodingAgent`; it is not a `RunOptions`
+field and does not belong in `runOptions`.
 
 `AgentServer` exposes the underlying `server` for callers that own their own
 listen/upgrade wiring, plus the recovery entry point whose `RecoveryReport`

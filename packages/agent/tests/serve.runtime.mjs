@@ -5,8 +5,10 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import {
   DiskDurableStore,
+  AgentRunController,
   agent,
   auto,
+  createConversation,
   durableRunSummary,
   schema,
   stream,
@@ -250,6 +252,25 @@ test("a malformed submission fails closed before anything is journaled", async (
   }
   assert.equal((await call("/runs", { method: "POST", body: "{" })).status, 400);
   assert.deepEqual(await store.list(), []);
+});
+
+test("object runOptions reject server-owned per-run state", async (t) => {
+  const { dir, store } = await scratchStore();
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const selected = pollingAgent("serve-owned-options");
+  for (const owned of [
+    { controller: new AgentRunController() },
+    { conversation: createConversation() },
+    { signal: new AbortController().signal },
+  ]) {
+    assert.throws(() => createAgentServer({
+      definition: selected,
+      token: TOKEN,
+      store,
+      rootDir: dir,
+      runOptions: { ensureRuntime: false, ...owned },
+    }), /cave_serve_run_option_owned/u);
+  }
 });
 
 test("the disk store lists the runs it holds, by journaled identity", async (t) => {

@@ -164,12 +164,25 @@ export function createAgentServer(options: AgentServerOptions): AgentServer {
       options.runOptions !== undefined && (options.runOptions as RunOptions).durable !== undefined) {
     throw new Error("cave_serve_durable_owned: the server assigns durable options per request");
   }
+  if (typeof options.runOptions !== "function" && options.runOptions !== undefined &&
+      ["controller", "conversation", "signal"].some((key) =>
+        Object.prototype.hasOwnProperty.call(options.runOptions, key))) {
+    throw new Error(
+      "cave_serve_run_option_owned: controller, conversation, and signal are server-owned",
+    );
+  }
   const upgradeSockets = new WeakMap<Request, WebSocketLike>();
-  const runOptions: PerRunOptionsFactory | undefined = options.runOptions === undefined
-    ? undefined
-    : typeof options.runOptions === "function"
-      ? options.runOptions
-      : () => options.runOptions as PerRunOptions;
+  let runOptions: PerRunOptionsFactory | undefined;
+  if (typeof options.runOptions === "function") runOptions = options.runOptions;
+  else if (options.runOptions !== undefined) {
+    const fixed = options.runOptions as PerRunOptions;
+    runOptions = () => fixed;
+    if (fixed.entryPath !== undefined) {
+      Object.defineProperty(runOptions, Symbol.for("caveman.agent.serve.entryPathKnown"), {
+        value: true,
+      });
+    }
+  }
   const rootDir = options.rootDir === undefined ? undefined : resolve(options.rootDir);
   const handler = createAgentHandler({
     definition: options.definition,
@@ -200,7 +213,21 @@ export function createAgentServer(options: AgentServerOptions): AgentServer {
 
   server.on("upgrade", (request, socket, head) => {
     void (async () => {
-      const preflight = await handler.fetch(webRequest(request, undefined, false)).catch(internalError);
+      const path = new URL(request.url ?? "/", "http://localhost").pathname;
+      if (!/^\/sessions\/[^/]+\/ws$/u.test(path)) {
+        socket.once("finish", () => socket.destroy());
+        await rawUpgradeResponse(socket, new Response(JSON.stringify({
+          error: "cave_serve_upgrade_required",
+        }), {
+          status: 426,
+          statusText: "Upgrade Required",
+          headers: { "content-type": "application/json" },
+        }));
+        return;
+      }
+      const abort = new AbortController();
+      socket.once?.("close", () => abort.abort());
+      const preflight = await handler.fetch(webRequest(request, abort.signal, false)).catch(internalError);
       if (preflight.status !== 501 ||
           (await preflight.clone().json().catch(() => ({})) as { error?: string }).error !==
             "cave_serve_websocket_unavailable") {
@@ -213,7 +240,7 @@ export function createAgentServer(options: AgentServerOptions): AgentServer {
         return;
       }
       socketServer.handleUpgrade(request, socket, head, (webSocket) => {
-        const converted = webRequest(request, undefined, false);
+        const converted = webRequest(request, abort.signal, false);
         upgradeSockets.set(converted, webSocket);
         void handler.fetch(converted).catch((error: unknown) => {
           webSocket.close(1011, error instanceof Error ? error.message : "cave_serve_internal");

@@ -40,7 +40,10 @@ export interface AgentHandlerOptions extends Omit<AgentServerOptions, "runOption
 export interface WebSocketLike {
   send(data: string): void;
   close(code?: number, reason?: string): void;
-  addEventListener(type: "message" | "close" | "error", fn: (event: any) => void): void;
+  addEventListener(
+    type: "message" | "close" | "error",
+    fn: (event: { data?: unknown }) => void,
+  ): void;
 }
 
 export interface RecoveryReport {
@@ -152,6 +155,16 @@ export function createAgentHandler(options: AgentHandlerOptions): AgentHandler {
   if (!Number.isSafeInteger(maxConcurrentRuns) || maxConcurrentRuns < 1) {
     throw new Error("cave_serve_concurrency_invalid");
   }
+  const entryPathKnown = options.runOptions !== undefined &&
+    (options.runOptions as unknown as Record<PropertyKey, unknown>)[
+      Symbol.for("caveman.agent.serve.entryPathKnown")
+    ] === true;
+  if (options.definition.sandboxDeclared === false && !entryPathKnown &&
+      typeof process !== "undefined") {
+    process.stderr.write(
+      `cave: ${options.definition.id} serves with host execution — tools are not isolated\n`,
+    );
+  }
 
   const queue: Job[] = [];
   const active = new Map<string, Promise<void>>();
@@ -206,19 +219,32 @@ export function createAgentHandler(options: AgentHandlerOptions): AgentHandler {
   async function drive(job: Job): Promise<void> {
     const canceller = new AbortController();
     cancellers.set(job.runId, canceller);
-    const factoryOptions = options.runOptions?.({ sessionId: job.sessionId, runId: job.runId }) ?? {};
-    const runOptions: RunOptions = {
-      ...factoryOptions,
-      rootDir: factoryOptions.rootDir ?? rootDir,
-      durable: { runId: job.runId, store },
-      signal: canceller.signal,
-      ...(job.session === undefined
-        ? {}
-        : {
-          sessionId: job.session.sessionId,
-          conversation: job.session.conversation,
-          controller: job.session.controller,
-        }),
+    let admissionDecided = false;
+    const admit = (): void => {
+      if (admissionDecided) return;
+      admissionDecided = true;
+      job.session?.onAdmitted();
+    };
+    const reject = (error: unknown): void => {
+      if (admissionDecided) return;
+      admissionDecided = true;
+      job.session?.onRejected(error);
+    };
+    const runStore: DurableStore = job.session === undefined ? store : {
+      load: (runId) => store.load(runId),
+      append: (runId, data) => store.append(runId, data),
+      async acquire(runId) {
+        try {
+          const release = await store.acquire(runId);
+          admit();
+          return release;
+        } catch (error) {
+          reject(error);
+          throw error;
+        }
+      },
+      close: (runId) => store.close(runId),
+      ...(store.list === undefined ? {} : { list: () => store.list!() }),
     };
     let closedTurn = false;
     const emit = (event: CavemanRunEvent): void => {
@@ -234,10 +260,24 @@ export function createAgentHandler(options: AgentHandlerOptions): AgentHandler {
       job.broadcast.push(job.encoder.event({ kind: "turn.end", stopReason: "error" }));
     };
     try {
+      const factoryOptions = options.runOptions?.({ sessionId: job.sessionId, runId: job.runId }) ?? {};
+      const runOptions: RunOptions = {
+        ...factoryOptions,
+        rootDir: factoryOptions.rootDir ?? rootDir,
+        durable: { runId: job.runId, store: runStore },
+        signal: canceller.signal,
+        ...(job.session === undefined
+          ? {}
+          : {
+            sessionId: job.session.sessionId,
+            conversation: job.session.conversation,
+            controller: job.session.controller,
+          }),
+      };
       const pendingCancel = await durableCancelRequest(store, job.runId);
       if (pendingCancel !== undefined) {
         cancellers.delete(job.runId);
-        await settleCancelledRun(store, job.runId, pendingCancel);
+        await settleCancelledRun(runStore, job.runId, pendingCancel);
         closeTurn(DURABLE_CANCELLED_CODE);
         return;
       }
@@ -248,6 +288,7 @@ export function createAgentHandler(options: AgentHandlerOptions): AgentHandler {
         : runtime.streamLockedAgent(options.definition, job.input, options.build, runOptions);
       for await (const event of events) emit(event);
     } catch (error) {
+      reject(error);
       const message = error instanceof Error ? error.message : String(error);
       if (typeof process !== "undefined") {
         process.stderr.write(`caveman-agent serve: run ${job.runId} failed: ${message}\n`);
@@ -258,11 +299,11 @@ export function createAgentHandler(options: AgentHandlerOptions): AgentHandler {
       if (job.session === undefined) job.broadcast.settle();
       cancellers.delete(job.runId);
       active.delete(job.runId);
+      job.session?.onSettled();
       const cancelled = await durableCancelRequest(store, job.runId).catch(() => undefined);
       if (cancelled !== undefined) {
         await settleCancelledRun(store, job.runId, cancelled).catch(() => undefined);
       }
-      job.session?.onSettled();
       pump();
     }
   }
@@ -297,17 +338,37 @@ export function createAgentHandler(options: AgentHandlerOptions): AgentHandler {
     summary: summarize,
   }, maxBodyBytes);
 
+  /**
+   * One pass over the store. Repeated on an interval, not just at boot,
+   * because a run stranded by a PEER instance's death is only reclaimed once
+   * somebody looks again — its journal lock is released by the peer's demise,
+   * but nothing re-drives it until a sweep notices.
+   *
+   * ponytail: O(journals) per sweep, and every sweep reads each journal.
+   * Fine to thousands of runs; past that the store wants a pending index
+   * (a `list({ status: "pending" })` the DO/SQL store can answer directly).
+   */
   async function sweep(
     resumed: string[],
     skipped: Array<{ runId: string; reason: string }>,
     sleeping: Array<{ runId: string; wakeAt: string }>,
     claimed: ReadonlySet<string>,
+    declined: ReadonlySet<string>,
+    runIds: readonly string[],
+    journals: Map<string, readonly string[]>,
   ): Promise<RecoveryReport> {
     if (store.list === undefined) return { listable: false, resumed, skipped, sleeping };
-    for (const runId of await store.list()) {
-      if (claimed.has(runId) || admitted(runId)) continue;
+    for (const runId of runIds) {
+      if (claimed.has(runId) || declined.has(runId) || admitted(runId)) continue;
       let summary: DurableRunSummary;
-      try { summary = await summarize(runId); }
+      try {
+        let lines = journals.get(runId);
+        if (lines === undefined) {
+          lines = await store.load(runId);
+          journals.set(runId, lines);
+        }
+        summary = durableRunSummary(lines);
+      }
       catch (error) {
         skipped.push({ runId, reason: error instanceof Error ? error.message : String(error) });
         continue;
@@ -342,9 +403,20 @@ export function createAgentHandler(options: AgentHandlerOptions): AgentHandler {
     }
     sweeping = true;
     try {
-      const sessionRecovery = await sessions.recover();
+      const runIds = await store.list();
+      const journals = new Map<string, readonly string[]>();
+      const sessionRecovery = await sessions.recover(runIds, journals);
       resumed.push(...sessionRecovery.resumed);
-      return await sweep(resumed, skipped, sleeping, sessionRecovery.claimed);
+      skipped.push(...sessionRecovery.skipped);
+      return await sweep(
+        resumed,
+        skipped,
+        sleeping,
+        sessionRecovery.claimed,
+        sessionRecovery.declined,
+        runIds,
+        journals,
+      );
     } finally {
       sweeping = false;
       ready = true;
@@ -372,6 +444,9 @@ export function createAgentHandler(options: AgentHandlerOptions): AgentHandler {
         error: "cave_durable_run_id_invalid",
         message: error instanceof Error ? error.message : String(error),
       });
+    }
+    if (/\.\d+$/u.test(rawRunId)) {
+      return json(400, { error: "cave_serve_run_id_reserved" });
     }
     if (typeof input !== "string" || input === "") {
       return json(400, { error: "cave_serve_input_must_be_text" });
