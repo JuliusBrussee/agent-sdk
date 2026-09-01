@@ -8,7 +8,7 @@ import {
   fauxProvider as upstreamFauxProvider,
   fauxToolCall,
 } from "@earendil-works/pi-ai/providers/faux";
-import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
+import { createAssistantMessageEventStream, createModels } from "@earendil-works/pi-ai";
 import {
   CODING_RUN_BREAKERS,
   CODING_TOOL_OUTPUT_CAPS,
@@ -110,6 +110,27 @@ function payloadStreamFn(faux, seen = []) {
     }, selected);
     return faux.provider.streamSimple(selected, context, { ...options, onPayload: undefined });
   };
+}
+
+function payloadModels(faux, seen = []) {
+  const models = createModels();
+  models.setProvider({
+    ...faux.provider,
+    streamSimple(selected, context, options) {
+      seen.push(structuredClone(context.messages));
+      options.onPayload({
+        system: context.systemPrompt,
+        tools: context.tools.map((item) => ({
+          name: item.name,
+          description: item.description,
+          input_schema: item.parameters,
+        })),
+        messages: context.messages,
+      }, selected);
+      return faux.provider.streamSimple(selected, context, { ...options, onPayload: undefined });
+    },
+  });
+  return models;
 }
 
 async function withWorkspace(body) {
@@ -333,9 +354,10 @@ test("a provider the gateway does not proxy is third-party traffic, not optimize
       assert.equal(sent[0].baseUrl, native);
       // Nothing the gateway did not see may be called optimized.
       assert.equal(turn.bill.mode, "observe-only");
-      assert.equal(turn.degraded, true);
-      assert.equal(session.mode, "observe-only");
-      assert.deepEqual(session.notices, [OBSERVE_ONLY_BANNER]);
+      assert.deepEqual(turn.bill.transformIDs, []);
+      assert.equal(turn.degraded, false);
+      assert.equal(session.mode, "optimized");
+      assert.deepEqual(session.notices, []);
     });
   } finally {
     if (previousKey === undefined) delete process.env.CAVE_API_KEY;
@@ -372,7 +394,8 @@ test("a routed provider still reaches the gateway with its telemetry", async () 
       // Routed and metered by the gateway, but the turn itself came from the
       // caller's streamFn, so the receipt does not claim it was optimized.
       assert.equal(turn.bill.mode, "observe-only");
-      assert.equal(session.mode, "observe-only");
+      assert.deepEqual(turn.bill.transformIDs, []);
+      assert.equal(session.mode, "optimized");
     });
   } finally {
     if (previousKey === undefined) delete process.env.CAVE_API_KEY;
@@ -606,17 +629,14 @@ test("optimized turn bills token counts from run telemetry and proves recovery",
     const model = { ...faux.getModel(), api: "anthropic-messages", provider: "anthropic" };
 
     faux.setResponses([fauxAssistantMessage("ready when you are")]);
-    await runCodingTurn(session, "hello, this is the first turn of the session", {
+    const warmup = await runCodingTurn(session, "hello, this is the first turn of the session", {
       model,
       streamFn: payloadStreamFn(faux),
       providerPayloadContract: "pi-on-payload-v1",
     });
-    // A caller-supplied streamFn bills its turn observe-only, which degrades the
-    // session the same way an absent gateway does. This case is about transform
-    // accounting on an optimized turn, so the seam is re-armed rather than the
-    // assertions weakened.
-    assert.equal(session.mode, "observe-only");
-    session.mode = "optimized";
+    assert.equal(warmup.bill.mode, "observe-only");
+    assert.deepEqual(warmup.bill.transformIDs, []);
+    assert.equal(session.mode, "optimized");
 
     const seen = [];
     faux.setResponses([
@@ -625,11 +645,11 @@ test("optimized turn bills token counts from run telemetry and proves recovery",
     ]);
     const turn = await runCodingTurn(session, "read big.txt and summarize it", {
       model,
-      streamFn: payloadStreamFn(faux, seen),
+      models: payloadModels(faux, seen),
       providerPayloadContract: "pi-on-payload-v1",
     });
 
-    assert.equal(turn.bill.mode, "observe-only");
+    assert.equal(turn.bill.mode, "optimized");
     assert.deepEqual(turn.bill.transformFailures, []);
     assert.equal(turn.bill.recoveryResolved, true);
     assert.deepEqual(turn.bill.transformIDs, [

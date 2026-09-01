@@ -57,6 +57,12 @@ export interface ExecutionBackend {
   close?(): Promise<void>;
 }
 
+/**
+ * How long the run waits after the command itself exits for its pipes to close.
+ * `close` normally follows `exit` immediately; the wait only matters when a
+ * background descendant still holds the inherited stdout, and it bounds that
+ * case instead of hanging on it.
+ */
 const EXIT_FLUSH_GRACE_MS = 100;
 
 export function localExecutionBackend(): ExecutionBackend {
@@ -68,13 +74,7 @@ export function localExecutionBackend(): ExecutionBackend {
         root = realpath(workspace);
         workspaceRoots.set(workspace, root);
       }
-      return root.then(async (canonicalWorkspace) => {
-        const target = await canonicalizePath(resolve(canonicalWorkspace, candidate));
-        if (escapesRoot(relative(canonicalWorkspace, target))) {
-          throw new Error(`caveman-code: path escapes the workspace: ${candidate}`);
-        }
-        return target;
-      });
+      return root.then((canonicalWorkspace) => containedPath(canonicalWorkspace, candidate));
     },
     async isFile(path) {
       return (await stat(path)).isFile();
@@ -196,6 +196,8 @@ async function localExec(request: ExecRequest): Promise<ExecResult> {
   return new Promise((accept) => {
     let child;
     try {
+      // Its own process group: `cmd &` puts children there too, so the timeout can
+      // kill the whole tree rather than just the shell that spawned it.
       child = spawn(invocation.command, [...invocation.args], {
         cwd: request.cwd,
         env: { ...request.env },
@@ -242,6 +244,9 @@ async function localExec(request: ExecRequest): Promise<ExecResult> {
       accept(result);
     };
     const finish = () => {
+      // Whatever still holds these pipes is not this run's business: reading is
+      // over, and a live handle would keep the whole process alive waiting on a
+      // background command the user deliberately detached.
       child.stdout.destroy();
       child.stderr.destroy();
       settle({
@@ -257,6 +262,9 @@ async function localExec(request: ExecRequest): Promise<ExecResult> {
       exitCode = code;
       finish();
     });
+    // `close` waits for stdio EOF, which a surviving background descendant never
+    // gives. `exit` is the command's own answer, so the run settles on it with
+    // whatever output arrived rather than waiting on a process it does not own.
     child.once("exit", (code) => {
       exitCode = code;
       setTimeout(finish, EXIT_FLUSH_GRACE_MS).unref();
@@ -334,6 +342,31 @@ function boundedBytes(value: Uint8Array, maxBytes: number | undefined): Uint8Arr
     : value.subarray(0, maxBytes);
 }
 
+/**
+ * Resolve a caller path against the canonical workspace and refuse anything
+ * that lands outside it.
+ *
+ * A lexical prefix check is not containment: a symlink inside the workspace
+ * pointing anywhere on the filesystem passes it. Both sides are canonicalized
+ * first, matching how `stageSandboxSourceGraph` decides the same question.
+ */
+async function containedPath(canonicalWorkspace: string, candidate: string): Promise<string> {
+  const full = await canonicalizePath(resolve(canonicalWorkspace, candidate));
+  if (escapesRoot(relative(canonicalWorkspace, full))) {
+    throw new Error(`caveman-code: path escapes the workspace: ${candidate}`);
+  }
+  return full;
+}
+
+function escapesRoot(path: string): boolean {
+  return path === ".." || path.startsWith("../") || path.startsWith("..\\") || isAbsolute(path);
+}
+
+/**
+ * `realpath` for a path whose leaf may not exist yet (a file `edit_file` is
+ * about to create): canonicalize the deepest existing ancestor and re-attach
+ * the missing tail, so every symlink on the existing part is still resolved.
+ */
 async function canonicalizePath(target: string): Promise<string> {
   const missing: string[] = [];
   let current = target;
@@ -349,8 +382,4 @@ async function canonicalizePath(target: string): Promise<string> {
       current = parent;
     }
   }
-}
-
-function escapesRoot(path: string): boolean {
-  return path === ".." || path.startsWith("../") || path.startsWith("..\\") || isAbsolute(path);
 }
