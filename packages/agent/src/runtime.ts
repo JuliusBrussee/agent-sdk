@@ -518,6 +518,24 @@ export function createConversation(): Conversation {
   return new Conversation();
 }
 
+/**
+ * Rebuild a conversation from a journaled checkpoint. The digest is
+ * recomputed and must match: a checkpoint that cannot be reproduced byte for
+ * byte is not a conversation this runtime will continue.
+ */
+export function restoreConversation(checkpoint: DurableConversationCheckpoint): Conversation {
+  const restored = createConversation();
+  const state = conversationStates.get(restored);
+  const canonical = durableConversationCheckpoint(checkpoint.sessionId, checkpoint.messages);
+  if (state === undefined || canonical.messagesSha256 !== checkpoint.messagesSha256) {
+    throw new Error("cave_session_conversation_unrecoverable");
+  }
+  Object.defineProperty(restored, "sessionId", { value: canonical.sessionId });
+  state.sessionId = canonical.sessionId;
+  state.messages = structuredClone(canonical.messages) as typeof state.messages;
+  return restored;
+}
+
 export interface ModelCallRouteInput {
   /** Zero-based root provider-call index, including paid compactions. */
   readonly callIndex: number;

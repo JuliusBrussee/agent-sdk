@@ -1,6 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { INITIAL_STATE, reduceAgentEvent } from "../src/events.js";
+import {
+  INITIAL_STATE,
+  SESSION_INITIAL_STATE,
+  reduceAgentEvent,
+  reduceSessionEvent,
+} from "../src/events.js";
 
 /** Folds a whole transcript, the way the hook does one event at a time. */
 function fold(events) {
@@ -105,4 +110,29 @@ test("route.decided is reported as the server described it", () => {
     { kind: "route.decided", model: "claude-opus-5", reason: "hard_task", signals: [] },
   ]);
   assert.deepEqual(state.route, { model: "claude-opus-5", reason: "hard_task" });
+});
+
+test("session reducer retains frames across consecutive runs", () => {
+  const frames = [
+    { kind: "turn.start", seq: 0 },
+    { kind: "delta.text", text: "one", seq: 1 },
+    { kind: "turn.end", stopReason: "end_turn", seq: 2 },
+    { kind: "turn.start", seq: 3 },
+    { kind: "delta.text", text: "two", seq: 4 },
+    { kind: "turn.end", stopReason: "end_turn", seq: 5 },
+  ];
+  const state = frames.reduce(reduceSessionEvent, SESSION_INITIAL_STATE);
+  assert.deepEqual(state.events, frames);
+  assert.equal(state.status, "complete");
+});
+
+test("session reducer reports terminal protocol errors without dropping evidence", () => {
+  const frames = [
+    { kind: "turn.start", seq: 0 },
+    { kind: "error", message: "provider refused", retryable: false, seq: 1 },
+    { kind: "turn.end", stopReason: "error", seq: 2 },
+  ];
+  const state = frames.reduce(reduceSessionEvent, SESSION_INITIAL_STATE);
+  assert.equal(state.status, "error");
+  assert.deepEqual(state.events, frames);
 });

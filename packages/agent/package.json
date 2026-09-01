@@ -96,6 +96,10 @@
       "types": "./dist/serve.d.ts",
       "import": "./dist/serve.js"
     },
+    "./serve-handler": {
+      "types": "./dist/serve-handler.d.ts",
+      "import": "./dist/serve-handler.js"
+    },
     "./model-boundary": {
       "types": "./dist/model-boundary.d.ts",
       "import": "./dist/model-boundary.js"
@@ -152,10 +156,14 @@
   },
   "peerDependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.220",
+    "ws": "^8.21.0",
     "zod": "^4.4.3"
   },
   "peerDependenciesMeta": {
     "@anthropic-ai/claude-agent-sdk": {
+      "optional": true
+    },
+    "ws": {
       "optional": true
     },
     "zod": {
@@ -168,6 +176,7 @@
     "ajv": "8.20.0",
     "eve": "0.29.2",
     "typescript": "5.9.3",
+    "ws": "8.21.3",
     "zod": "4.4.3"
   },
   "engines": {
