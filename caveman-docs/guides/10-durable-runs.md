@@ -72,6 +72,8 @@ The journal must match the run being resumed:
 | `cave_durable_journal_corrupt` | Unreadable or unknown journal events |
 | `cave_durable_journal_limit` | Journal exceeded its bound |
 | `cave_durable_run_locked` | Another live process holds the per-run lock |
+| `cave_durable_run_lock_lost` | This process held the lock and no longer does; every later append refuses rather than writing into a journal another driver now owns |
+| `cave_durable_append_conflict` | The object store could not claim a free journal sequence; chunks are created, never overwritten |
 
 Journal identity includes the **build and plan digests**, so one run id cannot
 replay under another build.

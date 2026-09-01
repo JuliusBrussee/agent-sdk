@@ -9,9 +9,26 @@ claims more than it enforces is a correctness bug, not a documentation nit.
 
 | Mode | What runs where | Is it a boundary? |
 | --- | --- | --- |
-| `required` (default) | Tool code runs in a **separate OS-isolated subprocess** | Yes — see below |
+| `required` | Tool code runs in a **separate OS-isolated subprocess** | Yes — see below |
 | `fixture` | Trusted test tools in the host process; `effect: "write"` and `"external"` are **blocked, not executed** | No. A convenience for trusted evals |
 | `host` | Closures run **in-process with no isolation at all**; `effect: "write"` executes | No. Uncontained by design |
+
+An `agent()` that **never declares `sandbox`**, run without an `entryPath`,
+executes on the host and says so on stderr, once per definition:
+
+```
+cave: <id> host execution — tools are not isolated
+```
+
+An explicit `sandbox: "required"` still fails closed without an `entryPath`
+(`cave_tool_sandbox_entry_required`); the downgrade never applies to a
+definition whose author asked for containment. `serve` inherits the same rule,
+so a served definition that declared nothing runs its tools on the serving host.
+
+A remote execution backend extends none of this to the remote side: the SDK's
+path check is **lexical**, and path containment plus symlink resolution are the
+provider's obligations, named in the execution-backend contract
+(`packages/agent/docs/execution-backend.md`).
 
 `host` is refused under a `required` ancestor
 (`cave_host_sandbox_nested_under_required`), so a subagent cannot use it to

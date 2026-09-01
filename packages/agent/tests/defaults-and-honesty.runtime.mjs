@@ -65,8 +65,34 @@ test("an undeclared sandbox runs on the host and says so exactly once", async ()
   `)]);
   assert.deepEqual(stdout.trim().split("\n"), ["answered", "answered"]);
   const warnings = stderr.split("\n").filter((line) =>
-    line === "cave: host execution — tools are not isolated");
-  // Two runs, one warning: this is a posture announcement, not a per-run log.
+    /^cave: \S+ host execution — tools are not isolated$/.test(line));
+  // Once per definition, not once per run and not once per process: a server
+  // driving several definitions has to hear it for each of them.
+  assert.deepEqual(warnings, [
+    "cave: host-default-one host execution — tools are not isolated",
+    "cave: host-default-two host execution — tools are not isolated",
+  ]);
+});
+
+test("the host announcement repeats per definition but not per run", async () => {
+  const { stdout, stderr } = await run_(process.execPath, ["--input-type=module", "-e", script(`
+    const defined = agent({
+      id: "host-default-repeat",
+      instructions: "Answer.",
+      model: "anthropic/claude-haiku-4-5",
+    });
+    for (let i = 0; i < 2; i += 1) {
+      const result = await run(defined, "go", {
+        ensureRuntime: false,
+        model: fauxModel(),
+        streamFn: scriptedStream([{ text: "answered" }]),
+      });
+      process.stdout.write(result.text + "\\n");
+    }
+  `)]);
+  assert.deepEqual(stdout.trim().split("\n"), ["answered", "answered"]);
+  const warnings = stderr.split("\n").filter((line) =>
+    line === "cave: host-default-repeat host execution — tools are not isolated");
   assert.equal(warnings.length, 1);
 });
 
@@ -193,4 +219,35 @@ test("a reachable gateway plus a caller streamFn is routed but never optimized",
   assert.equal(capture.selected[0].baseUrl, "http://127.0.0.1:8787/anthropic");
   // ...but this process produced the turn, so the receipt does not claim more.
   assert.equal(result.mode, "observe-only");
+});
+
+// ---------------------------------------------------------------------------
+// Honesty 3 — the loopback liveness probe is memoized like the runtime probe.
+// ---------------------------------------------------------------------------
+
+test("concurrent runs against one loopback gateway share a single healthz probe", async () => {
+  const gatewayURL = "http://127.0.0.1:8123";
+  const nativeFetch = globalThis.fetch;
+  const asked = [];
+  globalThis.fetch = async (url, init) => {
+    asked.push(String(url));
+    if (String(url).endsWith("/healthz")) return new Response("ok");
+    return nativeFetch(url, init);
+  };
+  try {
+    const go = (id) => run(peekAgent(id, { sandbox: "fixture" }), "go", {
+      ensureRuntime: false,
+      gatewayURL,
+      model: fauxModel(),
+      streamFn: routeCapture().streamFn,
+    });
+    const results = await Promise.all([go("probe-memo-a"), go("probe-memo-b")]);
+    // Two runs, one probe: the memo coalesces the in-flight one and caches the
+    // result, so a gateway that is down costs one timeout per window, not one
+    // per run.
+    assert.equal(asked.filter((url) => url.endsWith("/healthz")).length, 1);
+    for (const result of results) assert.equal(result.mode, "observe-only");
+  } finally {
+    globalThis.fetch = nativeFetch;
+  }
 });

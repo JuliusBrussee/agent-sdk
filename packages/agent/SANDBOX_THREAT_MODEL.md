@@ -14,11 +14,33 @@ a correctness bug, not a doc nit.
   convenience for trusted evals.
 - `required` — untrusted tool code runs in a **separate OS-isolated subprocess**
   (`executeSandboxedTool`). This is the mode the boundaries below describe.
-- `host` — explicit opt-in for interactive/coding agents; closures run
-  **in-process with no isolation at all** and `effect: "write"` executes. Host
-  mode is uncontained by design (documented as such), is refused under a
-  `required` ancestor (`cave_host_sandbox_nested_under_required`), and makes a
-  build lock-ineligible (`cave_host_sandbox_lock_ineligible`).
+- `host` — closures run **in-process with no isolation at all** and
+  `effect: "write"` executes. Host mode is uncontained by design (documented as
+  such), is refused under a `required` ancestor
+  (`cave_host_sandbox_nested_under_required`), and makes a build lock-ineligible
+  (`cave_host_sandbox_lock_ineligible`).
+
+  Host mode is not only reached by asking for it. An `agent()` that **never
+  declares `sandbox`**, run without an `entryPath`, executes on the host, and
+  announces it on stderr once per definition:
+
+  ```
+  cave: <id> host execution — tools are not isolated
+  ```
+
+  An explicit `sandbox: "required"` still fails closed without an `entryPath`
+  (`cave_tool_sandbox_entry_required`) — the downgrade is never applied to a
+  definition whose author asked for containment. `serve` inherits exactly the
+  same rule: a served definition that never declared a posture runs its tools on
+  the serving host.
+
+## Remote execution backends
+
+A non-local execution backend does not extend any of the boundaries below to the
+remote side. The SDK's own path check is **lexical**; path containment and
+symlink resolution are the provider's obligations, named in
+`packages/agent/docs/execution-backend.md`, and the trust in them is a
+deployment decision, not something this process can verify.
 
 ## The real boundary (`required` mode)
 

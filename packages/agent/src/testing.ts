@@ -81,7 +81,12 @@ function scriptedUsage(partial: Partial<Usage> | undefined): Usage {
  * one more call than it scripted has found something, and silently inventing
  * a turn would hide it.
  */
-export function scriptedStream(turns: ReadonlyArray<ScriptedTurn>): StreamFn {
+export function scriptedStream(
+  turns: ReadonlyArray<ScriptedTurn>,
+  /** Clock for message timestamps; fix it when a test asserts exact bytes. */
+  options: { readonly now?: () => number } = {},
+): StreamFn {
+  const now = options.now ?? Date.now;
   let call = 0;
   return (selected) => {
     const turn = turns[call];
@@ -110,7 +115,7 @@ export function scriptedStream(turns: ReadonlyArray<ScriptedTurn>): StreamFn {
       model: selected.id,
       usage: scriptedUsage(turn.usage),
       stopReason,
-      timestamp: Date.now(),
+      timestamp: now(),
     };
     queueMicrotask(() => {
       stream.push({ type: "start", partial: { ...message, content: [], stopReason: "pending" } });

@@ -112,3 +112,68 @@ test("an unreadable lease is treated as held", async () => {
   objects.set("caveman/durable/opaque/lease/000000000001", new TextEncoder().encode("{not json"));
   await assert.rejects(store.acquire("opaque"), /cave_durable_run_locked/);
 });
+
+test("a second writer never overwrites a chunk the first one already claimed", async () => {
+  const { storage, objects } = objectStorage();
+  const driver = new ObjectDurableStore({ storage, conditionalPut: true });
+  // The lock-free writer `requestDurableCancel` uses: a different store
+  // instance, appending to the same run without holding the lease.
+  const control = new ObjectDurableStore({ storage, conditionalPut: true });
+  await driver.append("interleaved", "turn one\n");
+  await control.append("interleaved", "cancel_requested\n");
+  await driver.append("interleaved", "turn two\n");
+  assert.deepEqual(await driver.load("interleaved"), [
+    "turn one",
+    "cancel_requested",
+    "turn two",
+  ]);
+  // Three lines, three chunk objects: nothing was written over.
+  assert.equal(
+    [...objects.keys()].filter((key) => key.startsWith("caveman/durable/interleaved/journal/")).length,
+    3,
+  );
+  await driver.close("interleaved");
+  await control.close("interleaved");
+});
+
+test("a holder that lost its lease to a takeover fails closed on append and renewal", async () => {
+  const { storage, objects } = objectStorage();
+  const holder = new ObjectDurableStore({ storage, conditionalPut: true, leaseTtlMs: 3_000 });
+  const other = new ObjectDurableStore({ storage, conditionalPut: true, leaseTtlMs: 3_000 });
+  await holder.acquire("lost-lease");
+  await holder.append("lost-lease", "before\n");
+
+  const leaseKey = [...objects.keys()].find((key) => key.includes("/lease/"));
+  const held = JSON.parse(new TextDecoder().decode(objects.get(leaseKey)));
+  const expired = { ...held, expiresAt: Date.now() - 1 };
+  objects.set(leaseKey, new TextEncoder().encode(JSON.stringify(expired)));
+  const release = await other.acquire("lost-lease");
+
+  // The expired holder learns it lost from the newer generation, not from
+  // reading its own key back — which could only ever report itself.
+  await assert.rejects(holder.append("lost-lease", "after\n"), /cave_durable_run_lock_lost/);
+  await assert.rejects(holder.append("lost-lease", "again\n"), /cave_durable_run_lock_lost/);
+  // Its renewal tick stops rather than refreshing a superseded lease.
+  await new Promise((resolve) => setTimeout(resolve, 1_100));
+  assert.deepEqual(
+    JSON.parse(new TextDecoder().decode(objects.get(leaseKey))),
+    expired,
+  );
+  assert.deepEqual(await other.load("lost-lease"), ["before"]);
+  await release();
+  await holder.close("lost-lease");
+  await other.close("lost-lease");
+});
+
+test("the append that would cross the journal bound is refused, not accepted and then unreadable", async () => {
+  const { storage } = objectStorage();
+  const store = new ObjectDurableStore({ storage, conditionalPut: true });
+  // 256MiB of real bytes is not worth writing to prove a bound, so the
+  // accounting is seeded with one chunk that already fills the journal.
+  const filled = new Uint8Array(256 * 1024 * 1024);
+  filled.fill(0x61);
+  filled[filled.length - 1] = 0x0a;
+  await storage.put("caveman/durable/capped/journal/000000000000", filled);
+  await assert.rejects(store.append("capped", "one more line\n"), /cave_durable_journal_limit/);
+  await store.close("capped");
+});

@@ -1236,7 +1236,7 @@ function lockableValue(value: unknown, seen: WeakSet<object>): unknown {
     }
     const projected: Record<string, unknown> = {};
     for (const [key, item] of Object.entries(value)) {
-      const locked = lockableValue(item, seen);
+      const locked = key === "sandboxDeclared" ? undefined : lockableValue(item, seen);
       if (locked !== undefined) projected[key] = locked;
     }
     const implementationSource = Reflect.get(

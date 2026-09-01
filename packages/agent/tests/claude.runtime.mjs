@@ -177,7 +177,10 @@ test("Claude public execution path owns SDK policy, tool boundary, output, and d
   assert.equal(result.cacheBoundaryKnown, false);
   assert.deepEqual(result.transformIDs, []);
   assert.equal(result.claimBasis, "inferred");
-  assert.equal(result.mode, "optimized");
+  // A caller-supplied queryFn produced this turn in this process — the Claude
+  // analogue of a caller-supplied streamFn — so the route is real but the
+  // receipt claims no optimization for it.
+  assert.equal(result.mode, "observe-only");
   assert.equal(result.priceBasis, "public_catalog");
   assert.equal(result.costUsd > 0, true);
   assert.equal(result.receipt.calls[0].unpriced, false);

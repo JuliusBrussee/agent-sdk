@@ -116,8 +116,12 @@ export async function resolveCaveRoute(
         // lifecycle, not that a runtime is there. Claiming `useGateway: true`
         // without asking would let a run report `optimized` against a port
         // nothing is listening on, so the reachability is probed — cheaply,
-        // and bounded, because this sits in front of every run.
-        await probeHealthz(gatewayURL, options.fetch ?? globalThis.fetch);
+        // and bounded, because this sits in front of every run. Same memo as the
+        // ensureRuntime path: N concurrent runs cost one probe, and a gateway
+        // that is down costs one 250ms timeout per TTL window rather than one
+        // per run. Its own cache key, because liveness must never be mistaken
+        // for the stricter Caveman-identity result cached under the URL alone.
+        await probeHealthz(gatewayURL, options.fetch);
         const providerBilling = options.billingProofRequired
           ? (await gatewayIdentity(gatewayURL, options.fetch ?? globalThis.fetch))?.providerBilling ??
             "unknown"
@@ -196,23 +200,40 @@ const gatewayProbeInflight = new Map<string, Promise<GatewayProbe>>();
  */
 async function probeHealthz(
   gatewayURL: string,
-  fetchImpl: typeof globalThis.fetch,
+  fetchImpl: typeof globalThis.fetch | undefined,
 ): Promise<void> {
-  let ok = false;
-  try {
-    const response = await fetchImpl(`${gatewayURL}/healthz`, {
-      signal: AbortSignal.timeout(250),
-      redirect: "error",
-    });
-    ok = response.ok;
-  } catch {
-    ok = false;
+  const run = async (): Promise<GatewayProbe> => {
+    let ok = false;
+    try {
+      const response = await (fetchImpl ?? globalThis.fetch)(`${gatewayURL}/healthz`, {
+        signal: AbortSignal.timeout(250),
+        redirect: "error",
+      });
+      ok = response.ok;
+    } catch {
+      ok = false;
+    }
+    return {
+      ready: ok,
+      reason: ok
+        ? ""
+        : `cave_gateway_unreachable: nothing answered ${gatewayURL}/healthz within 250ms`,
+      providerBilling: "unknown",
+    };
+  };
+  // A caller-supplied transport always probes fresh, exactly as the
+  // `ensureRuntime` path does, so a test seam is never cross-contaminated.
+  let probe: GatewayProbe;
+  if (fetchImpl !== undefined) {
+    probe = await run();
+  } else {
+    const key = `healthz ${gatewayURL}`;
+    const cached = gatewayProbeCache.get(key);
+    probe = cached !== undefined && Date.now() - cached.at < GATEWAY_PROBE_TTL_MS
+      ? cached
+      : await sharedProbe(key, run);
   }
-  if (!ok) {
-    throw new Error(
-      `cave_gateway_unreachable: nothing answered ${gatewayURL}/healthz within 250ms`,
-    );
-  }
+  if (!probe.ready) throw new Error(probe.reason);
 }
 
 async function probeGateway(
@@ -232,17 +253,22 @@ async function probeGateway(
 }
 
 function sharedGatewayProbe(gatewayURL: string): Promise<GatewayProbe> {
-  const active = gatewayProbeInflight.get(gatewayURL);
+  return sharedProbe(gatewayURL, () => probeGateway(gatewayURL, globalThis.fetch));
+}
+
+/** Memoize a completed probe under `key` and coalesce concurrent ones. */
+function sharedProbe(key: string, run: () => Promise<GatewayProbe>): Promise<GatewayProbe> {
+  const active = gatewayProbeInflight.get(key);
   if (active !== undefined) return active;
 
-  const probe = probeGateway(gatewayURL, globalThis.fetch).then((result) => {
-    gatewayProbeCache.set(gatewayURL, { ...result, at: Date.now() });
+  const probe = run().then((result) => {
+    gatewayProbeCache.set(key, { ...result, at: Date.now() });
     return result;
   });
-  gatewayProbeInflight.set(gatewayURL, probe);
+  gatewayProbeInflight.set(key, probe);
   void probe.finally(() => {
-    if (gatewayProbeInflight.get(gatewayURL) === probe) {
-      gatewayProbeInflight.delete(gatewayURL);
+    if (gatewayProbeInflight.get(key) === probe) {
+      gatewayProbeInflight.delete(key);
     }
   });
   return probe;

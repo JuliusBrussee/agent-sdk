@@ -97,3 +97,20 @@ test("a script that runs out is an error, not an invented turn", async () => {
     /cave_testing_script_exhausted/,
   );
 });
+
+test("scriptedStream takes an injectable clock so byte assertions are deterministic", async () => {
+  const selected = fauxModel();
+  const timestampOf = async (stream) => {
+    for await (const event of stream) {
+      if (event.type === "done") return event.message.timestamp;
+    }
+    return undefined;
+  };
+  const fixed = await timestampOf(
+    scriptedStream([{ text: "answered" }], { now: () => 1_700_000_000_000 })(selected),
+  );
+  assert.equal(fixed, 1_700_000_000_000);
+  // Default is still the wall clock.
+  const wallClock = await timestampOf(scriptedStream([{ text: "answered" }])(selected));
+  assert.equal(Math.abs(wallClock - Date.now()) < 5_000, true);
+});
