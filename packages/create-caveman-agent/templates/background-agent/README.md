@@ -19,8 +19,10 @@ provider selection) and makes no model call.
 BASE=http://127.0.0.1:8080
 AUTH="Authorization: Bearer $CAVE_SERVE_TOKEN"
 
-# 1. create a session
-SID=$(curl -sX POST "$BASE/sessions" -H "$AUTH" | jq -r .sessionId)
+# 1. create a session (you choose the id; it is also the journal key)
+SID=fix-parser-$(date +%s)
+curl -sX POST "$BASE/sessions" -H "$AUTH" -H 'content-type: application/json' \
+  -d "{\"sessionId\":\"$SID\"}"
 
 # 2. send the task (202: the run starts, or queues behind the active one)
 curl -sX POST "$BASE/sessions/$SID/messages" -H "$AUTH" -H 'content-type: application/json' \
@@ -35,7 +37,8 @@ curl -sX DELETE "$BASE/sessions/$SID" -H "$AUTH"
 ```
 
 A message sent while a run is active is a follow-up: it joins the running turn
-instead of starting a second one. `{"mode":"steer"}` interrupts instead.
+instead of starting a second one. `{"mode":"steer"}` injects it into the turn
+at the next boundary instead of waiting for the turn to finish.
 `WS /sessions/{id}/ws` carries the same frames bidirectionally for clients that
 would rather not hold an SSE connection open.
 

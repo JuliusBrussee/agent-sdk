@@ -72,7 +72,7 @@ await server.listen(8080);
 ```
 
 ```text
-POST   /sessions                  → {sessionId}
+POST   /sessions                  {sessionId}       caller-assigned; also the journal key
 POST   /sessions/{id}/messages    → {runId, queued}   follow-up while a run is active
 GET    /sessions/{id}             → runs, active run, queue depth
 GET    /sessions/{id}/events      → Server-Sent Events, across every run
