@@ -68,7 +68,11 @@ one more call than it scripted has found something, and silently inventing
 a turn would hide it.
 
 ```ts
-export declare function scriptedStream(turns: ReadonlyArray<ScriptedTurn>): StreamFn;
+export declare function scriptedStream(turns: ReadonlyArray<ScriptedTurn>, 
+/** Clock for message timestamps; fix it when a test asserts exact bytes. */
+options?: {
+    readonly now?: () => number;
+}): StreamFn;
 ```
 
 Declared in `packages/agent/dist/testing.d.ts`.

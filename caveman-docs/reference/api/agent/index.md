@@ -1498,6 +1498,7 @@ export interface ExecResult {
     readonly code: number | null;
     readonly timedOut: boolean;
     readonly truncated: boolean;
+    readonly startFailed?: boolean;
 }
 ```
 

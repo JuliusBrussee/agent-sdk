@@ -147,17 +147,47 @@ export declare class ObjectDurableStore implements DurableStore {
     private readonly prefix;
     private readonly conditionalPut;
     private readonly leaseTtlMs;
-    private readonly nextChunk;
+    /** Per run: next free chunk sequence and the journal's total bytes. */
+    private readonly journal;
     private readonly leases;
     private readonly lost;
     constructor(options: ObjectDurableStoreOptions);
     private journalPrefix;
     private leasePrefix;
     load(runId: string): Promise<readonly string[]>;
+    /**
+     * Every chunk is created, never overwritten: the put is create-if-absent, and
+     * a taken sequence means somebody else wrote there — the lock-free
+     * `requestDurableCancel` is exactly that somebody — so the next free sequence
+     * is re-derived and the write retried instead of silently replacing it.
+     */
     append(runId: string, data: string): Promise<void>;
+    /**
+     * Highest written sequence and total journal bytes, once per run per process.
+     *
+     * ponytail: sizes come from reading the chunks, the same walk `load()` does,
+     * because `ObjectStorage.list` returns keys only. A size-carrying listing
+     * would make this one request instead of one per chunk.
+     */
+    private seedJournal;
     acquire(runId: string): Promise<() => Promise<void>>;
     private readLease;
     private putLease;
+    /**
+     * Is the generation this process created still the newest one under the lease
+     * prefix? A takeover after an expiry creates a *higher* generation, so this is
+     * the only question that can tell a stale holder it lost — reading its own key
+     * back can only ever report itself.
+     */
+    private stillNewestGeneration;
+    /** Losing the lease poisons the run rather than risking two drivers. */
+    private markLost;
+    /**
+     * An append by a process that holds this run's lease must still be able to
+     * prove it holds it. A store with no lease here is a deliberately lock-free
+     * writer (`requestDurableCancel`) and is not asked to prove anything.
+     */
+    private assertStillHeld;
     /** Losing the lease poisons the run rather than risking two drivers. */
     private renew;
     close(runId: string): Promise<void>;
@@ -190,6 +220,13 @@ export declare class SqlDurableStore implements DurableStore {
      * whole lines, never half of one.
      */
     append(runId: string, data: string): Promise<void>;
+    /**
+     * An append by a process that holds this run's lease must still be able to
+     * prove it holds it, at append time rather than only on the renewal tick. A
+     * store with no lease for this run is a deliberately lock-free writer
+     * (`requestDurableCancel`) and is not asked to prove anything.
+     */
+    private assertStillHeld;
     acquire(runId: string): Promise<() => Promise<void>>;
     /** Losing the lease poisons the run rather than risking two drivers. */
     private renew;

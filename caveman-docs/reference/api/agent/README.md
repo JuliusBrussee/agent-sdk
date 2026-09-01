@@ -26,6 +26,7 @@ Each entrypoint has its own page.
 | `@caveman-ai/agent/memory` | `packages/agent/dist/memory-api.d.ts` | 43 | [memory.md](memory.md) |
 | `@caveman-ai/agent/durable` | `packages/agent/dist/durable.d.ts` | 62 | [durable.md](durable.md) |
 | `@caveman-ai/agent/serve` | `packages/agent/dist/serve.d.ts` | 4 | [serve.md](serve.md) |
+| `@caveman-ai/agent/serve-handler` | `packages/agent/dist/serve-handler.d.ts` | 5 | [serve-handler.md](serve-handler.md) |
 | `@caveman-ai/agent/model-boundary` | `packages/agent/dist/model-boundary.d.ts` | 15 | [model-boundary.md](model-boundary.md) |
 | `@caveman-ai/agent/model-usage` | `packages/agent/dist/model-usage.d.ts` | 8 | [model-usage.md](model-usage.md) |
 | `@caveman-ai/agent/input` | `packages/agent/dist/input.d.ts` | 23 | [input.md](input.md) |
