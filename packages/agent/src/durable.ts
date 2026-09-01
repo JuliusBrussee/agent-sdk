@@ -128,6 +128,14 @@ export interface DurableStore {
 // re-exported here so `@caveman-ai/agent/durable` stays their single import
 // site — the same pattern `runtime.ts` uses for its split modules.
 export { DiskDurableStore, HttpDurableStore, type HttpDurableStoreOptions } from "./durable-stores.js";
+// The SQL and object-storage stores are the two shapes a deployment without a
+// local volume actually has, and they follow the same rule: storage only.
+export { SqlDurableStore, type SqlDurableStoreOptions, type SqlExecutor } from "./durable-sql-store.js";
+export {
+  ObjectDurableStore,
+  type ObjectDurableStoreOptions,
+  type ObjectStorage,
+} from "./durable-object-store.js";
 // Cancellation is journal-level control over a run, so it belongs on the same
 // entrypoint as the journal it is written into.
 export {

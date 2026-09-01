@@ -106,6 +106,12 @@ function queryFn(capture, outputTokens = 5, model = "claude-haiku-4-5", apiKeySo
   };
 }
 
+// `ensureRuntime: false` no longer means "assume the loopback runtime is up":
+// the route is only claimed after something answers /healthz.
+const healthzOnly = async (url) => String(url).endsWith("/healthz")
+  ? new Response("ok")
+  : new Response(null, { status: 404 });
+
 test("Claude public execution path owns SDK policy, tool boundary, output, and disjoint usage", async () => {
   const capture = { calls: 0 };
   const priorHeaders = process.env.ANTHROPIC_CUSTOM_HEADERS;
@@ -123,6 +129,7 @@ test("Claude public execution path owns SDK policy, tool boundary, output, and d
   try {
     result = await runClaudeAgentInternal(definition(), "refund in France", {
       ensureRuntime: false,
+      fetch: healthzOnly,
       maxBudgetUsd: 0.5,
       queryFn: queryFn(capture),
     });

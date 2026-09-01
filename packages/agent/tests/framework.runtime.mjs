@@ -57,6 +57,13 @@ import {
 import { memoryFilePath, mutateMemories, readMemories } from "../dist/memory-store.js";
 import { sourceGraphSHA256 } from "../dist/source-graph.js";
 
+// `ensureRuntime: false` no longer means "assume the loopback runtime is up":
+// the route is only claimed after something answers /healthz. A fixture that
+// says the caller owns the runtime therefore has to say so on the wire.
+const healthzOnly = async (url) => String(url).endsWith("/healthz")
+  ? new Response("ok")
+  : new Response(null, { status: 404 });
+
 function fauxAnthropic(options = {}) {
   return fauxProvider({ provider: "anthropic", ...options });
 }
@@ -804,6 +811,7 @@ test("shared execution kernel fails closed on model drift and locked missing usa
   await assert.rejects(
     run(defined, "x", {
       ensureRuntime: false,
+      fetch: healthzOnly,
       model: faux.getModel(),
       streamFn: (selected) => manualTextStream(
         selected,
@@ -836,6 +844,7 @@ test("shared execution kernel fails closed on model drift and locked missing usa
   await assert.rejects(
     runAgentInternal(defined, "x", {
       ensureRuntime: false,
+      fetch: healthzOnly,
       model: faux.getModel(),
       candidatePlan: { ...plan, model: "faux/not-selected" },
       streamFn: (selected) => {
@@ -849,6 +858,7 @@ test("shared execution kernel fails closed on model drift and locked missing usa
   await assert.rejects(
     runAgentInternal(defined, "x", {
       ensureRuntime: false,
+      fetch: healthzOnly,
       model: faux.getModel(),
       candidatePlan: plan,
       streamFn: (selected) => manualTextStream(
@@ -863,6 +873,7 @@ test("shared execution kernel fails closed on model drift and locked missing usa
   const reasoningFaux = fauxProvider({ models: [{ id: "faux-1", reasoning: true }] });
   const unavailableReasoning = await run(defined, "x", {
     ensureRuntime: false,
+    fetch: healthzOnly,
     model: reasoningFaux.getModel(),
     streamFn: (selected) => manualTextStream(
       selected,
@@ -876,6 +887,7 @@ test("shared execution kernel fails closed on model drift and locked missing usa
   await assert.rejects(
     runAgentInternal(defined, "x", {
       ensureRuntime: false,
+      fetch: healthzOnly,
       model: reasoningFaux.getModel(),
       candidatePlan: plan,
       streamFn: (selected) => manualTextStream(
@@ -928,6 +940,7 @@ test("locked Pi stops before another provider call when reasoning split disappea
   await assert.rejects(
     runAgentInternal(defined, "go", {
       ensureRuntime: false,
+      fetch: healthzOnly,
       model: faux.getModel(),
       candidatePlan,
       streamFn: (selected) => {
@@ -993,6 +1006,7 @@ test("a run that fails after spending still surfaces its ledger", async () => {
   let providerCalls = 0;
   const error = await runAgentInternal(defined, "go", {
     ensureRuntime: false,
+    fetch: healthzOnly,
     model: faux.getModel(),
     candidatePlan,
     streamFn: (selected) => {
@@ -1300,6 +1314,7 @@ test("locked Pi runtime binds static Context IR and installed adapter identity",
     let providerCalls = 0;
     const options = {
       ensureRuntime: false,
+      fetch: healthzOnly,
       rootDir: store,
       durable: { runId: "locked-runtime-proof" },
       model: faux.getModel(),
@@ -1316,7 +1331,8 @@ test("locked Pi runtime binds static Context IR and installed adapter identity",
     );
     assert.equal(result.text, "ok");
     assert.equal(result.unlocked, false);
-    assert.equal(result.mode, "optimized");
+    // The caller supplied the stream, so "optimized" is not this run's to claim.
+    assert.equal(result.mode, "observe-only");
 
     const replay = await runLocked(
       defined,
@@ -1339,6 +1355,7 @@ test("locked Pi runtime binds static Context IR and installed adapter identity",
   await assert.rejects(
     runLocked(defined, "must not spend", stale, {
       ensureRuntime: false,
+      fetch: healthzOnly,
       model: faux.getModel(),
       streamFn: (selected) => {
         staleCalls++;
@@ -1446,6 +1463,7 @@ test("conversation rotates cache epoch on definition change without losing histo
 
   await run(first, "First prompt.", {
     ensureRuntime: false,
+    fetch: healthzOnly,
     conversation,
     model,
     streamFn,
@@ -1453,6 +1471,7 @@ test("conversation rotates cache epoch on definition change without losing histo
   });
   await run(second, "Second prompt.", {
     ensureRuntime: false,
+    fetch: healthzOnly,
     conversation,
     model,
     streamFn,
@@ -1508,6 +1527,7 @@ test("same-id plan content change rotates conversation cache epoch", async () =>
   };
   await runAgentInternal(definition(), "first", {
     ensureRuntime: false,
+    fetch: healthzOnly,
     conversation,
     candidatePlan: plan,
     model: faux.getModel(),
@@ -1515,6 +1535,7 @@ test("same-id plan content change rotates conversation cache epoch", async () =>
   });
   await runAgentInternal(definition(), "second", {
     ensureRuntime: false,
+    fetch: healthzOnly,
     conversation,
     candidatePlan: {
       ...plan,
@@ -1795,7 +1816,7 @@ test("cave off keeps the provider base URL and never contacts the gateway", asyn
   assert.deepEqual(result.transformTrace, []);
 });
 
-test("reachable gateway keeps the run optimized and routed", async () => {
+test("reachable gateway routes the run; a caller streamFn keeps the mode honest", async () => {
   const directory = await mkdtemp(resolve(tmpdir(), "caveman-observe-optimized-"));
   const proxy = resolve(directory, "caveman-proxy");
   const previousProxy = process.env.CAVEMAN_PROXY_BIN;
@@ -1835,7 +1856,9 @@ process.stdout.write(JSON.stringify({
         streamFn: capture.streamFn,
       });
       assert.equal(result.text, `routed ${provider}`);
-      assert.equal(result.mode, "optimized");
+      // Routed, but not optimized: this turn came from the caller's streamFn,
+      // so the gateway never saw a request it could have optimized.
+      assert.equal(result.mode, "observe-only");
       assert.equal(capture.selected[0].baseUrl, expectedBaseUrl);
     }
   } finally {
@@ -2789,7 +2812,7 @@ test("accountless gateway requests keep correlation headers but skip unauthentic
       model: faux.getModel(),
       streamFn: capture.streamFn,
     });
-    assert.equal(result.mode, "optimized");
+    assert.equal(result.mode, "observe-only");
     assert.match(capture.headers[0]["x-cave-trace-id"], /^[0-9a-f]{32}$/);
     assert.match(capture.headers[0]["x-cave-parent-span-id"], /^[0-9a-f]{16}$/);
     await new Promise((resolve) => setImmediate(resolve));
@@ -2958,7 +2981,7 @@ test(
 );
 
 test(
-  "https non-loopback gateway passing the identity handshake is routed and optimized",
+  "https non-loopback gateway passing the identity handshake is routed",
   withMissingRuntimeBinaries(async () => {
     const faux = fauxAnthropic();
     faux.setResponses([fauxAssistantMessage("routed remotely")]);
@@ -2975,7 +2998,7 @@ test(
       streamFn: capture.streamFn,
     });
     assert.equal(result.text, "routed remotely");
-    assert.equal(result.mode, "optimized");
+    assert.equal(result.mode, "observe-only");
     assert.equal(capture.selected[0].baseUrl, "https://gateway.example/anthropic");
     assert.equal(typeof capture.headers[0]["x-cave-session"], "string");
   }),
@@ -3137,6 +3160,7 @@ test("programmatic run fails before provider call when required tool sandbox has
     id: "required-sandbox",
     instructions: "Use tool.",
     model: auto(),
+    sandbox: "required",
     tools: [
       tool({
         name: "read_value",
@@ -3192,6 +3216,7 @@ test("provider-visible cache drift fails request open to original frozen prefix"
   };
   const result = await run(definition(), "drift test", {
     ensureRuntime: false,
+    fetch: healthzOnly,
     model,
     streamFn,
   });
@@ -3324,6 +3349,7 @@ test("Google nested config drift fails open to prior system and tools", async ()
   };
   const result = await run(definition(), "google cache drift", {
     ensureRuntime: false,
+    fetch: healthzOnly,
     model,
     streamFn,
     providerPayloadContract: "pi-on-payload-v1",
@@ -3482,6 +3508,7 @@ test("locked efficiency plan executes engine transform and proves byte-exact rec
     };
     const result = await runAgentInternal(defined, "summarize", {
       ensureRuntime: false,
+      fetch: healthzOnly,
       engineBin: resolve("tests/fixtures/fake-engine.mjs"),
       candidatePlan: {
         schema_version: 1,
@@ -3567,6 +3594,7 @@ test("transform afterTokens counts the wrapped bytes actually sent, not the engi
     };
     const result = await runAgentInternal(defined, "summarize", {
       ensureRuntime: false,
+      fetch: healthzOnly,
       engineBin: resolve("tests/fixtures/fake-engine-tokens.mjs"),
       candidatePlan: {
         schema_version: 1,
@@ -3652,6 +3680,7 @@ test("locked tool-schema winner changes actual provider tools and preserves reco
     };
     const result = await runAgentInternal(defined, "lookup", {
       ensureRuntime: false,
+      fetch: healthzOnly,
       engineBin: resolve("tests/fixtures/fake-engine.mjs"),
       model,
       streamFn,
@@ -3795,12 +3824,14 @@ test("locked history and tool-result winners transform real Pi transcript bytes"
     };
     await run(defined, priorHistory, {
       ensureRuntime: false,
+      fetch: healthzOnly,
       conversation,
       model,
       streamFn: faux.provider.streamSimple.bind(faux.provider),
     });
     const result = await runAgentInternal(defined, "perform lookup", {
       ensureRuntime: false,
+      fetch: healthzOnly,
       engineBin: resolve("tests/fixtures/fake-engine.mjs"),
       conversation,
       model,
@@ -5363,6 +5394,7 @@ test("compiler candidate cost cap reserves declared plan context, not full model
   let calls = 0;
   const result = await runAgentInternal(defined, "go", {
     ensureRuntime: false,
+    fetch: healthzOnly,
     candidatePlan: plan,
     maxCostUsd: planCeiling + 1e-12,
     model,
